@@ -1,0 +1,11 @@
+{
+  "name": "boynew",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "npm run dev --prefix ../Downloads/binance-ai-trading-bot",
+    "build": "npm run build --prefix ../Downloads/binance-ai-trading-bot",
+    "preview": "npm run preview --prefix ../Downloads/binance-ai-trading-bot",
+    "lint": "npm run lint --prefix ../Downloads/binance-ai-trading-bot"
+  }
+}

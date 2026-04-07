@@ -1,0 +1,15 @@
+.env
+*.db
+*.db-shm
+*.db-wal
+*.db.corrupted_backup
+__pycache__/
+venv/
+*.pyc
+.claude/settings.local.json
+data/tg_subscribers.json
+models/
+trading_system.log
+trading_live.log
+nohup.out
+_old_backup/

@@ -1,0 +1,34 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Trading Bot (Paper)",
+      "runtimeExecutable": "./venv/bin/python",
+      "runtimeArgs": ["main.py"],
+      "port": 8501
+    },
+    {
+      "name": "Trading Bot (Live)",
+      "runtimeExecutable": "./venv/bin/python",
+      "runtimeArgs": ["main.py", "--live"],
+      "port": 8501
+    },
+    {
+      "name": "Trading Bot (No Dashboard)",
+      "runtimeExecutable": "./venv/bin/python",
+      "runtimeArgs": ["main.py", "--no-dashboard"]
+    },
+    {
+      "name": "Streamlit Dashboard",
+      "runtimeExecutable": "./venv/bin/streamlit",
+      "runtimeArgs": ["run", "dashboard.py", "--server.port=8501"],
+      "port": 8501
+    },
+    {
+      "name": "Web App (Dev)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    }
+  ]
+}
