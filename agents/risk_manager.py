@@ -93,6 +93,13 @@ class RiskManagerAgent:
         self._adaptive_score_entry: Optional[float] = None
         # Exit reasons that history shows are net-negative (set externally by TradeAnalyzer)
         self._bad_exit_reasons: set = set()
+        # Kelly-inspired fraction for position sizing (0.1–1.0, set by TradeAnalyzer)
+        self._kelly_fraction: float = 1.0
+        # Dynamic SL/TP multipliers from trade history
+        self._sl_multiplier: float = 1.0
+        self._tp_multiplier: float = 1.0
+        # Model health flag — if False, reject all entries
+        self._model_healthy: bool = True
 
     # ------------------------------------------------------------------
     # Legacy pipeline (main.py + ExecutionAgent)
@@ -368,6 +375,8 @@ class RiskManagerAgent:
     ) -> RiskDecision:
         if self.kill_switch:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Kill switch")
+        if not self._model_healthy:
+            return RiskDecision(False, 0.0, 0.0, 0.0, "Model unhealthy — predictions unreliable")
         if len(open_positions) >= self.config.hft_max_open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Max positions")
         if symbol in open_positions:
@@ -399,6 +408,8 @@ class RiskManagerAgent:
         )
         # Notional = slice × leverage, scaled by tier (extreme gets full slice, base gets less)
         notional = slice_margin * adj_pct * self.config.leverage
+        # Apply Kelly fraction — reduce sizing when win rate / R:R is poor
+        notional *= self._kelly_fraction
         # Hard-cap: never exceed one full slice × leverage
         max_notional = slice_margin * self.config.leverage
         notional = min(notional, max_notional)
@@ -425,8 +436,9 @@ class RiskManagerAgent:
         atr_pct = atr / entry_price if entry_price > 0 else 0.005
         tw = {"BASE": 0.85, "HIGH": 1.0, "EXTREME": 1.15}.get(tier, 1.0)
         scaled = atr_pct * tw
-        sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled))
-        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4))
+        # Apply dynamic SL/TP multipliers from trade history analysis
+        sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled * self._sl_multiplier))
+        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4 * self._tp_multiplier))
 
         if direction == "LONG":
             sl_price = entry_price * (1 - sl_pct)

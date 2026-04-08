@@ -407,6 +407,11 @@ class MarketScanner:
                         adjusted_score += hist_adj
                         logger.debug("%s: history adjustment %+.1f → score=%.1f", symbol, hist_adj, adjusted_score)
 
+                    # Direction penalty: if history shows one direction wins more
+                    dir_adj = self.trade_analyzer.get_direction_penalty(direction)
+                    if dir_adj != 0:
+                        adjusted_score += dir_adj
+
                 # Calculate ATR
                 atr = self._compute_atr(df)
 

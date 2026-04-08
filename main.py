@@ -301,11 +301,16 @@ class TradingSystem:
         insights = self.trade_analyzer.insights
         if insights.has_enough_data:
             logger.info(
-                "TradeAnalyzer loaded: %d recent trades, wr=%.1f%%, score_entry=%.0f, blacklist=%d",
+                "TradeAnalyzer loaded: %d recent trades, wr=%.1f%%, score=%.0f, kelly=%.2f, blacklist=%d",
                 insights.recent_trade_count, insights.recent_win_rate * 100,
-                insights.adjusted_score_entry, len(insights.symbol_blacklist),
+                insights.adjusted_score_entry, insights.kelly_fraction,
+                len(insights.symbol_blacklist),
             )
             self.risk_agent._adaptive_score_entry = insights.adjusted_score_entry
+            self.risk_agent._kelly_fraction = insights.kelly_fraction
+            self.risk_agent._sl_multiplier = insights.sl_multiplier
+            self.risk_agent._tp_multiplier = insights.tp_multiplier
+            self.risk_agent._model_healthy = insights.model_healthy
 
         # HFT mode: scanner and model
         self.scanner: Optional[MarketScanner] = None
@@ -430,9 +435,14 @@ class TradingSystem:
                 if self._loop_count % 50 == 0 and self._loop_count > 0:
                     insights = self.trade_analyzer.refresh()
                     if insights.has_enough_data:
+                        # Feed all insights into risk manager
                         self.risk_agent._adaptive_score_entry = insights.adjusted_score_entry
                         self.risk_agent._bad_exit_reasons = insights.bad_close_reasons
-                        # Log key insights for monitoring
+                        self.risk_agent._kelly_fraction = insights.kelly_fraction
+                        self.risk_agent._sl_multiplier = insights.sl_multiplier
+                        self.risk_agent._tp_multiplier = insights.tp_multiplier
+                        self.risk_agent._model_healthy = insights.model_healthy
+                        # Log key insights
                         if insights.symbol_blacklist:
                             logger.info(
                                 "TradeAnalyzer: blacklisted symbols: %s",
@@ -443,6 +453,26 @@ class TradingSystem:
                                 "TradeAnalyzer: bad exit reasons: %s",
                                 ", ".join(sorted(insights.bad_close_reasons)),
                             )
+                        if not insights.model_healthy:
+                            logger.critical(
+                                "TradeAnalyzer: MODEL UNHEALTHY — entries blocked until model improves"
+                            )
+
+                # 1c. Check cooldown (real-time, every loop)
+                if self.trade_analyzer.is_in_cooldown():
+                    # During cooldown: still check exits but don't enter new trades
+                    self._handle_exits_only(opportunities=[])
+                    self._loop_count += 1
+                    time.sleep(self.config.loop_sleep_ms / 1000.0)
+                    continue
+
+                # 1d. Check if current hour is historically bad
+                if self.trade_analyzer.is_bad_hour():
+                    logger.debug("Bad hour (UTC %02d) — skipping entries", datetime.now(timezone.utc).hour)
+                    self._handle_exits_only(opportunities=[])
+                    self._loop_count += 1
+                    time.sleep(self.config.loop_sleep_ms / 1000.0)
+                    continue
 
                 # 2. Tick throttle cooldowns
                 self.scanner.tick_throttles()
@@ -462,6 +492,17 @@ class TradingSystem:
                     signal_ts = opp.get("signal_ts", 0)
 
                     if not symbol or score < self.config.score_entry:
+                        continue
+
+                    # Correlation guard: don't open correlated pairs simultaneously
+                    corr_conflict = self.trade_analyzer.check_correlation(
+                        symbol, self.risk_agent.open_positions
+                    )
+                    if corr_conflict:
+                        logger.debug(
+                            "%s: SKIPPED — correlated with open position %s",
+                            symbol, corr_conflict,
+                        )
                         continue
 
                     # Risk assessment
@@ -742,6 +783,59 @@ class TradingSystem:
         except Exception as exc:
             logger.exception("Error processing symbol %s: %s", symbol, exc)
 
+    def _handle_exits_only(self, opportunities: List[Dict]) -> None:
+        """
+        During cooldown / bad hours: only check and execute exits, no new entries.
+        Still protects capital by honoring SL/TP/trailing/stale exits.
+        """
+        try:
+            current_prices = {}
+            for opp in opportunities:
+                s = opp.get("symbol", "")
+                if s:
+                    current_prices[s] = opp.get("entry_price", 0)
+
+            for sym in self.risk_agent.open_positions:
+                if sym not in current_prices:
+                    px = self._get_current_price_from_market(sym)
+                    if px > 0:
+                        current_prices[sym] = px
+
+            exit_signals = self.risk_agent.check_exits(
+                positions=self.risk_agent.open_positions,
+                prices=current_prices,
+            )
+            for sig in exit_signals:
+                sig_symbol = sig["symbol"]
+                sig_reason = sig["reason"]
+                if sig_symbol in self.risk_agent.open_positions:
+                    current_price = current_prices.get(sig_symbol, 0)
+                    if current_price > 0:
+                        result = self.execution_agent.hft_close(
+                            symbol=sig_symbol,
+                            current_price=current_price,
+                            reason=sig_reason,
+                        )
+                        if result:
+                            self._record_trade_result(sig_symbol, result)
+                            self._session_pnl += result.get("pnl", 0)
+                            self._session_trades += 1
+                            self.tg.exit(
+                                symbol=sig_symbol,
+                                direction=result.get("side", ""),
+                                entry=result.get("entry_price", 0),
+                                exit_price=result.get("exit_price", 0),
+                                pnl=result.get("pnl", 0),
+                                pnl_pct=result.get("pnl_pct", 0),
+                                reason=sig_reason,
+                                balance=self.risk_agent._current_balance,
+                            )
+
+            self._save_portfolio_snapshot()
+            self._check_drawdown()
+        except Exception as exc:
+            logger.exception("Error in exits-only handler: %s", exc)
+
     def _record_trade_result(self, symbol: str, result: Dict) -> None:
         """Record a trade result and update rage mode state."""
         try:
@@ -767,6 +861,9 @@ class TradingSystem:
             })
 
             self.risk_agent._trade_history.append(pnl > 0)
+
+            # Real-time cooldown check (immediate, not waiting for DB refresh)
+            self.trade_analyzer.record_realtime_result(pnl)
 
             # Log with trade analyzer context
             was_blacklisted = self.trade_analyzer.should_skip_symbol(symbol)
