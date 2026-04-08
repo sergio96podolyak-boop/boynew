@@ -304,6 +304,112 @@ class TradeRepository:
     # Performance statistics
     # -------------------------------------------------------------------------
 
+    def get_symbol_stats(self, min_trades: int = 3, hours_back: int = 48) -> List[Dict[str, Any]]:
+        """
+        Per-symbol performance stats from recent closed trades.
+        Returns list of dicts with: symbol, trades, wins, losses, win_rate, total_pnl, avg_pnl
+        """
+        conn = self._get_conn()
+        cutoff = datetime.now(timezone.utc).isoformat()
+        # Use hours_back to filter
+        cursor = conn.execute(
+            """
+            SELECT symbol,
+                   COUNT(*)                          AS trades,
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) AS losses,
+                   ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
+                   ROUND(SUM(pnl), 6)                AS total_pnl,
+                   ROUND(AVG(pnl), 6)                AS avg_pnl,
+                   ROUND(AVG(pnl_pct), 4)            AS avg_pnl_pct
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            GROUP BY symbol
+            HAVING COUNT(*) >= ?
+            ORDER BY total_pnl ASC
+            """,
+            (hours_back, min_trades),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_close_reason_stats(self, hours_back: int = 48) -> List[Dict[str, Any]]:
+        """
+        Performance breakdown by close_reason (stop_loss, take_profit, fast_exit, etc).
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT close_reason,
+                   COUNT(*)                          AS trades,
+                   ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
+                   ROUND(SUM(pnl), 6)                AS total_pnl,
+                   ROUND(AVG(pnl), 6)                AS avg_pnl
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            GROUP BY close_reason
+            ORDER BY total_pnl ASC
+            """,
+            (hours_back,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_overall_recent_stats(self, hours_back: int = 24) -> Dict[str, Any]:
+        """
+        Aggregate stats for recent trades: total, wins, losses, win_rate, total_pnl.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT COUNT(*)                          AS total_trades,
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) AS losses,
+                   ROUND(SUM(pnl), 6)                AS total_pnl,
+                   ROUND(AVG(pnl), 6)                AS avg_pnl,
+                   ROUND(AVG(pnl_pct), 4)            AS avg_pnl_pct
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            """,
+            (hours_back,),
+        )
+        row = cursor.fetchone()
+        if row and row["total_trades"] and row["total_trades"] > 0:
+            d = dict(row)
+            d["win_rate"] = round(d["wins"] / d["total_trades"], 4) if d["total_trades"] else 0
+            return d
+        return {"total_trades": 0, "wins": 0, "losses": 0, "total_pnl": 0, "avg_pnl": 0, "avg_pnl_pct": 0, "win_rate": 0}
+
+    def get_score_bracket_stats(self, hours_back: int = 48) -> List[Dict[str, Any]]:
+        """
+        Win rate by confidence/score bracket (e.g. 72-80, 80-85, 85-92, 92+).
+        Helps determine if our score thresholds are calibrated.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT CASE
+                     WHEN confidence >= 92 THEN '92+'
+                     WHEN confidence >= 85 THEN '85-92'
+                     WHEN confidence >= 80 THEN '80-85'
+                     WHEN confidence >= 72 THEN '72-80'
+                     ELSE '<72'
+                   END AS score_bracket,
+                   COUNT(*) AS trades,
+                   ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
+                   ROUND(SUM(pnl), 6) AS total_pnl,
+                   ROUND(AVG(pnl), 6) AS avg_pnl
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL AND confidence IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            GROUP BY score_bracket
+            ORDER BY score_bracket
+            """,
+            (hours_back,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
     def get_performance_stats(self) -> Dict[str, Any]:
         """
         Compute aggregate performance statistics from closed trades.

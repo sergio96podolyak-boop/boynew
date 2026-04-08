@@ -15,6 +15,12 @@ from agents.features import (
 )
 from agents.model import TradingModel
 
+# Optional: TradeAnalyzer for history-based filtering
+try:
+    from agents.trade_analyzer import TradeAnalyzer
+except ImportError:
+    TradeAnalyzer = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 BINANCE_FUTURES_BASE = "https://fapi.binance.com"
@@ -26,16 +32,18 @@ RETRY_BACKOFF = 1.0
 class MarketScanner:
     """Market scanner for Binance Futures to discover and rank trading opportunities."""
 
-    def __init__(self, config: TradingConfig, model: TradingModel):
+    def __init__(self, config: TradingConfig, model: TradingModel, trade_analyzer: Optional['TradeAnalyzer'] = None):
         """
         Initialize the market scanner.
 
         Args:
             config: Trading configuration object
             model: Trained or untrained TradingModel instance
+            trade_analyzer: Optional TradeAnalyzer for history-based filtering
         """
         self.config = config
         self.model = model
+        self.trade_analyzer = trade_analyzer
         self.universe: list[str] = []
         self.session = requests.Session()
         self._runtime_blacklist: set = set()  # symbols blacklisted at runtime (e.g. API -4411)
@@ -288,10 +296,24 @@ class MarketScanner:
             f"Scanning {len(self.universe)} symbols (hft_timeframe={self.config.hft_timeframe})"
         )
 
+        # Get adaptive score threshold from trade history (if available)
+        effective_score_entry = self.config.score_entry
+        if self.trade_analyzer:
+            effective_score_entry = self.trade_analyzer.get_effective_score_entry()
+            if effective_score_entry != self.config.score_entry:
+                logger.info(
+                    "Scanner using adaptive score_entry=%.0f (base=%.0f, from trade history)",
+                    effective_score_entry, self.config.score_entry,
+                )
+
         for symbol in self.universe:
             if symbol in self._runtime_blacklist:
                 continue
             if symbol in self._throttled:
+                continue
+            # History-based blacklist: skip symbols that consistently lose
+            if self.trade_analyzer and self.trade_analyzer.should_skip_symbol(symbol):
+                logger.debug("%s: SKIPPED — blacklisted by trade history (losing symbol)", symbol)
                 continue
             try:
                 # Fetch OHLCV
@@ -338,8 +360,9 @@ class MarketScanner:
                 direction, score, probability = self.model.predict(symbol, latest_features, FEATURE_NAMES)
 
                 # Early score filter — skip expensive checks for low scores
-                if score < self.config.score_entry:
-                    logger.debug(f"{symbol}: score {score:.3f} below threshold {self.config.score_entry}")
+                # Use adaptive threshold from trade history
+                if score < effective_score_entry:
+                    logger.debug(f"{symbol}: score {score:.3f} below threshold {effective_score_entry}")
                     continue
 
                 # ── Trade quality filters (execution edge) ──
@@ -377,6 +400,13 @@ class MarketScanner:
                 if not pd.isna(absorption) and absorption > 0.7:
                     adjusted_score -= (absorption - 0.7) * 10  # up to -3 points
 
+                # History-based per-symbol score adjustment
+                if self.trade_analyzer:
+                    hist_adj = self.trade_analyzer.get_score_adjustment(symbol)
+                    if hist_adj != 0:
+                        adjusted_score += hist_adj
+                        logger.debug("%s: history adjustment %+.1f → score=%.1f", symbol, hist_adj, adjusted_score)
+
                 # Calculate ATR
                 atr = self._compute_atr(df)
 
@@ -399,9 +429,9 @@ class MarketScanner:
                         logger.debug("%s: wick trap detected opposing %s — skip", symbol, direction)
                         continue
 
-                # Final score filter after adjustments
-                if adjusted_score < self.config.score_entry:
-                    logger.debug("%s: adjusted score %.1f < threshold (penalties applied)", symbol, adjusted_score)
+                # Final score filter after adjustments (using adaptive threshold)
+                if adjusted_score < effective_score_entry:
+                    logger.debug("%s: adjusted score %.1f < threshold %.0f (penalties applied)", symbol, adjusted_score, effective_score_entry)
                     continue
 
                 # Build opportunity dict

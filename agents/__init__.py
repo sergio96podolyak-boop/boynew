@@ -3,6 +3,7 @@ from .market_analysis import MarketAnalysisAgent, MarketData, MarketRegime
 from .strategy import StrategyAgent, Signal
 from .risk_manager import RiskManagerAgent, RiskAssessment
 from .execution import ExecutionAgent
+from .trade_analyzer import TradeAnalyzer, TradeInsights
 
 __all__ = [
     "MarketAnalysisAgent",
@@ -13,4 +14,6 @@ __all__ = [
     "RiskManagerAgent",
     "RiskAssessment",
     "ExecutionAgent",
+    "TradeAnalyzer",
+    "TradeInsights",
 ]

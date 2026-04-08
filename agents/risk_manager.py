@@ -89,6 +89,11 @@ class RiskManagerAgent:
         streak_n = max(3, self.config.rage_streak)
         self._trade_history: deque = deque(maxlen=streak_n * 2)
 
+        # Adaptive score entry from TradeAnalyzer (overridden externally)
+        self._adaptive_score_entry: Optional[float] = None
+        # Exit reasons that history shows are net-negative (set externally by TradeAnalyzer)
+        self._bad_exit_reasons: set = set()
+
     # ------------------------------------------------------------------
     # Legacy pipeline (main.py + ExecutionAgent)
     # ------------------------------------------------------------------
@@ -333,12 +338,17 @@ class RiskManagerAgent:
     # ------------------------------------------------------------------
 
     def get_rage_multiplier(self) -> float:
+        """
+        Adaptive position sizing based on recent trade streak.
+        SAFETY: win streaks do NOT increase size (overconfidence trap).
+        Loss streaks reduce size to protect capital.
+        """
         n = self.config.rage_streak
         if len(self._trade_history) < n:
             return 1.0
         recent = list(self._trade_history)[-n:]
-        if all(recent):
-            return self.config.rage_win_mult
+        # Win streak: stay at 1.0 — do NOT increase (learned from losses)
+        # Loss streak: reduce size to protect capital
         if not any(recent):
             return self.config.rage_loss_mult
         return 1.0
@@ -363,9 +373,11 @@ class RiskManagerAgent:
         if symbol in open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Symbol occupied")
 
-        if score < self.config.score_entry:
+        # Use adaptive threshold from TradeAnalyzer if available
+        effective_threshold = self._adaptive_score_entry if self._adaptive_score_entry is not None else self.config.score_entry
+        if score < effective_threshold:
             return RiskDecision(
-                False, 0.0, 0.0, 0.0, f"Score {score:.1f} < {self.config.score_entry}"
+                False, 0.0, 0.0, 0.0, f"Score {score:.1f} < {effective_threshold}"
             )
 
         if score >= self.config.score_extreme:
@@ -462,41 +474,46 @@ class RiskManagerAgent:
             age = (now - pos.opened_at).total_seconds()
 
             # ── Fast exit: no movement in 30-45 seconds ──
-            fast_sec = self.config.fast_exit_seconds
-            if fast_sec > 0 and age >= fast_sec:
-                if pos.side == "LONG":
-                    move = (px - pos.entry_price) / pos.entry_price
-                else:
-                    move = (pos.entry_price - px) / pos.entry_price
-                if move < self.config.min_favorable_move_pct:
-                    exits.append({"symbol": sym, "reason": "fast_exit_no_move"})
-                    continue
+            # Skip if trade history shows this exit type loses money
+            if "fast_exit_no_move" not in self._bad_exit_reasons:
+                fast_sec = self.config.fast_exit_seconds
+                if fast_sec > 0 and age >= fast_sec:
+                    if pos.side == "LONG":
+                        move = (px - pos.entry_price) / pos.entry_price
+                    else:
+                        move = (pos.entry_price - px) / pos.entry_price
+                    if move < self.config.min_favorable_move_pct:
+                        exits.append({"symbol": sym, "reason": "fast_exit_no_move"})
+                        continue
 
             # ── Opposite pressure: exit if trade reverses from peak profit ──
-            opp_pct = self.config.opposite_pressure_pct
-            if opp_pct > 0 and pos.peak_price != pos.entry_price:
-                if pos.side == "LONG":
-                    # Had profit, now price dropped from peak
-                    peak_profit = (pos.peak_price - pos.entry_price) / pos.entry_price
-                    current_from_peak = (pos.peak_price - px) / pos.peak_price
-                    if peak_profit > opp_pct and current_from_peak > opp_pct:
-                        exits.append({"symbol": sym, "reason": "opposite_pressure"})
-                        continue
-                elif pos.side == "SHORT":
-                    peak_profit = (pos.entry_price - pos.peak_price) / pos.entry_price
-                    current_from_peak = (px - pos.peak_price) / pos.peak_price if pos.peak_price > 0 else 0
-                    if peak_profit > opp_pct and current_from_peak > opp_pct:
-                        exits.append({"symbol": sym, "reason": "opposite_pressure"})
-                        continue
+            # Skip if trade history shows this exit type loses money
+            if "opposite_pressure" not in self._bad_exit_reasons:
+                opp_pct = self.config.opposite_pressure_pct
+                if opp_pct > 0 and pos.peak_price != pos.entry_price:
+                    if pos.side == "LONG":
+                        peak_profit = (pos.peak_price - pos.entry_price) / pos.entry_price
+                        current_from_peak = (pos.peak_price - px) / pos.peak_price
+                        if peak_profit > opp_pct and current_from_peak > opp_pct:
+                            exits.append({"symbol": sym, "reason": "opposite_pressure"})
+                            continue
+                    elif pos.side == "SHORT":
+                        peak_profit = (pos.entry_price - pos.peak_price) / pos.entry_price
+                        current_from_peak = (px - pos.peak_price) / pos.peak_price if pos.peak_price > 0 else 0
+                        if peak_profit > opp_pct and current_from_peak > opp_pct:
+                            exits.append({"symbol": sym, "reason": "opposite_pressure"})
+                            continue
 
             # ── Original stale exit (longer timeframe fallback) ──
-            se = self.config.stale_exit_seconds
-            if se > 0 and age >= se:
-                if pos.side == "LONG":
-                    move = (px - pos.entry_price) / pos.entry_price
-                else:
-                    move = (pos.entry_price - px) / pos.entry_price
-                if move < self.config.min_favorable_move_pct:
-                    exits.append({"symbol": sym, "reason": "stale_no_move"})
+            # Skip if trade history shows this exit type loses money
+            if "stale_no_move" not in self._bad_exit_reasons:
+                se = self.config.stale_exit_seconds
+                if se > 0 and age >= se:
+                    if pos.side == "LONG":
+                        move = (px - pos.entry_price) / pos.entry_price
+                    else:
+                        move = (pos.entry_price - px) / pos.entry_price
+                    if move < self.config.min_favorable_move_pct:
+                        exits.append({"symbol": sym, "reason": "stale_no_move"})
 
         return exits

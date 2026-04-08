@@ -62,6 +62,7 @@ from agents.scanner import MarketScanner
 from agents.model import TradingModel
 from agents.features import FEATURE_NAMES
 from agents.telegram_notifier import init_notifier, TelegramNotifier
+from agents.trade_analyzer import TradeAnalyzer
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +287,26 @@ class TradingSystem:
                     logger.info("Synced existing position: %s %s qty=%.4f entry=%.4f sl=%.4f tp=%.4f",
                                 side, sym, abs(amt), entry, sl_price, tp_price)
 
+        # Trade Analyzer — learns from history, feeds insights into scanner + risk
+        self.trade_analyzer = TradeAnalyzer(
+            repo=self.repo,
+            base_score_entry=config.score_entry,
+            min_trades_for_symbol_action=5,
+            symbol_blacklist_win_rate=0.30,
+            min_trades_overall=10,
+            lookback_hours=48,
+        )
+        # Do an initial refresh to load any existing trade history
+        self.trade_analyzer.refresh()
+        insights = self.trade_analyzer.insights
+        if insights.has_enough_data:
+            logger.info(
+                "TradeAnalyzer loaded: %d recent trades, wr=%.1f%%, score_entry=%.0f, blacklist=%d",
+                insights.recent_trade_count, insights.recent_win_rate * 100,
+                insights.adjusted_score_entry, len(insights.symbol_blacklist),
+            )
+            self.risk_agent._adaptive_score_entry = insights.adjusted_score_entry
+
         # HFT mode: scanner and model
         self.scanner: Optional[MarketScanner] = None
         self.model: Optional[TradingModel] = None
@@ -294,8 +315,8 @@ class TradingSystem:
 
         if config.aggressive_hft:
             self.model = TradingModel()
-            self.scanner = MarketScanner(config=config, model=self.model)
-            logger.info("HFT mode enabled: MarketScanner and TradingModel initialized")
+            self.scanner = MarketScanner(config=config, model=self.model, trade_analyzer=self.trade_analyzer)
+            logger.info("HFT mode enabled: MarketScanner + TradingModel + TradeAnalyzer initialized")
         else:
             logger.info("Classic mode enabled: symbol-based strategy loop")
 
@@ -404,6 +425,24 @@ class TradingSystem:
                         self._loop_count += 1
                         time.sleep(self.config.loop_sleep_ms / 1000.0)
                         continue
+
+                # 1b. Refresh trade analyzer every 50 loops — learn from history
+                if self._loop_count % 50 == 0 and self._loop_count > 0:
+                    insights = self.trade_analyzer.refresh()
+                    if insights.has_enough_data:
+                        self.risk_agent._adaptive_score_entry = insights.adjusted_score_entry
+                        self.risk_agent._bad_exit_reasons = insights.bad_close_reasons
+                        # Log key insights for monitoring
+                        if insights.symbol_blacklist:
+                            logger.info(
+                                "TradeAnalyzer: blacklisted symbols: %s",
+                                ", ".join(sorted(insights.symbol_blacklist)),
+                            )
+                        if insights.bad_close_reasons:
+                            logger.info(
+                                "TradeAnalyzer: bad exit reasons: %s",
+                                ", ".join(sorted(insights.bad_close_reasons)),
+                            )
 
                 # 2. Tick throttle cooldowns
                 self.scanner.tick_throttles()
@@ -728,7 +767,15 @@ class TradingSystem:
             })
 
             self.risk_agent._trade_history.append(pnl > 0)
-            logger.info("Trade recorded: %s | PnL=%.2f (%.2f%%)", symbol, pnl, pnl_pct)
+
+            # Log with trade analyzer context
+            was_blacklisted = self.trade_analyzer.should_skip_symbol(symbol)
+            hist_adj = self.trade_analyzer.get_score_adjustment(symbol)
+            logger.info(
+                "Trade recorded: %s | PnL=%.2f (%.2f%%) | hist_adj=%+.1f%s",
+                symbol, pnl, pnl_pct, hist_adj,
+                " [WOULD-BE-BLACKLISTED]" if was_blacklisted else "",
+            )
 
         except Exception as exc:
             logger.exception("Error recording trade result: %s", exc)
