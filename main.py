@@ -335,6 +335,7 @@ class TradingSystem:
         self._session_pnl: float = 0.0
         self._session_trades: int = 0
         self._last_heartbeat: float = 0.0
+        self._refresh_count_tg: int = 0
 
         # Dashboard subprocess
         self.dashboard_proc: Optional[subprocess.Popen] = None
@@ -457,9 +458,26 @@ class TradingSystem:
                             logger.critical(
                                 "TradeAnalyzer: MODEL UNHEALTHY — entries blocked until model improves"
                             )
+                        # Telegram intelligence update (every 5th refresh = ~250 loops)
+                        if self._refresh_count_tg % 5 == 0:
+                            self.tg.intelligence_update(
+                                win_rate=insights.recent_win_rate * 100,
+                                score_entry=insights.adjusted_score_entry,
+                                kelly=insights.kelly_fraction,
+                                blacklist_count=len(insights.symbol_blacklist),
+                                sl_mult=insights.sl_multiplier,
+                                tp_mult=insights.tp_multiplier,
+                                model_healthy=insights.model_healthy,
+                            )
+                        self._refresh_count_tg += 1
 
                 # 1c. Check cooldown (real-time, every loop)
                 if self.trade_analyzer.is_in_cooldown():
+                    # Send cooldown notification once
+                    ins = self.trade_analyzer.insights
+                    if ins.cooldown_active and self._loop_count % 50 == 0:
+                        remaining_min = max(0, (ins.cooldown_until - time.time()) / 60)
+                        self.tg.cooldown(ins.cooldown_reason, remaining_min)
                     # During cooldown: still check exits but don't enter new trades
                     self._handle_exits_only(opportunities=[])
                     self._loop_count += 1
@@ -837,28 +855,19 @@ class TradingSystem:
             logger.exception("Error in exits-only handler: %s", exc)
 
     def _record_trade_result(self, symbol: str, result: Dict) -> None:
-        """Record a trade result and update rage mode state."""
+        """
+        Record a trade result and update rage mode state.
+
+        NOTE: hft_close() already updates the original trade row in DB (open→closed).
+        We do NOT insert a new row here — that would create duplicates.
+        We only update internal state (rage, cooldown, analyzer).
+        """
         try:
             pnl = result.get("pnl", 0)
             pnl_pct = result.get("pnl_pct", 0)
 
-            self.repo.insert_trade({
-                "symbol": symbol,
-                "side": result.get("side", ""),
-                "entry_price": result.get("entry_price", 0),
-                "exit_price": result.get("exit_price", 0),
-                "quantity": result.get("quantity", 0),
-                "sl_price": result.get("sl_price", 0),
-                "tp_price": result.get("tp_price", 0),
-                "status": "closed",
-                "pnl": pnl,
-                "pnl_pct": pnl_pct,
-                "opened_at": result.get("opened_at", datetime.now(timezone.utc).isoformat()),
-                "closed_at": datetime.now(timezone.utc).isoformat(),
-                "close_reason": result.get("reason", ""),
-                "confidence": result.get("score", 0),
-                "strategy_signal": "HFT",
-            })
+            # DO NOT insert_trade here — hft_close already updates the original row.
+            # Only update rage/analyzer state.
 
             self.risk_agent._trade_history.append(pnl > 0)
 

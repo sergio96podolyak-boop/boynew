@@ -212,6 +212,38 @@ class TelegramNotifier:
         )
         self._broadcast(msg)
 
+    def cooldown(self, reason: str, minutes: float) -> None:
+        """Notify that trading is paused due to consecutive losses."""
+        self._broadcast(
+            f"⏸ ═══════════════════\n"
+            f"  *הבוט בהפסקה*\n"
+            f"═══════════════════════\n\n"
+            f"🧊 סיבה: {reason}\n"
+            f"⏱ משך: `{minutes:.0f}` דקות\n"
+            f"🛡 יציאות עדיין פעילות\n"
+            f"📊 סשן: {self._session_wins}W / {self._session_losses}L\n\n"
+            f"🕐 {self._now()}"
+        )
+
+    def intelligence_update(self, win_rate: float, score_entry: float,
+                            kelly: float, blacklist_count: int,
+                            sl_mult: float, tp_mult: float,
+                            model_healthy: bool) -> None:
+        """Periodic intelligence insights summary."""
+        health = "✅ תקין" if model_healthy else "❌ לא תקין — כניסות חסומות!"
+        self._broadcast(
+            f"🧠 ═══════════════════\n"
+            f"  *עדכון אינטליגנציה*\n"
+            f"═══════════════════════\n\n"
+            f"📊 Win Rate: `{win_rate:.1f}%`\n"
+            f"🎯 סף כניסה: `{score_entry:.0f}`\n"
+            f"📐 Kelly: `{kelly:.0%}`\n"
+            f"🚫 סימבולים חסומים: `{blacklist_count}`\n"
+            f"🛡 SL×`{sl_mult:.2f}` | TP×`{tp_mult:.2f}`\n"
+            f"🤖 בריאות מודל: {health}\n\n"
+            f"🕐 {self._now()}"
+        )
+
     def error(self, message: str) -> None:
         self._broadcast(
             f"⚠️ *שגיאה בבוט*\n\n"
