@@ -13,3 +13,6 @@ trading_system.log
 trading_live.log
 nohup.out
 _old_backup/
+
+# dashboard subprocess log
+dashboard.log
