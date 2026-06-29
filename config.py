@@ -153,6 +153,18 @@ class TradingConfig:
     throttle_strikes: int = field(default_factory=lambda: _env_int("THROTTLE_STRIKES", "3"))
     throttle_cooldown_loops: int = field(default_factory=lambda: _env_int("THROTTLE_COOLDOWN_LOOPS", "50"))
 
+    # ── TradingView signals (free TA ratings via tradingview-ta) ─────────────
+    # When on, the bot also enters trades on TradingView Strong-Buy/Sell ratings
+    # (with the same risk checks + exchange SL/TP). Not a profit guarantee.
+    tradingview_signals: bool = field(default_factory=lambda: _env_bool("TRADINGVIEW_SIGNALS", "true"))
+    tradingview_interval: str = field(default_factory=lambda: os.getenv("TRADINGVIEW_INTERVAL", "15m"))
+    tradingview_min_strength: float = field(
+        default_factory=lambda: _env_float("TRADINGVIEW_MIN_STRENGTH", "0.65")
+    )
+    tradingview_refresh_sec: float = field(
+        default_factory=lambda: _env_float("TRADINGVIEW_REFRESH_SEC", "45")
+    )
+
     # ── Telegram ────────────────────────────────────────────────────────────
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
     telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))

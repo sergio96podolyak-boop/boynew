@@ -66,6 +66,7 @@ from agents.telegram_notifier import init_notifier, TelegramNotifier
 from agents.trade_analyzer import TradeAnalyzer
 from agents.agent_monitor import init_monitor, get_monitor
 from agents.news_agent import NewsAgent
+from agents.tradingview_signal import TradingViewSignals
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +343,14 @@ class TradingSystem:
         else:
             logger.info("Classic mode enabled: symbol-based strategy loop")
 
+        # TradingView technical-analysis signals (optional auto-entry source)
+        self.tv_signals = TradingViewSignals(interval=config.tradingview_interval)
+        self._tv_last_fetch: float = 0.0
+        self._tv_cache_opps: Optional[List[Dict]] = None
+        if config.tradingview_signals and not self.tv_signals.available:
+            logger.warning("TRADINGVIEW_SIGNALS=true but tradingview-ta not installed — "
+                           "run: %s -m pip install tradingview-ta", sys.executable)
+
         # News / sentiment agent (free public sources) — 7th agent in the control center
         self.news_agent = NewsAgent(monitor=self.monitor, refresh_seconds=180.0)
         try:
@@ -385,6 +394,57 @@ class TradingSystem:
             c.min_symbol_price_usdt,
             c.score_entry,
         )
+
+    def _tradingview_opportunities(self) -> List[Dict]:
+        """
+        Build auto-entry opportunities from live TradingView TA ratings.
+
+        Refreshes ratings every tradingview_refresh_sec, then for each symbol
+        rated Strong-Buy/Buy (LONG) or Strong-Sell/Sell (SHORT) builds an
+        opportunity (current price + ATR) shaped like a scanner opportunity, so
+        it flows through the SAME risk checks, sizing and exchange SL/TP.
+        """
+        if not (self.config.tradingview_signals and self.tv_signals.available):
+            return []
+        syms = self._scanner_universe_cache[:self.config.scan_top_n]
+        if not syms:
+            return []
+
+        now = time.time()
+        if now - self._tv_last_fetch >= self.config.tradingview_refresh_sec or self._tv_cache_opps is None:
+            self.monitor.report("News", "tradingview",
+                                f"מושך דירוגי TradingView ל-{len(syms)} מטבעות", status="working")
+            sigs = self.tv_signals.fetch(syms)
+            self._tv_last_fetch = now
+            opps: List[Dict] = []
+            for sym, sig in sigs.items():
+                if not sig.get("direction") or sig.get("strength", 0.0) < self.config.tradingview_min_strength:
+                    continue
+                df = fetch_ohlcv(sym, interval=self.config.hft_timeframe, limit=50)
+                if df is None or len(df) < 15:
+                    continue
+                price = float(df["close"].iloc[-1])
+                if price < self.config.min_symbol_price_usdt:
+                    continue
+                highs = df["high"].to_numpy()[-14:]
+                lows = df["low"].to_numpy()[-14:]
+                atr = float((highs - lows).mean()) if len(highs) else price * 0.005
+                opps.append({
+                    "symbol": sym,
+                    "direction": sig["direction"],
+                    "score": sig["strength"] * 100.0,
+                    "entry_price": price,
+                    "atr": atr,
+                    "signal_ts": time.time(),
+                    "source": "tradingview",
+                })
+            opps.sort(key=lambda o: o["score"], reverse=True)
+            self._tv_cache_opps = opps
+            self.monitor.report("News", "tradingview",
+                                f"TradingView: {len(opps)} סיגנלים חזקים לכניסה", status="active", force=True)
+
+        # Drop symbols we're already in
+        return [o for o in (self._tv_cache_opps or []) if o["symbol"] not in self.risk_agent.open_positions]
 
     def run(self, start_dashboard: bool = True) -> None:
         """
@@ -585,6 +645,13 @@ class TradingSystem:
                         symbol=top.get("symbol", ""),
                         status="active",
                     )
+
+                # Merge TradingView-driven entries (auto-trade on TA ratings)
+                tv_opps = self._tradingview_opportunities()
+                if tv_opps:
+                    have = {o.get("symbol") for o in opportunities}
+                    opportunities.extend(o for o in tv_opps if o["symbol"] not in have)
+                    opportunities.sort(key=lambda o: o.get("score", 0), reverse=True)
 
                 # 4. Process opportunities: evaluate → enter
                 for opp in opportunities:
