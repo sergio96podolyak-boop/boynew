@@ -136,9 +136,14 @@ class NewsAgent:
         if self.monitor:
             self.monitor.report("News", "scan", "סורק סנטימנט: Fear&Greed, funding, כותרות", status="working")
 
-        fng = self._fetch_fear_greed()
+        prev = self.snapshot or {}
+        # Each source is best-effort; keep the last good value if a fetch misses
+        # (e.g. a transient timeout) instead of blanking the panel.
+        fng = self._fetch_fear_greed() or prev.get("fear_greed")
         funding = self._fetch_funding()
-        headlines = self._fetch_headlines()
+        if not funding.get("crowd_long") and not funding.get("crowd_short"):
+            funding = prev.get("funding") or funding
+        headlines = self._fetch_headlines() or prev.get("headlines") or []
         bias = self._bias_from_fng(fng["value"]) if fng else {"label": "—", "dir": "NEUTRAL", "size_mult": 1.0}
 
         snap = {
