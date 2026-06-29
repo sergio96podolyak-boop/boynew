@@ -444,7 +444,6 @@ class ExecutionAgent:
                 stopPrice=sl_price,
                 closePosition=True,
                 workingType="MARK_PRICE",
-                timeInForce="GTE_GTC",
             )
             result["sl_order_id"] = sl_order.get("orderId")
             logger.info(
@@ -467,7 +466,6 @@ class ExecutionAgent:
                 stopPrice=tp_price,
                 closePosition=True,
                 workingType="MARK_PRICE",
-                timeInForce="GTE_GTC",
             )
             result["tp_order_id"] = tp_order.get("orderId")
             logger.info(
