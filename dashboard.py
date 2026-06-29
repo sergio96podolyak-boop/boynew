@@ -31,12 +31,15 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Auto-refresh every 10 seconds
 # ---------------------------------------------------------------------------
-try:
-    from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=4_000, key="main_refresh")
-except ImportError:
-    # Fallback: manual refresh button
-    st.sidebar.button("🔄 Refresh")
+# Live auto-refresh — can be paused (e.g. while studying the TradingView chart)
+_live_refresh = st.sidebar.checkbox("🔄 רענון חי", value=True, key="live_refresh",
+                                    help="כבה כדי לעצור רענון אוטומטי (נוח לצפייה בגרף TradingView)")
+if _live_refresh:
+    try:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=4_000, key="main_refresh")
+    except ImportError:
+        st.sidebar.button("🔄 Refresh")
 
 # ---------------------------------------------------------------------------
 # Tech / control-center styling
@@ -342,6 +345,58 @@ def render_sentiment_panel() -> None:
                 else:
                     st.markdown(f"- {title}")
 
+
+def render_tradingview(open_positions: list) -> None:
+    """Embed a live TradingView chart + technical-analysis rating for a chosen symbol."""
+    import streamlit.components.v1 as components
+
+    st.markdown("#### 📈 TradingView — גרף וניתוח טכני חי")
+    common = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+              "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT"]
+    # surface the bot's open positions first
+    for t in (open_positions or []):
+        s = (t.get("symbol") or "").upper()
+        if s and s not in common:
+            common.insert(0, s)
+    sym = st.selectbox("בחר מטבע לניתוח", common, index=0, key="tv_symbol")
+    tv_sym = f"BINANCE:{sym}.P"
+    st.caption("💡 טיפ: כבה '🔄 רענון חי' בצד כדי לחקור את הגרף בלי שיתרענן.")
+
+    chart_html = """
+    <div class="tradingview-widget-container" style="height:500px;">
+      <div id="tvchart" style="height:100%;width:100%;"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget({
+        "autosize": true, "symbol": "__SYM__", "interval": "1",
+        "timezone": "Asia/Jerusalem", "theme": "dark", "style": "1",
+        "locale": "en", "enable_publishing": false,
+        "allow_symbol_change": true, "hide_side_toolbar": false,
+        "studies": ["RSI@tv-basicstudies","MASimple@tv-basicstudies"],
+        "container_id": "tvchart"
+      });
+      </script>
+    </div>
+    """.replace("__SYM__", tv_sym)
+
+    ta_html = """
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript"
+        src="https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js" async>
+      {"interval":"15m","width":"100%","isTransparent":true,"height":480,
+       "symbol":"__SYM__","showIntervalTabs":true,"displayMode":"single",
+       "locale":"en","colorTheme":"dark"}
+      </script>
+    </div>
+    """.replace("__SYM__", tv_sym)
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        components.html(chart_html, height=520, scrolling=False)
+    with col2:
+        components.html(ta_html, height=520, scrolling=False)
+
 # ---------------------------------------------------------------------------
 # Load data from DB
 # ---------------------------------------------------------------------------
@@ -503,6 +558,9 @@ render_agent_constellation(agent_summary)
 
 # Live market sentiment (Fear & Greed, funding, headlines) from the NewsAgent
 render_sentiment_panel()
+
+# Live TradingView chart + technical-analysis rating
+render_tradingview(open_trades)
 
 # Agent cards grid
 cards_html = ['<div class="agent-grid">']
