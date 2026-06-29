@@ -26,6 +26,7 @@ Usage:
 import argparse
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -1098,6 +1099,13 @@ class TradingSystem:
             streamlit_bin = os.path.join(os.path.dirname(sys.executable), "streamlit")
             if not os.path.exists(streamlit_bin):
                 streamlit_bin = "streamlit"  # fallback
+            if streamlit_bin == "streamlit" and not shutil.which("streamlit"):
+                logger.error(
+                    "Dashboard NOT started: streamlit is not installed. "
+                    "Run: %s -m pip install -r requirements.txt", sys.executable,
+                )
+                self.dashboard_proc = None
+                return
             cmd = [
                 streamlit_bin, "run", "dashboard.py",
                 "--logger.level=warning",
@@ -1105,12 +1113,28 @@ class TradingSystem:
                 "--server.address=0.0.0.0",
                 "--server.headless=true",
             ]
+            # Capture streamlit output to a log file so failures are visible
+            # (previously DEVNULL — the dashboard could die silently).
+            dash_log = open("dashboard.log", "a", encoding="utf-8")
             self.dashboard_proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=dash_log,
+                stderr=subprocess.STDOUT,
             )
-            logger.info("Dashboard started on port %d (PID=%d)", self.config.dashboard_port, self.dashboard_proc.pid)
+            # Detect immediate failure (e.g. import error) within a moment
+            time.sleep(2.0)
+            if self.dashboard_proc.poll() is not None:
+                logger.error(
+                    "Dashboard process exited immediately (code=%s). See dashboard.log for the traceback.",
+                    self.dashboard_proc.returncode,
+                )
+                self.dashboard_proc = None
+                return
+            logger.info(
+                "Dashboard started on port %d (PID=%d) — open http://localhost:%d "
+                "(output → dashboard.log)",
+                self.config.dashboard_port, self.dashboard_proc.pid, self.config.dashboard_port,
+            )
         except Exception as exc:
             logger.warning("Failed to start dashboard: %s", exc)
             self.dashboard_proc = None
