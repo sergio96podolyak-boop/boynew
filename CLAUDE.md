@@ -23,7 +23,9 @@ cd boynew
 | `agents/risk_manager.py` | `evaluate` (HFT), `assess_risk` (קלאסי), יציאות stale, drawdown |
 | `agents/scanner.py` | `discover_universe`, `scan_and_rank`, סינון מחיר מינימלי |
 | `agents/binance_compat.py` | לקוח בלי `ping()` בבנייה |
-| `database/repository.py` | SQLite |
+| `agents/agent_monitor.py` | באס ניטור — כל סוכן מדווח פעילות (throttle, crash-safe) ל-DB עבור הדשבורד |
+| `dashboard.py` | Streamlit — מרכז שליטה חי: כרטיסי סוכנים + זרם פעילות, תיק, עסקאות, גרפים |
+| `database/repository.py` | SQLite (כולל `agent_activity` לפיד הסוכנים) |
 
 ## פסי בטיחות (אוטומטיים — לא דורשים ניהול ידני)
 בהפעלה מודפסת שורה `Safety rails (automatic) | ...` עם: paper/live, HFT, מקס פוזיציות, מקס מרג’ין לפוזיציה, **`min_notional`** (רצפת מינימום לנוטיונל ב-USDT — כדי לא לסחור ב"סנטים"), kill על drawdown יומי/סשן, stale exit, מחיר מינימלי לסימבול, סף ציון.
@@ -36,6 +38,9 @@ cd boynew
 
 ## בדיקת מצב
 `./venv/bin/python status.py` — סיכום מה-DB (ביצועים, פתוחות/סגורות, סיבות יציאה, snapshot, אירועים). `--live` מוסיף מצב חי מ-Binance: יתרה, פוזיציות, והוראות ההגנה הפעילות.
+
+## מרכז שליטה (דשבורד)
+הדשבורד (`http://localhost:8501`, עולה אוטומטית עם `main.py`) מציג בראש כרטיס לכל סוכן — System / Scanner / Model / RiskManager / Execution / Analyzer — עם נורית סטטוס (פעיל/עובד/מושהה/עצור), הפעולה האחרונה, וזמן. מתחת: זרם פעילות חי. הנתונים מגיעים מטבלת `agent_activity` שאליה הלולאה מדווחת דרך `agent_monitor`. רענון כל 4 שניות.
 
 ## הערות למפתח/לעוזר AI
 - **אין ערובת רווח** — זה כלי מסחר; שוק = סיכון.

@@ -63,6 +63,7 @@ from agents.model import TradingModel
 from agents.features import FEATURE_NAMES
 from agents.telegram_notifier import init_notifier, TelegramNotifier
 from agents.trade_analyzer import TradeAnalyzer
+from agents.agent_monitor import init_monitor, get_monitor
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +204,15 @@ class TradingSystem:
 
         # Repository
         self.repo = TradeRepository(db_path=config.db_path)
+
+        # Live agent-activity monitor (powers the dashboard control center)
+        self.monitor = init_monitor(self.repo)
+        self.monitor.report(
+            "System", "boot",
+            f"מאתחל מערכת | mode={'PAPER' if config.paper_trading else 'LIVE'} | "
+            f"hft={config.aggressive_hft}",
+            status="active", force=True,
+        )
 
         # Agents
         self.market_agent = MarketAnalysisAgent(config=config)
@@ -425,12 +435,22 @@ class TradingSystem:
 
         while self.running and not self.kill_state.active:
             loop_iteration_start = time.time()
+            self.monitor.set_loop(self._loop_count)
 
             try:
                 # 1. Discover universe once per 100 loops
                 if self._loop_count % 100 == 0:
                     logger.info("Discovery cycle (loop %d)", self._loop_count)
+                    self.monitor.report(
+                        "Scanner", "discover", "מגלה יקום מסחר — מסנן נזילות, מחיר ונפח",
+                        status="working", force=True,
+                    )
                     self._scanner_universe_cache = self.scanner.discover_universe()
+                    self.monitor.report(
+                        "Scanner", "discover",
+                        f"יקום עודכן: {len(self._scanner_universe_cache)} סימבולים פעילים",
+                        status="active", force=True,
+                    )
                     if not self._scanner_universe_cache:
                         logger.warning("Failed to discover universe, retrying next cycle")
                         self._loop_count += 1
@@ -439,8 +459,23 @@ class TradingSystem:
 
                 # 1b. Refresh trade analyzer every 50 loops — learn from history
                 if self._loop_count % 50 == 0 and self._loop_count > 0:
+                    self.monitor.report(
+                        "Analyzer", "learn", "לומד מהיסטוריית עסקאות — win-rate, Kelly, רשימה שחורה",
+                        status="working", force=True,
+                    )
                     insights = self.trade_analyzer.refresh()
                     if insights.has_enough_data:
+                        self.monitor.report(
+                            "Analyzer", "learn",
+                            f"wr={insights.recent_win_rate * 100:.0f}% | "
+                            f"score→{insights.adjusted_score_entry:.0f} | "
+                            f"kelly={insights.kelly_fraction:.2f} | "
+                            f"blacklist={len(insights.symbol_blacklist)} | "
+                            f"model={'בריא' if insights.model_healthy else 'חולה'}",
+                            status="active",
+                            severity="INFO" if insights.model_healthy else "WARNING",
+                            force=True,
+                        )
                         # Feed all insights into risk manager
                         self.risk_agent._adaptive_score_entry = insights.adjusted_score_entry
                         self.risk_agent._bad_exit_reasons = insights.bad_close_reasons
@@ -480,6 +515,11 @@ class TradingSystem:
                 if self.trade_analyzer.is_in_cooldown():
                     # Send cooldown notification once
                     ins = self.trade_analyzer.insights
+                    self.monitor.report(
+                        "Analyzer", "cooldown",
+                        f"בקירור — {ins.cooldown_reason or 'הגנה אחרי רצף הפסדים'}",
+                        status="paused", severity="WARNING",
+                    )
                     if ins.cooldown_active and self._loop_count % 50 == 0:
                         remaining_min = max(0, (ins.cooldown_until - time.time()) / 60)
                         self.tg.cooldown(ins.cooldown_reason, remaining_min)
@@ -492,6 +532,11 @@ class TradingSystem:
                 # 1d. Check if current hour is historically bad
                 if self.trade_analyzer.is_bad_hour():
                     logger.debug("Bad hour (UTC %02d) — skipping entries", datetime.now(timezone.utc).hour)
+                    self.monitor.report(
+                        "Analyzer", "bad_hour",
+                        f"שעה היסטורית חלשה (UTC {datetime.now(timezone.utc).hour:02d}) — רק יציאות",
+                        status="paused", severity="WARNING",
+                    )
                     self._handle_exits_only(opportunities=[])
                     self._loop_count += 1
                     time.sleep(self.config.loop_sleep_ms / 1000.0)
@@ -501,9 +546,29 @@ class TradingSystem:
                 self.scanner.tick_throttles()
 
                 # 3. Scan and rank opportunities (with trade quality filters)
+                scan_n = len(self._scanner_universe_cache[:self.config.scan_top_n])
+                self.monitor.report(
+                    "Scanner", "scan",
+                    f"סורק {scan_n} סימבולים — נפח, ספרד, choppiness, pullback",
+                    status="working",
+                )
                 opportunities = self.scanner.scan_and_rank(
                     symbols=self._scanner_universe_cache[:self.config.scan_top_n]
                 )
+                top = opportunities[0] if opportunities else None
+                self.monitor.report(
+                    "Scanner", "rank",
+                    f"מצא {len(opportunities)} הזדמנויות מדורגות",
+                    status="active",
+                )
+                if top:
+                    self.monitor.report(
+                        "Model", "score",
+                        f"ציון מוביל {top.get('symbol','')}={top.get('score',0):.0f} "
+                        f"({top.get('direction','')})",
+                        symbol=top.get("symbol", ""),
+                        status="active",
+                    )
 
                 # 4. Process opportunities: evaluate → enter
                 for opp in opportunities:
@@ -529,6 +594,11 @@ class TradingSystem:
                         continue
 
                     # Risk assessment
+                    self.monitor.report(
+                        "RiskManager", "evaluate",
+                        f"בודק {symbol} (ציון {score:.0f}) — drawdown, מרג'ין, מתאם, Kelly",
+                        symbol=symbol, status="working",
+                    )
                     decision = self.risk_agent.evaluate(
                         symbol=symbol,
                         score=score,
@@ -539,7 +609,20 @@ class TradingSystem:
                         open_positions=self.risk_agent.open_positions,
                     )
 
+                    if not decision.approved:
+                        self.monitor.report(
+                            "RiskManager", "reject",
+                            f"{symbol} נדחה — {getattr(decision, 'rejection_reason', '') or 'מחוץ לכללי הסיכון'}",
+                            symbol=symbol, status="active",
+                        )
+
                     if decision.approved:
+                        self.monitor.report(
+                            "RiskManager", "approve",
+                            f"{symbol} {direction} אושר — qty={decision.quantity:.4f} "
+                            f"SL={decision.sl_price:.6f} TP={decision.tp_price:.6f}",
+                            symbol=symbol, status="active", severity="INFO", force=True,
+                        )
                         # Refresh live available balance before placing order
                         try:
                             from agents.binance_compat import create_binance_client, live_full_account_info
@@ -576,6 +659,14 @@ class TradingSystem:
                                 symbol, entry_price, score,
                                 self.execution_agent._last_slippage * 100,
                                 self.execution_agent._last_latency_ms,
+                            )
+                            self.monitor.report(
+                                "Execution", "entry",
+                                f"נכנס {direction} {symbol} @ {entry_price:.6f} | "
+                                f"slip={self.execution_agent._last_slippage * 100:.3f}% "
+                                f"lat={self.execution_agent._last_latency_ms:.0f}ms"
+                                + ("" if self.config.paper_trading else " | SL/TP נשלחו לבורסה"),
+                                symbol=symbol, status="active", severity="INFO", force=True,
                             )
 
                             # Track slippage/latency strikes for throttling
@@ -624,6 +715,12 @@ class TradingSystem:
                         if px > 0:
                             current_prices[sym] = px
 
+                if self.risk_agent.open_positions:
+                    self.monitor.report(
+                        "RiskManager", "guard",
+                        f"שומר על {len(self.risk_agent.open_positions)} פוזיציות — SL/TP, trailing, stale",
+                        status="active",
+                    )
                 exit_signals = self.risk_agent.check_exits(
                     positions=self.risk_agent.open_positions,
                     prices=current_prices,
@@ -647,6 +744,14 @@ class TradingSystem:
                             self._record_trade_result(symbol, result)
                             self._session_pnl += result.get("pnl", 0)
                             self._session_trades += 1
+                            _pnl = result.get("pnl", 0)
+                            self.monitor.report(
+                                "Execution", "exit",
+                                f"סגר {symbol} @ {result.get('exit_price', 0):.6f} | "
+                                f"PnL={_pnl:+.4f} ({result.get('pnl_pct', 0) * 100:+.2f}%) | {reason}",
+                                symbol=symbol, status="active",
+                                severity="INFO" if _pnl >= 0 else "WARNING", force=True,
+                            )
                             self.tg.exit(
                                 symbol=symbol,
                                 direction=result.get("side", ""),
@@ -663,9 +768,21 @@ class TradingSystem:
 
                 # 8. Check drawdown and activate kill switch if needed
                 self._check_drawdown()
+                if self.kill_state.active:
+                    self.monitor.report(
+                        "RiskManager", "kill_switch",
+                        f"KILL SWITCH הופעל — {getattr(self.kill_state, 'reason', '') or 'חריגת drawdown'}",
+                        status="stopped", severity="ERROR", force=True,
+                    )
 
                 # 9. Update loop counter
                 self._loop_count += 1
+                self.monitor.report(
+                    "System", "heartbeat",
+                    f"לולאה #{self._loop_count} | מאזן={self.risk_agent._current_balance:,.2f} | "
+                    f"פתוחות={len(self.risk_agent.open_positions)} | PnL סשן={self._session_pnl:+.2f}",
+                    status="active",
+                )
 
                 # 10. Telegram heartbeat every N seconds
                 now_ts = time.time()

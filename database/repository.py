@@ -89,12 +89,26 @@ class TradeRepository:
                 timestamp       TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS agent_activity (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent           TEXT NOT NULL,
+                action          TEXT NOT NULL,
+                detail          TEXT,
+                symbol          TEXT,
+                status          TEXT NOT NULL DEFAULT 'active',
+                severity        TEXT NOT NULL DEFAULT 'INFO',
+                loop_count      INTEGER,
+                timestamp       TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
             CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
             CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol);
             CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created_at);
             CREATE INDEX IF NOT EXISTS idx_snapshots_ts ON portfolio_snapshots(timestamp);
             CREATE INDEX IF NOT EXISTS idx_events_ts ON system_events(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_agent_activity_ts ON agent_activity(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_agent_activity_agent ON agent_activity(agent);
         """)
         conn.commit()
 
@@ -299,6 +313,75 @@ class TradeRepository:
             "SELECT * FROM system_events ORDER BY timestamp DESC LIMIT ?", (limit,)
         )
         return [dict(row) for row in cursor.fetchall()]
+
+    # -------------------------------------------------------------------------
+    # Agent activity methods (live "agent control center")
+    # -------------------------------------------------------------------------
+
+    def log_agent_activity(
+        self,
+        agent: str,
+        action: str,
+        detail: Optional[str] = None,
+        symbol: Optional[str] = None,
+        status: str = "active",
+        severity: str = "INFO",
+        loop_count: Optional[int] = None,
+    ) -> None:
+        """Record a single agent activity row for the live control-center view."""
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO agent_activity
+                (agent, action, detail, symbol, status, severity, loop_count, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (agent, action, detail, symbol, status, severity, loop_count, now),
+        )
+        conn.commit()
+
+    def get_recent_agent_activity(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return the most recent agent activity rows (newest first)."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT * FROM agent_activity ORDER BY id DESC LIMIT ?", (limit,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_agent_status_summary(self) -> List[Dict[str, Any]]:
+        """
+        Latest activity per agent plus a lifetime action count — one row per agent.
+        Powers the agent cards in the dashboard.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT a.agent, a.action, a.detail, a.symbol, a.status,
+                   a.severity, a.loop_count, a.timestamp, c.action_count
+            FROM agent_activity a
+            JOIN (
+                SELECT agent, MAX(id) AS max_id, COUNT(*) AS action_count
+                FROM agent_activity GROUP BY agent
+            ) c ON a.agent = c.agent AND a.id = c.max_id
+            ORDER BY a.timestamp DESC
+            """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def prune_agent_activity(self, keep: int = 3000) -> None:
+        """Trim the agent_activity table to the most recent `keep` rows."""
+        conn = self._get_conn()
+        conn.execute(
+            """
+            DELETE FROM agent_activity
+            WHERE id NOT IN (
+                SELECT id FROM agent_activity ORDER BY id DESC LIMIT ?
+            )
+            """,
+            (keep,),
+        )
+        conn.commit()
 
     # -------------------------------------------------------------------------
     # Performance statistics

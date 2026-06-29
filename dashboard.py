@@ -33,10 +33,40 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 try:
     from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=10_000, key="main_refresh")
+    st_autorefresh(interval=4_000, key="main_refresh")
 except ImportError:
     # Fallback: manual refresh button
     st.sidebar.button("🔄 Refresh")
+
+# ---------------------------------------------------------------------------
+# Tech / control-center styling
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+      .agent-grid { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+      .agent-card {
+        flex:1 1 240px; background:linear-gradient(145deg,#0e1726,#0a1018);
+        border:1px solid #1c2a3a; border-radius:12px; padding:14px 16px;
+        box-shadow:0 0 18px rgba(0,180,255,0.06); position:relative;
+      }
+      .agent-card .name { font-size:1.0em; font-weight:700; color:#e6f0ff; }
+      .agent-card .icon { font-size:1.3em; margin-right:6px; }
+      .agent-card .action { color:#7fd1ff; font-size:0.82em; margin-top:4px;
+        text-transform:uppercase; letter-spacing:0.5px; }
+      .agent-card .detail { color:#aebfd4; font-size:0.86em; margin-top:6px;
+        min-height:34px; line-height:1.25; }
+      .agent-card .meta { font-size:0.74em; margin-top:8px; color:#6b7d96; }
+      .agent-card .dot { height:10px; width:10px; border-radius:50%;
+        display:inline-block; margin-left:6px; box-shadow:0 0 8px currentColor; }
+      .pulse { animation:pulse 1.1s infinite; }
+      @keyframes pulse { 0%{opacity:1} 50%{opacity:0.35} 100%{opacity:1} }
+      .feed-row { font-family:ui-monospace,Menlo,monospace; font-size:0.82em;
+        padding:3px 0; border-bottom:1px solid #16202e; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +107,60 @@ def colored_badge(text: str, color: str) -> str:
     )
 
 # ---------------------------------------------------------------------------
+# Agent control-center metadata + helpers
+# ---------------------------------------------------------------------------
+
+# Display order + icon + Hebrew label for each agent
+AGENT_META = [
+    ("System",      "🧠", "מערכת"),
+    ("Scanner",     "🔭", "סורק שוק"),
+    ("Model",       "🤖", "מודל ML"),
+    ("RiskManager", "🛡️", "ניהול סיכון"),
+    ("Execution",   "⚡", "ביצוע"),
+    ("Analyzer",    "📚", "לומד"),
+]
+
+# status -> (color, pulsing?)
+STATUS_STYLE = {
+    "active":  ("#00e676", False),
+    "working": ("#29b6f6", True),
+    "paused":  ("#ffa726", False),
+    "stopped": ("#ff1744", True),
+    "idle":    ("#607d8b", False),
+}
+
+
+def _time_ago(ts_str: str) -> str:
+    """Human 'Xs/Xm ago' from an ISO-8601 UTC timestamp."""
+    if not ts_str:
+        return "—"
+    try:
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        delta = (datetime.now(timezone.utc) - ts).total_seconds()
+    except (ValueError, TypeError):
+        return "—"
+    if delta < 0:
+        delta = 0
+    if delta < 60:
+        return f"לפני {int(delta)} ש׳"
+    if delta < 3600:
+        return f"לפני {int(delta // 60)} דק׳"
+    return f"לפני {int(delta // 3600)} שע׳"
+
+
+def _agent_is_live(ts_str: str, max_sec: int = 30) -> bool:
+    """True if the agent reported within max_sec — i.e. the loop is alive."""
+    try:
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() <= max_sec
+    except (ValueError, TypeError):
+        return False
+
+# ---------------------------------------------------------------------------
 # Load data from DB
 # ---------------------------------------------------------------------------
 
@@ -91,6 +175,13 @@ def load_data():
 
 
 open_trades, trade_history, recent_signals, snapshots, events, stats = load_data()
+
+# Agent control-center data (latest-per-agent + live feed)
+try:
+    agent_summary = {row["agent"]: row for row in repo.get_agent_status_summary()}
+    agent_feed = repo.get_recent_agent_activity(limit=30)
+except Exception:
+    agent_summary, agent_feed = {}, []
 
 # ---------------------------------------------------------------------------
 # 🔊 Sound alert — plays a beep when a new trade closes (compared to last refresh)
@@ -206,6 +297,80 @@ with col_kill:
             colored_badge("✅ System Running", "green"),
             unsafe_allow_html=True,
         )
+
+st.markdown("---")
+
+# ---------------------------------------------------------------------------
+# Section 0: Agent Control Center — live multi-agent activity
+# ---------------------------------------------------------------------------
+st.subheader("🛰️ מרכז שליטה — סוכנים פעילים")
+
+# Is the engine alive? (any agent reported in the last 30s)
+_engine_live = any(
+    _agent_is_live(r.get("timestamp", "")) for r in agent_summary.values()
+)
+if agent_summary:
+    live_badge = ("🟢 מנוע פעיל" if _engine_live else "🔴 מנוע מושבת")
+    live_color = "green" if _engine_live else "darkred"
+    st.markdown(colored_badge(live_badge, live_color), unsafe_allow_html=True)
+else:
+    st.info("עדיין אין פעילות סוכנים. הרץ את `main.py` — הכרטיסים יתחילו לזוז ברגע שהלולאה עולה.")
+
+# Agent cards grid
+cards_html = ['<div class="agent-grid">']
+for agent_key, icon, label in AGENT_META:
+    row = agent_summary.get(agent_key)
+    if row:
+        status = row.get("status", "idle")
+        # An agent that hasn't reported recently is shown as idle regardless
+        if not _agent_is_live(row.get("timestamp", ""), max_sec=30):
+            status = "idle"
+        color, pulsing = STATUS_STYLE.get(status, STATUS_STYLE["idle"])
+        action = (row.get("action") or "").upper()
+        detail = row.get("detail") or "—"
+        count = row.get("action_count", 0)
+        ago = _time_ago(row.get("timestamp", ""))
+        loop = row.get("loop_count")
+        loop_str = f" · לולאה #{loop}" if loop is not None else ""
+    else:
+        color, pulsing = STATUS_STYLE["idle"]
+        action, detail, count, ago, loop_str = "ממתין", "טרם דיווח", 0, "—", ""
+
+    dot_cls = "dot pulse" if pulsing else "dot"
+    cards_html.append(
+        f'<div class="agent-card">'
+        f'<div class="name"><span class="icon">{icon}</span>{label}'
+        f'<span class="{dot_cls}" style="color:{color}"></span></div>'
+        f'<div class="action">{action}</div>'
+        f'<div class="detail">{detail}</div>'
+        f'<div class="meta">{ago} · {count} פעולות{loop_str}</div>'
+        f'</div>'
+    )
+cards_html.append("</div>")
+st.markdown("".join(cards_html), unsafe_allow_html=True)
+
+# Live activity feed
+with st.expander("📡 זרם פעילות חי (30 אחרונות)", expanded=True):
+    if agent_feed:
+        _sev_color = {"ERROR": "#ff5252", "WARNING": "#ffb300", "INFO": "#7fd1ff", "DEBUG": "#78909c"}
+        _icons = {k: v for k, v, _ in AGENT_META}
+        feed_html = []
+        for r in agent_feed:
+            c = _sev_color.get(r.get("severity", "INFO"), "#7fd1ff")
+            ic = _icons.get(r.get("agent", ""), "•")
+            ago = _time_ago(r.get("timestamp", ""))
+            detail = r.get("detail") or r.get("action", "")
+            sym = f' <b>{r.get("symbol")}</b>' if r.get("symbol") else ""
+            feed_html.append(
+                f'<div class="feed-row">'
+                f'<span style="color:#6b7d96">{ago:>10}</span> &nbsp; '
+                f'{ic} <span style="color:{c}">{r.get("agent","")}</span>{sym} &nbsp; '
+                f'<span style="color:#cdd9e8">{detail}</span>'
+                f'</div>'
+            )
+        st.markdown("".join(feed_html), unsafe_allow_html=True)
+    else:
+        st.caption("אין עדיין אירועים.")
 
 st.markdown("---")
 
