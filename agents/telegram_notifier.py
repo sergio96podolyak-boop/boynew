@@ -257,7 +257,7 @@ class TelegramNotifier:
 
     def _poll_loop(self) -> None:
         """Polls Telegram for new messages and handles /start."""
-        while True:
+        while self._enabled:
             try:
                 url = TELEGRAM_API.format(token=self.token, method="getUpdates")
                 resp = requests.get(
@@ -265,6 +265,9 @@ class TelegramNotifier:
                     params={"offset": self._update_offset, "timeout": 30, "allowed_updates": ["message"]},
                     timeout=35,
                 )
+                if resp.status_code == 401:
+                    self._disable("טוקן טלגרם לא תקין (401) — האזנה הופסקה")
+                    return
                 if not resp.ok:
                     continue
                 data = resp.json()
@@ -315,6 +318,12 @@ class TelegramNotifier:
     # Internal
     # ------------------------------------------------------------------
 
+    def _disable(self, reason: str) -> None:
+        """Permanently disable Telegram for this run (e.g. bad token) — stops the spam."""
+        if self._enabled:
+            logger.warning("TelegramNotifier מושבת אוטומטית: %s", reason)
+        self._enabled = False
+
     def _now(self) -> str:
         il_time = datetime.now(timezone(timedelta(hours=3)))
         return il_time.strftime("%H:%M:%S") + " 🇮🇱"
@@ -337,6 +346,9 @@ class TelegramNotifier:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
                 timeout=_SEND_TIMEOUT,
             )
+            if resp.status_code == 401:
+                self._disable("טוקן טלגרם לא תקין (401) — הודעות בוטלו")
+                return
             if not resp.ok:
                 logger.warning("Telegram שגיאה ל-%s: %s", chat_id, resp.text[:100])
         except Exception as exc:
