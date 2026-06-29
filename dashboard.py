@@ -503,7 +503,7 @@ with st.sidebar:
         st.metric("Realized P&L", f"${total_realized:,.2f}")
         sharpe = stats.get("sharpe_ratio", 0.0)
         st.metric("Sharpe Ratio", f"{sharpe:.2f}")
-        max_dd = stats.get("max_drawdown", 0.0)
+        max_dd = min(max(stats.get("max_drawdown", 0.0), 0.0), 1.0)
         st.metric("Max Drawdown", f"{max_dd:.1%}")
 
     st.markdown("---")
@@ -635,6 +635,8 @@ unrealized   = latest_snap.get("unrealized_pnl", 0.0)
 realized_pnl = stats.get("total_pnl", 0.0)
 n_positions  = latest_snap.get("open_positions", len(open_trades))
 win_rate     = latest_snap.get("win_rate", stats.get("win_rate", 0.0))
+if win_rate > 1:  # some snapshots store win_rate as a percent (e.g. 46.0) — normalize to fraction
+    win_rate = win_rate / 100.0
 
 m1, m2, m3, m4 = st.columns(4)
 with m1:
@@ -683,7 +685,11 @@ with col_left:
                 "Qty": f"{t.get('quantity', 0):.4f}",
                 "SL": f"${t.get('sl_price', 0):,.4f}" if t.get("sl_price") else "—",
                 "TP": f"${t.get('tp_price', 0):,.4f}" if t.get("tp_price") else "—",
-                "Confidence": f"{t.get('confidence', 0):.1%}" if t.get("confidence") else "—",
+                "Confidence": (
+                    (f"{t['confidence']:.0f}" if (t.get('confidence') or 0) > 1
+                     else f"{t.get('confidence', 0):.0%}")
+                    if t.get("confidence") else "—"
+                ),
                 "Opened": t.get("opened_at", "")[:16] if t.get("opened_at") else "",
             })
         pos_df = pd.DataFrame(pos_rows)
