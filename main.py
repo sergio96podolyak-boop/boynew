@@ -65,6 +65,7 @@ from agents.features import FEATURE_NAMES
 from agents.telegram_notifier import init_notifier, TelegramNotifier
 from agents.trade_analyzer import TradeAnalyzer
 from agents.agent_monitor import init_monitor, get_monitor
+from agents.news_agent import NewsAgent
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +342,13 @@ class TradingSystem:
         else:
             logger.info("Classic mode enabled: symbol-based strategy loop")
 
+        # News / sentiment agent (free public sources) — 7th agent in the control center
+        self.news_agent = NewsAgent(monitor=self.monitor, refresh_seconds=180.0)
+        try:
+            self.news_agent.refresh()
+        except Exception as exc:
+            logger.debug("Initial news refresh failed: %s", exc)
+
         self._log_safety_rails()
 
         # Telegram notifier
@@ -459,6 +467,13 @@ class TradingSystem:
                         continue
 
                 # 1b. Refresh trade analyzer every 50 loops — learn from history
+                # News/sentiment refresh (self-throttled to refresh_seconds)
+                if self._loop_count % 20 == 0:
+                    try:
+                        self.news_agent.maybe_refresh()
+                    except Exception as exc:
+                        logger.debug("news refresh failed: %s", exc)
+
                 if self._loop_count % 50 == 0 and self._loop_count > 0:
                     self.monitor.report(
                         "Analyzer", "learn", "לומד מהיסטוריית עסקאות — win-rate, Kelly, רשימה שחורה",

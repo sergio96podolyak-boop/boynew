@@ -16,3 +16,6 @@ _old_backup/
 
 # dashboard subprocess log
 dashboard.log
+
+# news/sentiment runtime snapshot
+data/sentiment.json

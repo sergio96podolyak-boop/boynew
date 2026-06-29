@@ -114,6 +114,7 @@ def colored_badge(text: str, color: str) -> str:
 AGENT_META = [
     ("System",      "🧠", "מערכת"),
     ("Scanner",     "🔭", "סורק שוק"),
+    ("News",        "📰", "חדשות/סנטימנט"),
     ("Model",       "🤖", "מודל ML"),
     ("RiskManager", "🛡️", "ניהול סיכון"),
     ("Execution",   "⚡", "ביצוע"),
@@ -258,6 +259,88 @@ def render_agent_constellation(summary: dict) -> None:
         height=540,
         scrolling=False,
     )
+
+
+def render_sentiment_panel() -> None:
+    """Market sentiment from the NewsAgent snapshot (Fear & Greed, bias, funding, headlines)."""
+    import json
+    path = "data/sentiment.json"
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            snap = json.load(f)
+    except Exception:
+        return
+
+    st.markdown("#### 📰 סנטימנט שוק — חי")
+    fng = snap.get("fear_greed") or {}
+    bias = snap.get("bias") or {}
+    c1, c2 = st.columns([1, 1.3])
+
+    with c1:
+        val = fng.get("value")
+        if val is not None:
+            if val <= 25:
+                bar = "#ff1744"
+            elif val <= 45:
+                bar = "#ff9100"
+            elif val <= 55:
+                bar = "#ffd600"
+            elif val <= 75:
+                bar = "#9ccc65"
+            else:
+                bar = "#00e676"
+            gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=val,
+                title={"text": f"Fear & Greed — {fng.get('classification','')}", "font": {"size": 14}},
+                gauge={
+                    "axis": {"range": [0, 100]},
+                    "bar": {"color": bar},
+                    "steps": [
+                        {"range": [0, 25], "color": "rgba(255,23,68,0.25)"},
+                        {"range": [25, 45], "color": "rgba(255,145,0,0.20)"},
+                        {"range": [45, 55], "color": "rgba(255,214,0,0.18)"},
+                        {"range": [55, 75], "color": "rgba(156,204,101,0.20)"},
+                        {"range": [75, 100], "color": "rgba(0,230,118,0.22)"},
+                    ],
+                },
+            ))
+            gauge.update_layout(height=220, margin=dict(l=10, r=10, t=40, b=0),
+                                paper_bgcolor="rgba(0,0,0,0)", font={"color": "#cdd9e8"})
+            st.plotly_chart(gauge, use_container_width=True)
+            st.markdown(f"**הטיית שוק:** {bias.get('label','—')}")
+        else:
+            st.info("מדד הפחד-וחמדנות לא זמין כרגע.")
+
+    with c2:
+        funding = snap.get("funding") or {}
+        long_rows = funding.get("crowd_long") or []
+        short_rows = funding.get("crowd_short") or []
+        if long_rows or short_rows:
+            st.caption("מיצוב הקהל לפי funding (Binance) — קיצוניות = סיכון להתהפכות")
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                st.markdown("🟢 **קהל בלונג**")
+                for r in long_rows:
+                    st.markdown(f"<span style='font-size:0.85em'>{r['symbol']} `{r['funding']*100:+.3f}%`</span>",
+                                unsafe_allow_html=True)
+            with fc2:
+                st.markdown("🔴 **קהל בשורט**")
+                for r in short_rows:
+                    st.markdown(f"<span style='font-size:0.85em'>{r['symbol']} `{r['funding']*100:+.3f}%`</span>",
+                                unsafe_allow_html=True)
+        headlines = snap.get("headlines") or []
+        if headlines:
+            st.markdown("**📈 כותרות אחרונות**")
+            for h in headlines[:6]:
+                link = h.get("link", "")
+                title = h.get("title", "")
+                if link:
+                    st.markdown(f"- [{title}]({link})")
+                else:
+                    st.markdown(f"- {title}")
 
 # ---------------------------------------------------------------------------
 # Load data from DB
@@ -417,6 +500,9 @@ else:
 
 # Animated agent constellation (nodes orbiting a core with flowing links)
 render_agent_constellation(agent_summary)
+
+# Live market sentiment (Fear & Greed, funding, headlines) from the NewsAgent
+render_sentiment_panel()
 
 # Agent cards grid
 cards_html = ['<div class="agent-grid">']
