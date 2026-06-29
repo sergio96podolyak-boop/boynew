@@ -372,6 +372,7 @@ class RiskManagerAgent:
         atr: float,
         current_balance: float,
         open_positions: Dict[str, Position],
+        size_multiplier: float = 1.0,
     ) -> RiskDecision:
         if self.kill_switch:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Kill switch")
@@ -410,6 +411,9 @@ class RiskManagerAgent:
         notional = slice_margin * adj_pct * self.config.leverage
         # Apply Kelly fraction — reduce sizing when win rate / R:R is poor
         notional *= self._kelly_fraction
+        # Apply external committee sizing (news/regime/live risk). Never increases risk.
+        size_multiplier = max(0.10, min(1.0, float(size_multiplier or 1.0)))
+        notional *= size_multiplier
         # Hard-cap: never exceed one full slice × leverage
         max_notional = slice_margin * self.config.leverage
         notional = min(notional, max_notional)
@@ -448,7 +452,7 @@ class RiskManagerAgent:
             tp_price = entry_price * (1 - tp_pct)
 
         logger.info(
-            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f",
+            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f size_mult=%.2f",
             symbol,
             direction,
             score,
@@ -458,8 +462,9 @@ class RiskManagerAgent:
             notional / self.config.leverage if self.config.leverage else 0.0,
             sl_pct * 100,
             tp_pct * 100,
+            size_multiplier,
         )
-        return RiskDecision(True, qty, sl_price, tp_price, f"{tier} score={score:.1f}")
+        return RiskDecision(True, qty, sl_price, tp_price, f"{tier} score={score:.1f} size={size_multiplier:.2f}")
 
     def check_exits(
         self,

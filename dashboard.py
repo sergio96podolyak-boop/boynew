@@ -10,6 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import logging
+import json
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -116,8 +117,11 @@ def colored_badge(text: str, color: str) -> str:
 # Display order + icon + Hebrew label for each agent
 AGENT_META = [
     ("System",      "🧠", "מערכת"),
+    ("LiveGuard",   "🔐", "נעילת לייב"),
     ("Scanner",     "🔭", "סורק שוק"),
+    ("Regime",      "🌐", "משטר שוק"),
     ("News",        "📰", "חדשות/סנטימנט"),
+    ("Decision",    "⚖️", "ועדת החלטה"),
     ("Model",       "🤖", "מודל ML"),
     ("RiskManager", "🛡️", "ניהול סיכון"),
     ("Execution",   "⚡", "ביצוע"),
@@ -346,6 +350,59 @@ def render_sentiment_panel() -> None:
                     st.markdown(f"- {title}")
 
 
+def _read_json(path: str) -> dict:
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def render_intelligence_panels() -> None:
+    """Live guard, market regime and latest committee decision."""
+    live = _read_json("data/live_guard.json")
+    regime = _read_json("data/market_regime.json")
+    decision = _read_json("data/decision_state.json")
+    if not (live or regime or decision):
+        return
+
+    st.markdown("#### 🧭 שכבת החלטה ובטיחות")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ready = live.get("ready")
+        mode = live.get("mode", "—")
+        color = "green" if ready else "red"
+        st.markdown(colored_badge(f"LiveGuard: {mode}", color), unsafe_allow_html=True)
+        st.caption(live.get("reason", "אין נתונים"))
+    with c2:
+        if regime:
+            risk = regime.get("risk_state", "—")
+            rcolor = "green" if risk == "NORMAL" else "orange" if risk == "HIGH_VOL" else "red"
+            st.markdown(colored_badge(f"Regime: {risk}", rcolor), unsafe_allow_html=True)
+            st.caption(regime.get("detail", "—"))
+        else:
+            st.caption("משטר שוק טרם זמין")
+    with c3:
+        if decision:
+            approved = bool(decision.get("approved"))
+            dcolor = "green" if approved else "orange"
+            label = "מאושר" if approved else "נדחה"
+            st.markdown(colored_badge(f"Decision: {label}", dcolor), unsafe_allow_html=True)
+            st.caption(
+                f"{decision.get('symbol','')} {decision.get('direction','')} | "
+                f"consensus={decision.get('consensus',0):.0%} | "
+                f"score={decision.get('adjusted_score',0):.1f} | "
+                f"size={decision.get('size_multiplier',1):.2f}"
+            )
+            reasons = decision.get("hard_blocks") or decision.get("reasons") or []
+            if reasons:
+                st.caption(str(reasons[-1]))
+        else:
+            st.caption("אין עדיין החלטות ועדה")
+
+
 def render_tradingview(open_positions: list) -> None:
     """Embed a live TradingView chart + technical-analysis rating for a chosen symbol."""
     import streamlit.components.v1 as components
@@ -408,10 +465,14 @@ def load_data():
     snapshots      = repo.get_portfolio_snapshots(limit=200)
     events         = repo.get_recent_events(limit=20)
     stats          = repo.get_performance_stats()
-    return open_trades, trade_history, recent_signals, snapshots, events, stats
+    try:
+        recent_decisions = repo.get_recent_decisions(limit=30)
+    except Exception:
+        recent_decisions = []
+    return open_trades, trade_history, recent_signals, snapshots, events, stats, recent_decisions
 
 
-open_trades, trade_history, recent_signals, snapshots, events, stats = load_data()
+open_trades, trade_history, recent_signals, snapshots, events, stats, recent_decisions = load_data()
 
 # Agent control-center data (latest-per-agent + live feed)
 try:
@@ -559,6 +620,9 @@ render_agent_constellation(agent_summary)
 # Live market sentiment (Fear & Greed, funding, headlines) from the NewsAgent
 render_sentiment_panel()
 
+# Live guard + market regime + latest committee decision
+render_intelligence_panels()
+
 # Live TradingView chart + technical-analysis rating
 render_tradingview(open_trades)
 
@@ -617,6 +681,28 @@ with st.expander("📡 זרם פעילות חי (30 אחרונות)", expanded=T
         st.markdown("".join(feed_html), unsafe_allow_html=True)
     else:
         st.caption("אין עדיין אירועים.")
+
+with st.expander("⚖️ החלטות ועדה אחרונות", expanded=False):
+    if recent_decisions:
+        rows = []
+        for d in recent_decisions:
+            try:
+                reasons = json.loads(d.get("hard_blocks_json") or "[]") or json.loads(d.get("reasons_json") or "[]")
+            except Exception:
+                reasons = []
+            rows.append({
+                "Time": d.get("created_at", "")[11:19],
+                "Symbol": d.get("symbol", ""),
+                "Side": d.get("direction", ""),
+                "OK": "כן" if d.get("approved") else "לא",
+                "Score": f"{d.get('adjusted_score', 0):.1f}",
+                "Consensus": f"{d.get('consensus', 0):.0%}",
+                "Size": f"{d.get('size_multiplier', 1):.2f}",
+                "Reason": reasons[-1] if reasons else "",
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    else:
+        st.caption("אין החלטות ועדה עדיין.")
 
 st.markdown("---")
 

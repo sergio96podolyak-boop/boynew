@@ -317,10 +317,11 @@ class MarketScanner:
                 continue
             try:
                 # Fetch OHLCV
+                fetch_limit = max(self.config.hft_fetch_limit, self.config.min_ml_training_candles)
                 df = self.fetch_ohlcv(
                     symbol,
                     interval=self.config.hft_timeframe,
-                    limit=self.config.hft_fetch_limit,
+                    limit=fetch_limit,
                 )
 
                 if df is None or len(df) < 20:

@@ -31,16 +31,48 @@ _FUNDING_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 _RSS_FEEDS = [
     "https://cointelegraph.com/rss",
     "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://cryptopotato.com/feed/",
+    "https://decrypt.co/feed",
 ]
 _SENTIMENT_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "sentiment.json")
+
+_NEGATIVE_WORDS = {
+    "hack", "hacked", "exploit", "stolen", "lawsuit", "sued", "charges",
+    "ban", "banned", "crackdown", "investigation", "bankrupt", "bankruptcy",
+    "liquidation", "liquidations", "outflow", "outflows", "crash", "plunge",
+    "selloff", "sell-off", "fraud", "halt", "outage", "breach", "fine",
+}
+_POSITIVE_WORDS = {
+    "approval", "approved", "inflow", "inflows", "record", "adoption",
+    "partnership", "launch", "surge", "rally", "breakout", "institutional",
+    "etf", "upgrade", "integrates", "accumulates",
+}
+_SYMBOL_ALIASES = {
+    "BTC": {"btc", "bitcoin"},
+    "ETH": {"eth", "ethereum", "ether"},
+    "SOL": {"sol", "solana"},
+    "BNB": {"bnb", "binance coin"},
+    "XRP": {"xrp", "ripple"},
+    "DOGE": {"doge", "dogecoin"},
+    "ADA": {"ada", "cardano"},
+    "AVAX": {"avax", "avalanche"},
+    "LINK": {"link", "chainlink"},
+    "ZEC": {"zec", "zcash"},
+}
 
 
 class NewsAgent:
     """Aggregates free market-sentiment signals and publishes a snapshot."""
 
-    def __init__(self, monitor: Optional[Any] = None, refresh_seconds: float = 180.0):
+    def __init__(
+        self,
+        monitor: Optional[Any] = None,
+        refresh_seconds: float = 180.0,
+        config: Optional[Any] = None,
+    ):
         self.monitor = monitor
         self.refresh_seconds = refresh_seconds
+        self.config = config
         self._last_refresh: float = 0.0
         self.snapshot: Dict[str, Any] = {}
 
@@ -82,22 +114,69 @@ class NewsAgent:
             return {"crowd_short": [], "crowd_long": []}
 
     def _fetch_headlines(self, limit: int = 6) -> List[Dict[str, str]]:
+        out: List[Dict[str, str]] = []
+        seen = set()
         for feed in _RSS_FEEDS:
             try:
                 r = requests.get(feed, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
                 r.raise_for_status()
                 root = ET.fromstring(r.content)
                 items = root.findall(".//item")[:limit]
-                out = []
                 for it in items:
                     title = (it.findtext("title") or "").strip()
-                    if title:
+                    if title and title not in seen:
+                        seen.add(title)
                         out.append({"title": title, "link": (it.findtext("link") or "").strip()})
-                if out:
-                    return out
+                    if len(out) >= limit:
+                        return out
             except Exception as exc:
                 logger.debug("RSS %s failed: %s", feed, exc)
-        return []
+        return out
+
+    @staticmethod
+    def _base_asset(symbol: str) -> str:
+        symbol = (symbol or "").upper()
+        for quote in ("USDT", "BUSD", "USDC", "USD"):
+            if symbol.endswith(quote):
+                return symbol[: -len(quote)]
+        return symbol
+
+    @classmethod
+    def _symbol_terms(cls, symbol: str) -> set:
+        base = cls._base_asset(symbol)
+        terms = {base.lower()}
+        terms.update(_SYMBOL_ALIASES.get(base, set()))
+        return terms
+
+    @staticmethod
+    def _tokenize(title: str) -> set:
+        clean = "".join(ch.lower() if ch.isalnum() or ch in "- " else " " for ch in title)
+        return set(clean.split())
+
+    def _headline_sentiment(self, headlines: List[Dict[str, str]]) -> Dict[str, Any]:
+        scored = []
+        total = 0
+        negative = 0
+        positive = 0
+        for item in headlines:
+            title = item.get("title", "")
+            tokens = self._tokenize(title)
+            neg = len(tokens & _NEGATIVE_WORDS)
+            pos = len(tokens & _POSITIVE_WORDS)
+            score = pos - neg
+            if neg:
+                negative += 1
+            if pos:
+                positive += 1
+            total += score
+            scored.append({**item, "score": score, "negative_hits": neg, "positive_hits": pos})
+        norm = max(-1.0, min(1.0, total / max(3, len(headlines) * 2)))
+        return {
+            "score": norm,
+            "negative_count": negative,
+            "positive_count": positive,
+            "items": scored,
+        }
 
     # ------------------------------------------------------------------
     # Derived market bias
@@ -144,6 +223,7 @@ class NewsAgent:
         if not funding.get("crowd_long") and not funding.get("crowd_short"):
             funding = prev.get("funding") or funding
         headlines = self._fetch_headlines() or prev.get("headlines") or []
+        headline_sentiment = self._headline_sentiment(headlines)
         bias = self._bias_from_fng(fng["value"]) if fng else {"label": "—", "dir": "NEUTRAL", "size_mult": 1.0}
 
         snap = {
@@ -152,6 +232,7 @@ class NewsAgent:
             "bias": bias,
             "funding": funding,
             "headlines": headlines,
+            "headline_sentiment": headline_sentiment,
         }
         self.snapshot = snap
         self._write_snapshot(snap)
@@ -163,6 +244,92 @@ class NewsAgent:
                 detail = "מקור סנטימנט לא זמין כרגע"
             self.monitor.report("News", "sentiment", detail, status="active", force=True)
         return snap
+
+    def assess_trade(self, symbol: str, direction: str) -> Dict[str, Any]:
+        """
+        Return a per-trade news/sentiment assessment.
+
+        The output is intentionally conservative: news can reduce size, reduce
+        score, or block obvious high-impact negative headlines, but it cannot
+        increase risk above 1.0.
+        """
+        snap = self.snapshot or self.refresh()
+        if not snap:
+            return {
+                "approved": True,
+                "vote": False,
+                "score_adjustment": -1.0,
+                "size_multiplier": 0.85,
+                "hard_block": False,
+                "reason": "news unavailable",
+            }
+
+        age = time.time() - float(snap.get("updated_at", 0) or 0)
+        max_age = float(getattr(self.config, "news_max_age_seconds", 900) or 900)
+        if age > max_age:
+            hard = bool(getattr(self.config, "block_on_stale_news", False))
+            return {
+                "approved": not hard,
+                "vote": False,
+                "score_adjustment": -2.0,
+                "size_multiplier": 0.80,
+                "hard_block": hard,
+                "reason": f"news stale ({age / 60:.0f}m old)",
+            }
+
+        score_adj = 0.0
+        size_mult = 1.0
+        reasons: List[str] = []
+        hard_block = False
+
+        fng = snap.get("fear_greed") or {}
+        val = fng.get("value")
+        if isinstance(val, int):
+            if val >= 85 and direction == "LONG":
+                score_adj -= 4.0
+                size_mult *= 0.70
+                reasons.append("extreme greed against LONG")
+            elif val <= 15 and direction == "SHORT":
+                score_adj -= 4.0
+                size_mult *= 0.70
+                reasons.append("extreme fear against SHORT")
+            elif (val <= 35 and direction == "LONG") or (val >= 65 and direction == "SHORT"):
+                score_adj += 1.0
+                reasons.append("contrarian sentiment aligned")
+
+        headline_sent = snap.get("headline_sentiment") or {}
+        generic_news_score = float(headline_sent.get("score", 0.0) or 0.0)
+        if generic_news_score < -0.20:
+            score_adj -= min(4.0, abs(generic_news_score) * 8)
+            size_mult *= 0.80
+            reasons.append("negative crypto headlines")
+        elif generic_news_score > 0.25:
+            score_adj += min(1.0, generic_news_score * 2)
+            reasons.append("positive crypto headlines")
+
+        terms = self._symbol_terms(symbol)
+        for item in headline_sent.get("items", []):
+            title = item.get("title", "")
+            title_l = title.lower()
+            related = any(term and term in title_l for term in terms)
+            if related and item.get("negative_hits", 0) > 0:
+                score_adj -= 8.0
+                size_mult *= 0.50
+                reasons.append(f"negative headline for {symbol}")
+                if bool(getattr(self.config, "news_negative_headline_block", True)):
+                    hard_block = True
+                break
+
+        approved = not hard_block
+        vote = approved and score_adj >= -3.0
+        return {
+            "approved": approved,
+            "vote": vote,
+            "score_adjustment": score_adj,
+            "size_multiplier": max(0.10, min(1.0, size_mult)),
+            "hard_block": hard_block,
+            "reason": "; ".join(reasons) if reasons else "news neutral",
+        }
 
     def _write_snapshot(self, snap: Dict[str, Any]) -> None:
         try:

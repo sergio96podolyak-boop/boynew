@@ -1313,6 +1313,11 @@ class ExecutionAgent:
     # ========================================================================
 
     @property
+    def client(self):
+        """Underlying Binance client in live mode; None in paper mode."""
+        return self._client
+
+    @property
     def paper_balance(self) -> float:
         """Current paper trading balance."""
         return self._paper_balance

@@ -67,6 +67,9 @@ from agents.trade_analyzer import TradeAnalyzer
 from agents.agent_monitor import init_monitor, get_monitor
 from agents.news_agent import NewsAgent
 from agents.tradingview_signal import TradingViewSignals
+from agents.market_regime import MarketRegimeAgent
+from agents.decision_committee import DecisionCommitteeAgent
+from agents.live_guard import LiveGuardAgent
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +219,9 @@ class TradingSystem:
             f"hft={config.aggressive_hft}",
             status="active", force=True,
         )
+        self.live_guard = LiveGuardAgent(config=config, monitor=self.monitor)
+        if not config.paper_trading:
+            self.live_guard.require_ready()
 
         # Agents
         self.market_agent = MarketAnalysisAgent(config=config)
@@ -352,11 +358,25 @@ class TradingSystem:
                            "run: %s -m pip install tradingview-ta", sys.executable)
 
         # News / sentiment agent (free public sources) — 7th agent in the control center
-        self.news_agent = NewsAgent(monitor=self.monitor, refresh_seconds=180.0)
+        self.news_agent = NewsAgent(
+            monitor=self.monitor,
+            refresh_seconds=config.news_refresh_seconds,
+            config=config,
+        )
+        self.market_regime_agent = MarketRegimeAgent(config=config, monitor=self.monitor)
+        self.decision_committee = DecisionCommitteeAgent(
+            config=config,
+            monitor=self.monitor,
+            repo=self.repo,
+        )
         try:
             self.news_agent.refresh()
         except Exception as exc:
             logger.debug("Initial news refresh failed: %s", exc)
+        try:
+            self.market_regime_agent.refresh()
+        except Exception as exc:
+            logger.debug("Initial market regime refresh failed: %s", exc)
 
         self._log_safety_rails()
 
@@ -381,7 +401,7 @@ class TradingSystem:
             "Safety rails (automatic) | paper=%s | aggressive_hft=%s | leverage=%dx | "
             "max_open_positions=%s | max_margin_per_position=%.0f%% | "
             "min_notional=%.2f USDT | session_dd_kill=%.0f%% | daily_dd_kill=%.0f%% | stale_exit=%s | "
-            "min_price=%.2f USDT | score_entry=%.0f",
+            "min_price=%.2f USDT | score_entry=%.0f | live_guard=%s | decision_consensus=%.0f%%",
             c.paper_trading,
             c.aggressive_hft,
             c.leverage,
@@ -393,6 +413,8 @@ class TradingSystem:
             (f"{c.stale_exit_seconds:.0f}s" if c.stale_exit_seconds > 0 else "off"),
             c.min_symbol_price_usdt,
             c.score_entry,
+            "paper" if c.paper_trading else "armed",
+            (c.decision_min_consensus if c.paper_trading else c.decision_live_min_consensus) * 100,
         )
 
     def _tradingview_opportunities(self) -> List[Dict]:
@@ -533,6 +555,10 @@ class TradingSystem:
                         self.news_agent.maybe_refresh()
                     except Exception as exc:
                         logger.debug("news refresh failed: %s", exc)
+                    try:
+                        self.market_regime_agent.maybe_refresh()
+                    except Exception as exc:
+                        logger.debug("market regime refresh failed: %s", exc)
 
                 if self._loop_count % 50 == 0 and self._loop_count > 0:
                     self.monitor.report(
@@ -665,6 +691,23 @@ class TradingSystem:
                     if not symbol or score < self.config.score_entry:
                         continue
 
+                    committee = self.decision_committee.evaluate(
+                        opp,
+                        news_agent=self.news_agent,
+                        regime_agent=self.market_regime_agent,
+                        open_positions=self.risk_agent.open_positions,
+                    )
+                    if not committee.approved:
+                        logger.debug(
+                            "%s: committee rejected — consensus=%.0f%% score=%.1f reasons=%s",
+                            symbol,
+                            committee.consensus * 100,
+                            committee.adjusted_score,
+                            " | ".join(committee.hard_blocks or committee.reasons[-2:]),
+                        )
+                        continue
+                    score = committee.adjusted_score
+
                     # Correlation guard: don't open correlated pairs simultaneously
                     corr_conflict = self.trade_analyzer.check_correlation(
                         symbol, self.risk_agent.open_positions
@@ -690,6 +733,7 @@ class TradingSystem:
                         atr=atr,
                         current_balance=self.risk_agent._current_balance,
                         open_positions=self.risk_agent.open_positions,
+                        size_multiplier=committee.size_multiplier,
                     )
 
                     if not decision.approved:
@@ -706,24 +750,49 @@ class TradingSystem:
                             f"SL={decision.sl_price:.6f} TP={decision.tp_price:.6f}",
                             symbol=symbol, status="active", severity="INFO", force=True,
                         )
-                        # Refresh live available balance before placing order
-                        try:
-                            from agents.binance_compat import create_binance_client, live_full_account_info
-                            _c = create_binance_client(self.config.api_key, self.config.api_secret)
-                            _acc = live_full_account_info(_c)
-                            if _acc:
-                                live_avail = _acc["available_balance"]
-                                self.risk_agent._current_balance = _acc["margin_balance"]
-                                # Reject if required margin exceeds live available balance
-                                required_margin = (decision.quantity * entry_price) / self.config.leverage
-                                if required_margin > live_avail * 0.9:
-                                    logger.warning(
-                                        "Skipping %s: required_margin=%.2f > available=%.2f",
-                                        symbol, required_margin, live_avail,
+                        # Refresh live available balance before placing a real order.
+                        if not self.config.paper_trading:
+                            try:
+                                from agents.binance_compat import live_full_account_info
+
+                                _acc = live_full_account_info(self.execution_agent.client)
+                                if _acc:
+                                    live_avail = _acc["available_balance"]
+                                    live_equity = _acc["margin_balance"]
+                                    self.risk_agent._current_balance = live_equity
+                                    required_margin = (decision.quantity * entry_price) / self.config.leverage
+                                    notional = decision.quantity * entry_price
+                                    live_check = self.live_guard.pre_trade_check(
+                                        symbol=symbol,
+                                        notional=notional,
+                                        required_margin=required_margin,
+                                        live_available=live_avail,
+                                        live_equity=live_equity,
                                     )
-                                    continue
-                        except Exception as _be:
-                            logger.debug("Balance pre-check failed: %s", _be)
+                                    if not live_check.approved:
+                                        logger.warning("Skipping %s: %s", symbol, live_check.reason)
+                                        self.monitor.report(
+                                            "LiveGuard",
+                                            "reject",
+                                            live_check.reason,
+                                            symbol=symbol,
+                                            status="active",
+                                            severity="WARNING",
+                                            force=True,
+                                        )
+                                        continue
+                            except Exception as _be:
+                                logger.warning("Live balance pre-check failed for %s: %s", symbol, _be)
+                                self.monitor.report(
+                                    "LiveGuard",
+                                    "reject",
+                                    f"{symbol}: live balance pre-check failed",
+                                    symbol=symbol,
+                                    status="active",
+                                    severity="ERROR",
+                                    force=True,
+                                )
+                                continue
 
                         # Execute HFT entry (with slippage/latency tracking)
                         result = self.execution_agent.hft_open(
@@ -967,6 +1036,23 @@ class TradingSystem:
             signal = self.strategy_agent.generate_signal(market_data)
             if signal is None:
                 return
+
+            committee = self.decision_committee.evaluate(
+                {
+                    "symbol": symbol,
+                    "direction": signal.direction,
+                    "score": signal.confidence * 100.0,
+                    "entry_price": market_data.current_price,
+                    "atr": market_data.atr,
+                    "source": "classic",
+                },
+                news_agent=self.news_agent,
+                regime_agent=self.market_regime_agent,
+                open_positions=self.risk_agent.open_positions,
+            )
+            if not committee.approved:
+                return
+            signal.confidence = max(0.0, min(1.0, committee.adjusted_score / 100.0))
 
             # Save signal to DB
             self.repo.insert_signal({

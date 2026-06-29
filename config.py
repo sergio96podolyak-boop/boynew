@@ -31,6 +31,22 @@ class TradingConfig:
 
     paper_trading: bool = field(default_factory=lambda: _env_bool("PAPER_TRADING", "true"))
 
+    # Live trading is deliberately double-locked. PAPER_TRADING=false is not
+    # enough: live mode also requires these explicit acknowledgements.
+    live_trading_enabled: bool = field(
+        default_factory=lambda: _env_bool("LIVE_TRADING_ENABLED", "false")
+    )
+    live_trading_confirmation: str = field(
+        default_factory=lambda: os.getenv("LIVE_TRADING_CONFIRMATION", "")
+    )
+    live_max_leverage: int = field(default_factory=lambda: _env_int("LIVE_MAX_LEVERAGE", "5"))
+    live_max_margin_fraction: float = field(
+        default_factory=lambda: _env_float("LIVE_MAX_MARGIN_FRACTION", "0.10")
+    )
+    live_required_min_equity_usdt: float = field(
+        default_factory=lambda: _env_float("LIVE_REQUIRED_MIN_EQUITY_USDT", "25")
+    )
+
     symbols: List[str] = field(
         default_factory=lambda: os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT").split(",")
     )
@@ -71,6 +87,9 @@ class TradingConfig:
     scan_top_n: int = field(default_factory=lambda: _env_int("SCAN_TOP_N", "50"))
     hft_timeframe: str = field(default_factory=lambda: os.getenv("HFT_TIMEFRAME", "1m"))
     hft_fetch_limit: int = field(default_factory=lambda: _env_int("HFT_FETCH_LIMIT", "200"))
+    min_ml_training_candles: int = field(
+        default_factory=lambda: _env_int("MIN_ML_TRAINING_CANDLES", "240")
+    )
 
     score_entry: float = field(default_factory=lambda: _env_float("SCORE_ENTRY", "72"))
     score_high: float = field(default_factory=lambda: _env_float("SCORE_HIGH", "85"))
@@ -165,6 +184,55 @@ class TradingConfig:
         default_factory=lambda: _env_float("TRADINGVIEW_REFRESH_SEC", "45")
     )
 
+    # ── Multi-agent entry committee ────────────────────────────────────────
+    # Scanner candidates must pass a second layer before RiskManager sizes them:
+    # news/sentiment, market regime, freshness, and live safety checks.
+    decision_min_consensus: float = field(
+        default_factory=lambda: _env_float("DECISION_MIN_CONSENSUS", "0.67")
+    )
+    decision_live_min_consensus: float = field(
+        default_factory=lambda: _env_float("DECISION_LIVE_MIN_CONSENSUS", "0.80")
+    )
+    decision_min_score_after_guards: float = field(
+        default_factory=lambda: _env_float("DECISION_MIN_SCORE_AFTER_GUARDS", "70")
+    )
+    block_on_stale_news: bool = field(
+        default_factory=lambda: _env_bool("BLOCK_ON_STALE_NEWS", "false")
+    )
+    news_max_age_seconds: float = field(
+        default_factory=lambda: _env_float("NEWS_MAX_AGE_SECONDS", "900")
+    )
+    news_refresh_seconds: float = field(
+        default_factory=lambda: _env_float("NEWS_REFRESH_SECONDS", "120")
+    )
+    news_negative_headline_block: bool = field(
+        default_factory=lambda: _env_bool("NEWS_NEGATIVE_HEADLINE_BLOCK", "true")
+    )
+    market_regime_refresh_seconds: float = field(
+        default_factory=lambda: _env_float("MARKET_REGIME_REFRESH_SECONDS", "45")
+    )
+    market_regime_symbol: str = field(
+        default_factory=lambda: os.getenv("MARKET_REGIME_SYMBOL", "BTCUSDT")
+    )
+    market_regime_timeframe: str = field(
+        default_factory=lambda: os.getenv("MARKET_REGIME_TIMEFRAME", "15m")
+    )
+    market_regime_fetch_limit: int = field(
+        default_factory=lambda: _env_int("MARKET_REGIME_FETCH_LIMIT", "120")
+    )
+    regime_block_longs_drop_pct: float = field(
+        default_factory=lambda: _env_float("REGIME_BLOCK_LONGS_DROP_PCT", "0.012")
+    )
+    regime_block_shorts_rally_pct: float = field(
+        default_factory=lambda: _env_float("REGIME_BLOCK_SHORTS_RALLY_PCT", "0.012")
+    )
+    regime_high_volatility_pct: float = field(
+        default_factory=lambda: _env_float("REGIME_HIGH_VOLATILITY_PCT", "0.018")
+    )
+    regime_risk_off_size_mult: float = field(
+        default_factory=lambda: _env_float("REGIME_RISK_OFF_SIZE_MULT", "0.50")
+    )
+
     # ── Telegram ────────────────────────────────────────────────────────────
     telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_TOKEN", ""))
     telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
@@ -174,10 +242,30 @@ class TradingConfig:
 
     def validate(self) -> None:
         if not self.paper_trading:
+            if not self.live_trading_enabled:
+                raise ValueError(
+                    "LIVE trading is locked. Set LIVE_TRADING_ENABLED=true only after "
+                    "you intentionally choose to run real Binance Futures orders."
+                )
+            if self.live_trading_confirmation != "I_ACCEPT_REAL_BINANCE_FUTURES_RISK":
+                raise ValueError(
+                    "LIVE_TRADING_CONFIRMATION must be exactly "
+                    "I_ACCEPT_REAL_BINANCE_FUTURES_RISK for live trading."
+                )
             if not self.api_key or self.api_key == "your_api_key_here":
                 raise ValueError("BINANCE_API_KEY must be set for live trading")
             if not self.api_secret or self.api_secret == "your_api_secret_here":
                 raise ValueError("BINANCE_API_SECRET must be set for live trading")
+            if self.leverage > self.live_max_leverage:
+                raise ValueError(
+                    f"Live leverage {self.leverage}x exceeds LIVE_MAX_LEVERAGE "
+                    f"({self.live_max_leverage}x)"
+                )
+            if self.max_margin_fraction > self.live_max_margin_fraction:
+                raise ValueError(
+                    f"Live max_margin_fraction {self.max_margin_fraction:.2f} exceeds "
+                    f"LIVE_MAX_MARGIN_FRACTION ({self.live_max_margin_fraction:.2f})"
+                )
 
         if not self.symbols and not self.aggressive_hft:
             raise ValueError("At least one symbol must be configured")
@@ -213,6 +301,12 @@ class TradingConfig:
 
         if self.hft_min_notional_usdt < 0:
             raise ValueError(f"hft_min_notional_usdt must be >= 0, got {self.hft_min_notional_usdt}")
+        if not 0 < self.decision_min_consensus <= 1:
+            raise ValueError("decision_min_consensus must be in (0,1]")
+        if not 0 < self.decision_live_min_consensus <= 1:
+            raise ValueError("decision_live_min_consensus must be in (0,1]")
+        if not 0 < self.regime_risk_off_size_mult <= 1:
+            raise ValueError("regime_risk_off_size_mult must be in (0,1]")
 
     def __post_init__(self) -> None:
         self.symbols = [s.strip().upper() for s in self.symbols if s.strip()]

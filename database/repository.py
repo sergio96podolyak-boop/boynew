@@ -101,6 +101,20 @@ class TradeRepository:
                 timestamp       TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS decision_audit (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol          TEXT NOT NULL,
+                direction       TEXT NOT NULL,
+                approved        INTEGER NOT NULL,
+                original_score  REAL NOT NULL,
+                adjusted_score  REAL NOT NULL,
+                consensus       REAL NOT NULL,
+                size_multiplier REAL NOT NULL,
+                reasons_json    TEXT,
+                hard_blocks_json TEXT,
+                created_at      TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
             CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
             CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol);
@@ -109,6 +123,8 @@ class TradeRepository:
             CREATE INDEX IF NOT EXISTS idx_events_ts ON system_events(timestamp);
             CREATE INDEX IF NOT EXISTS idx_agent_activity_ts ON agent_activity(timestamp);
             CREATE INDEX IF NOT EXISTS idx_agent_activity_agent ON agent_activity(agent);
+            CREATE INDEX IF NOT EXISTS idx_decision_audit_ts ON decision_audit(created_at);
+            CREATE INDEX IF NOT EXISTS idx_decision_audit_symbol ON decision_audit(symbol);
         """)
         conn.commit()
 
@@ -382,6 +398,46 @@ class TradeRepository:
             (keep,),
         )
         conn.commit()
+
+    # -------------------------------------------------------------------------
+    # Decision audit methods
+    # -------------------------------------------------------------------------
+
+    def log_decision(self, decision: Dict[str, Any]) -> None:
+        """Persist a committee decision for audit/debugging."""
+        import json
+
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO decision_audit
+                (symbol, direction, approved, original_score, adjusted_score,
+                 consensus, size_multiplier, reasons_json, hard_blocks_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                decision.get("symbol", ""),
+                decision.get("direction", ""),
+                1 if decision.get("approved") else 0,
+                float(decision.get("original_score", 0.0) or 0.0),
+                float(decision.get("adjusted_score", 0.0) or 0.0),
+                float(decision.get("consensus", 0.0) or 0.0),
+                float(decision.get("size_multiplier", 1.0) or 1.0),
+                json.dumps(decision.get("reasons", []), ensure_ascii=False),
+                json.dumps(decision.get("hard_blocks", []), ensure_ascii=False),
+                now,
+            ),
+        )
+        conn.commit()
+
+    def get_recent_decisions(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return latest committee decisions, newest first."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT * FROM decision_audit ORDER BY id DESC LIMIT ?", (limit,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
 
     # -------------------------------------------------------------------------
     # Performance statistics
