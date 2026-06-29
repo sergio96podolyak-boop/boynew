@@ -286,6 +286,11 @@ class TradingSystem:
                     )
                     logger.info("Synced existing position: %s %s qty=%.4f entry=%.4f sl=%.4f tp=%.4f",
                                 side, sym, abs(amt), entry, sl_price, tp_price)
+                    # Ensure a synced position has exchange-side SL/TP protection too
+                    try:
+                        self.execution_agent.place_protective_orders(sym, side, sl_price, tp_price)
+                    except Exception as exc:
+                        logger.warning("Could not place protective orders for synced %s: %s", sym, exc)
 
         # Trade Analyzer — learns from history, feeds insights into scanner + risk
         self.trade_analyzer = TradeAnalyzer(

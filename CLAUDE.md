@@ -32,9 +32,15 @@ cd boynew
 
 בנוסף: `config.validate()` בודק טווחים ל־`max_margin_fraction`, גדלי טייר, וכו’.
 
+**הגנת בורסה (SL/TP אמיתיים):** בלייב, בכל כניסה (`hft_open` / `execute_signal` / סנכרון פוזיציות בהפעלה) נשלחות הוראות `STOP_MARKET` + `TAKE_PROFIT_MARKET` עם `closePosition=true` ל-Binance (`place_protective_orders`). כך הפוזיציה מוגנת גם אם הבוט נעצר/קורס/מתנתק — מוניטור הלולאה הוא רק גיבוי. בסגירה (`_live_close_position`) ההוראות שנשארו מבוטלות (`_cancel_symbol_orders`). כשל ב-SL נרשם כ-CRITICAL בלוג.
+
+## בדיקת מצב
+`./venv/bin/python status.py` — סיכום מה-DB (ביצועים, פתוחות/סגורות, סיבות יציאה, snapshot, אירועים). `--live` מוסיף מצב חי מ-Binance: יתרה, פוזיציות, והוראות ההגנה הפעילות.
+
 ## הערות למפתח/לעוזר AI
 - **אין ערובת רווח** — זה כלי מסחר; שוק = סיכון.
 - SL/TP למטבעות זולים: `refine_sl_tp_prices` + טעינת `exchangeInfo` גם ב־paper.
+- הגנת SL/TP על הבורסה: `place_protective_orders` (one-way mode, `closePosition=true`).
 - סימבולים מתחת ל־`MIN_SYMBOL_PRICE_USDT` (ברירת מחדל 0.05) נזרקים בסריקה.
 
 ## גרסה / מצב

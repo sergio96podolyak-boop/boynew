@@ -404,6 +404,94 @@ class ExecutionAgent:
             logger.error("reduceOnly order failed (%s %s): %s", side, symbol, exc)
             return None
 
+    def place_protective_orders(
+        self,
+        symbol: str,
+        direction: str,
+        sl: float,
+        tp: float,
+    ) -> Dict[str, Optional[int]]:
+        """
+        Place exchange-side STOP_MARKET (SL) and TAKE_PROFIT_MARKET (TP) orders.
+
+        These rest on Binance and trigger even if the bot process is stopped,
+        crashed, or disconnected — the in-loop SL/TP monitor is only a backup.
+        Both use closePosition=true: they close the whole position when hit and
+        can never open a new one, so a leftover order is harmless. We still
+        cancel them on close (see _cancel_symbol_orders) to keep the book clean.
+
+        Returns {'sl_order_id': int|None, 'tp_order_id': int|None}.
+        SL failure is logged CRITICAL — that is the position's safety net.
+        """
+        result: Dict[str, Optional[int]] = {"sl_order_id": None, "tp_order_id": None}
+        if self._client is None:
+            return result
+
+        # Closing side is opposite the position direction
+        close_side = "SELL" if direction == "LONG" else "BUY"
+        sl_price = self._round_price(symbol, sl)
+        tp_price = self._round_price(symbol, tp)
+
+        # Clear any stale conditional orders for this symbol first
+        self._cancel_symbol_orders(symbol)
+
+        # Stop-loss (the critical safety net)
+        try:
+            sl_order = self._client.futures_create_order(
+                symbol=symbol,
+                side=close_side,
+                type="STOP_MARKET",
+                stopPrice=sl_price,
+                closePosition=True,
+                workingType="MARK_PRICE",
+                timeInForce="GTE_GTC",
+            )
+            result["sl_order_id"] = sl_order.get("orderId")
+            logger.info(
+                "Protective SL placed: %s %s STOP_MARKET @ %s (orderId=%s)",
+                symbol, close_side, sl_price, result["sl_order_id"],
+            )
+        except Exception as exc:
+            logger.critical(
+                "FAILED to place protective STOP_MARKET for %s @ %s: %s — "
+                "position is NOT protected on the exchange (in-loop monitor only)",
+                symbol, sl_price, exc,
+            )
+
+        # Take-profit
+        try:
+            tp_order = self._client.futures_create_order(
+                symbol=symbol,
+                side=close_side,
+                type="TAKE_PROFIT_MARKET",
+                stopPrice=tp_price,
+                closePosition=True,
+                workingType="MARK_PRICE",
+                timeInForce="GTE_GTC",
+            )
+            result["tp_order_id"] = tp_order.get("orderId")
+            logger.info(
+                "Protective TP placed: %s %s TAKE_PROFIT_MARKET @ %s (orderId=%s)",
+                symbol, close_side, tp_price, result["tp_order_id"],
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to place protective TAKE_PROFIT_MARKET for %s @ %s: %s",
+                symbol, tp_price, exc,
+            )
+
+        return result
+
+    def _cancel_symbol_orders(self, symbol: str) -> None:
+        """Cancel all open (incl. conditional SL/TP) orders for a symbol. Best-effort."""
+        if self._client is None:
+            return
+        try:
+            self._client.futures_cancel_all_open_orders(symbol=symbol)
+            logger.debug("Cancelled all open orders for %s", symbol)
+        except Exception as exc:
+            logger.warning("Failed to cancel open orders for %s: %s", symbol, exc)
+
     def get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch the current open position for a symbol from Binance."""
         if self._client is None:
@@ -618,6 +706,15 @@ class ExecutionAgent:
                 )
             trade_dict["entry_price"] = filled_price
 
+            # Snap SL/TP to the actual fill and place exchange-side protective
+            # orders so the position survives a bot outage.
+            sl_price, tp_price = self.refine_sl_tp_prices(
+                symbol, side, filled_price, sl_price, tp_price
+            )
+            trade_dict["sl_price"] = sl_price
+            trade_dict["tp_price"] = tp_price
+            self.place_protective_orders(symbol, side, sl_price, tp_price)
+
             if self.repository:
                 trade_id = self.repository.insert_trade(trade_dict)
                 self.repository.log_event(
@@ -709,6 +806,9 @@ class ExecutionAgent:
             order = self._place_reduce_only_order(symbol, side, qty)
         if order is None:
             return None
+
+        # Remove the resting exchange-side SL/TP orders left from the entry
+        self._cancel_symbol_orders(symbol)
 
         exit_price = float(order.get("avgPrice", 0) or 0)
         if exit_price == 0.0:
@@ -969,6 +1069,10 @@ class ExecutionAgent:
             sl, tp = self.refine_sl_tp_prices(symbol, direction, filled_price, sl, tp)
             trade_dict["sl_price"] = sl
             trade_dict["tp_price"] = tp
+
+            # Place exchange-side SL/TP so the position is protected even if the
+            # bot stops running. The in-loop monitor remains as a backup.
+            self.place_protective_orders(symbol, direction, sl, tp)
 
             if self.repository:
                 trade_id = self.repository.insert_trade(trade_dict)
