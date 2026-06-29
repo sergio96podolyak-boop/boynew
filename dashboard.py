@@ -150,8 +150,13 @@ def _time_ago(ts_str: str) -> str:
     return f"לפני {int(delta // 3600)} שע׳"
 
 
-def _agent_is_live(ts_str: str, max_sec: int = 30) -> bool:
-    """True if the agent reported within max_sec — i.e. the loop is alive."""
+def _agent_is_live(ts_str: str, max_sec: int = 180) -> bool:
+    """True if the agent reported within max_sec — i.e. the loop is alive.
+
+    A full HFT scan over the whole universe (training a model per symbol) can
+    take ~a minute, so an agent may legitimately go quiet between loops — use a
+    generous window so a healthy-but-slow engine still reads as alive.
+    """
     try:
         ts = datetime.fromisoformat(ts_str)
         if ts.tzinfo is None:
@@ -194,7 +199,7 @@ def render_agent_constellation(summary: dict) -> None:
         y = cy + r * math.sin(ang)
         row = summary.get(key)
         status = (row or {}).get("status", "idle")
-        if not row or not _agent_is_live(row.get("timestamp", ""), 30):
+        if not row or not _agent_is_live(row.get("timestamp", ""), 180):
             status = "idle"
         color, _ = STATUS_STYLE.get(status, STATUS_STYLE["idle"])
         flowing = status in ("active", "working")
@@ -420,7 +425,7 @@ for agent_key, icon, label in AGENT_META:
     if row:
         status = row.get("status", "idle")
         # An agent that hasn't reported recently is shown as idle regardless
-        if not _agent_is_live(row.get("timestamp", ""), max_sec=30):
+        if not _agent_is_live(row.get("timestamp", ""), max_sec=180):
             status = "idle"
         color, pulsing = STATUS_STYLE.get(status, STATUS_STYLE["idle"])
         action = (row.get("action") or "").upper()
