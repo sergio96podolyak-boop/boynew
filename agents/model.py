@@ -43,35 +43,40 @@ class TradingModel:
         logger.info("TradingModel initialized")
 
     def _get_xgboost_model(self) -> object:
-        """Create XGBoost or sklearn fallback model."""
-        params = {
-            'n_estimators': 200,
-            'max_depth': 6,
-            'learning_rate': 0.05,
-            'eval_metric': 'mlogloss' if XGBOOST_AVAILABLE else 'log_loss',
-            'use_label_encoder': False if XGBOOST_AVAILABLE else None,
-            'random_state': 42,
-            'n_jobs': -1,
-            'verbose': 0
-        }
+        """
+        Create a *regularized* XGBoost (or sklearn fallback) model.
 
-        # Remove use_label_encoder for non-XGBoost models
-        if not XGBOOST_AVAILABLE:
-            params.pop('use_label_encoder')
-
-        try:
-            return XGBClassifier(**params)
-        except TypeError as e:
-            logger.warning(f"Error creating XGBoost model: {e}, using basic params")
-            basic_params = {
-                'n_estimators': 200,
-                'max_depth': 6,
+        The data per symbol is tiny (~150 candles), so a deep, high-tree model
+        memorizes the window (train acc ~1.0) and emits fake 97% confidence on
+        unseen data. Shallow depth + subsampling + L2 keeps it honest.
+        """
+        if XGBOOST_AVAILABLE:
+            params = {
+                'n_estimators': 120,
+                'max_depth': 3,
                 'learning_rate': 0.05,
+                'subsample': 0.8,
+                'colsample_bytree': 0.8,
+                'min_child_weight': 3,
+                'gamma': 0.1,
+                'reg_lambda': 1.5,
+                'eval_metric': 'mlogloss',
                 'random_state': 42,
                 'n_jobs': -1,
-                'verbose': 0
             }
-            return XGBClassifier(**basic_params)
+            try:
+                return XGBClassifier(**params)
+            except TypeError as e:
+                logger.warning(f"Error creating XGBoost model: {e}, using basic params")
+
+        # sklearn GradientBoosting fallback (no xgboost-only kwargs)
+        return XGBClassifier(
+            n_estimators=120,
+            max_depth=3,
+            learning_rate=0.05,
+            subsample=0.8,
+            random_state=42,
+        )
 
     def train(
         self,
@@ -168,6 +173,19 @@ class TradingModel:
             train_accuracy = model.score(X_train, y_train)
             test_accuracy = model.score(X_test, y_test)
 
+            # Reliability: how much better than the majority-class baseline is the
+            # model out-of-sample? A model that only matches "always predict the
+            # most common class" has NO edge → reliability ~0 → its confidence is
+            # later discounted to near-zero so it never triggers a trade.
+            if len(y_test) > 0:
+                baseline = float(np.bincount(y_test).max()) / float(len(y_test))
+            else:
+                baseline = 1.0
+            reliability = 0.0
+            if baseline < 1.0:
+                reliability = (test_accuracy - baseline) / (1.0 - baseline)
+            reliability = float(min(1.0, max(0.0, reliability)))
+
             # Store model and scaler
             self.models[symbol] = model
             self.scalers[symbol] = scaler
@@ -175,15 +193,16 @@ class TradingModel:
             self.training_history[symbol] = {
                 'train_accuracy': train_accuracy,
                 'test_accuracy': test_accuracy,
+                'baseline': baseline,
+                'reliability': reliability,
                 'n_samples': len(X_clean),
                 'n_features': len(feature_names),
                 'unique_classes': len(unique_classes)
             }
 
             logger.info(
-                f"{symbol}: Model trained successfully | "
-                f"Train Acc: {train_accuracy:.3f} | Test Acc: {test_accuracy:.3f} | "
-                f"Samples: {len(X_clean)} | Classes: {unique_classes.tolist()}"
+                f"{symbol}: Model trained | Train: {train_accuracy:.3f} | Test: {test_accuracy:.3f} | "
+                f"Baseline: {baseline:.3f} | Reliability: {reliability:.2f} | Samples: {len(X_clean)}"
             )
             return True
 
@@ -244,11 +263,21 @@ class TradingModel:
             # Get probability for predicted class
             class_idx = np.argmax(probabilities)
             probability = float(probabilities[class_idx])
-            score = probability * 100
+
+            # Discount the score by the model's real out-of-sample reliability.
+            # An overfit model that prints 0.97 but has no edge (reliability ~0)
+            # collapses to a near-zero score → it never crosses the entry
+            # threshold → no trade. Only genuinely skilled models score high.
+            reliability = float(self.training_history.get(symbol, {}).get('reliability', 0.0))
+            score = probability * reliability * 100.0
+
+            # No demonstrated edge → don't even suggest a direction
+            if reliability < 0.1:
+                direction = 'FLAT'
 
             logger.debug(
-                f"{symbol}: Prediction - {direction} | Score: {score:.1f} | "
-                f"Probs: {probabilities}"
+                f"{symbol}: {direction} | Score: {score:.1f} "
+                f"(prob={probability:.2f} × reliability={reliability:.2f}) | Probs: {probabilities}"
             )
             return (direction, score, probability)
 
