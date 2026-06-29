@@ -160,6 +160,100 @@ def _agent_is_live(ts_str: str, max_sec: int = 30) -> bool:
     except (ValueError, TypeError):
         return False
 
+
+# Static CSS/markup for the animated constellation (no f-string → braces stay literal)
+_CONSTELLATION_CSS = """
+<style>
+  .cst-wrap { background:radial-gradient(circle at 50% 45%,#0b1830 0%,#060b14 70%);
+    border:1px solid #16263c; border-radius:16px; padding:6px; overflow:hidden; }
+  .cst-spin { animation: cst-spin 40s linear infinite; transform-origin:450px 250px; }
+  @keyframes cst-spin { to { transform: rotate(360deg); } }
+  .cst-ring-on { animation: cst-pulse 1.5s ease-out infinite; }
+  @keyframes cst-pulse { 0% { r:30; opacity:.9; } 100% { r:52; opacity:0; } }
+  .cst-core { animation: cst-core 2.2s ease-in-out infinite; transform-origin:450px 250px; }
+  @keyframes cst-core { 0%,100% { opacity:.5; r:52; } 50% { opacity:1; r:60; } }
+  .cst-flow { stroke-dasharray:5 9; animation: cst-dash 1s linear infinite; }
+  @keyframes cst-dash { to { stroke-dashoffset:-28; } }
+  .cst-label { font:600 14px ui-sans-serif,system-ui; }
+  .cst-act { font:700 10px ui-monospace,monospace; letter-spacing:.5px; }
+</style>
+"""
+
+
+def render_agent_constellation(summary: dict) -> None:
+    """Animated agent network: nodes orbiting a core, with flowing links + pulses."""
+    import math
+    import streamlit.components.v1 as components
+
+    cx, cy, r = 450, 250, 180
+    paths, particles, nodes = [], [], []
+
+    for i, (key, icon, label) in enumerate(AGENT_META):
+        ang = math.radians(-90 + i * (360 / len(AGENT_META)))
+        x = cx + r * math.cos(ang)
+        y = cy + r * math.sin(ang)
+        row = summary.get(key)
+        status = (row or {}).get("status", "idle")
+        if not row or not _agent_is_live(row.get("timestamp", ""), 30):
+            status = "idle"
+        color, _ = STATUS_STYLE.get(status, STATUS_STYLE["idle"])
+        flowing = status in ("active", "working")
+        action = ((row or {}).get("action") or "ממתין").upper()
+
+        # connection line core→node
+        line_cls = "cst-flow" if flowing else ""
+        line_op = "0.85" if flowing else "0.15"
+        paths.append(
+            f'<line x1="{cx}" y1="{cy}" x2="{x:.0f}" y2="{y:.0f}" stroke="{color}" '
+            f'stroke-width="2" opacity="{line_op}" class="{line_cls}"/>'
+        )
+        # a data particle traveling core→node when active
+        if flowing:
+            dur = 1.6 if status == "working" else 2.4
+            particles.append(
+                f'<circle r="4.5" fill="{color}">'
+                f'<animateMotion dur="{dur}s" repeatCount="indefinite" '
+                f'path="M{cx},{cy} L{x:.0f},{y:.0f}"/>'
+                f'<animate attributeName="opacity" values="0;1;1;0" dur="{dur}s" repeatCount="indefinite"/>'
+                f'</circle>'
+            )
+        # node
+        ring = f'<circle r="30" fill="none" stroke="{color}" stroke-width="2.5" class="cst-ring-on"/>' if flowing else ""
+        nodes.append(
+            f'<g transform="translate({x:.0f},{y:.0f})">'
+            f'{ring}'
+            f'<circle r="30" fill="#0a1424" stroke="{color}" stroke-width="2"/>'
+            f'<circle r="30" fill="{color}" opacity="0.10"/>'
+            f'<text text-anchor="middle" dy="9" font-size="26">{icon}</text>'
+            f'<text text-anchor="middle" y="50" class="cst-label" fill="#dce8f7">{label}</text>'
+            f'<text text-anchor="middle" y="68" class="cst-act" fill="{color}">{action}</text>'
+            f'</g>'
+        )
+
+    svg = (
+        '<svg viewBox="0 0 900 520" width="100%" style="max-height:520px">'
+        '<defs><radialGradient id="cstCore" cx="50%" cy="50%" r="50%">'
+        '<stop offset="0%" stop-color="#4fc3f7"/><stop offset="100%" stop-color="#0d3b66"/>'
+        '</radialGradient></defs>'
+        '<g class="cst-spin">'
+        f'<circle cx="{cx}" cy="{cy}" r="205" fill="none" stroke="#1e3350" stroke-width="1.5" stroke-dasharray="3 12"/>'
+        f'<circle cx="{cx}" cy="{cy}" r="150" fill="none" stroke="#16273f" stroke-width="1" stroke-dasharray="2 14"/>'
+        '</g>'
+        + "".join(paths)
+        + "".join(particles)
+        + f'<circle cx="{cx}" cy="{cy}" r="52" fill="none" stroke="#4fc3f7" stroke-width="2" class="cst-core"/>'
+        + f'<circle cx="{cx}" cy="{cy}" r="44" fill="url(#cstCore)"/>'
+        + f'<text x="{cx}" y="{cy - 4}" text-anchor="middle" font-size="30">🛰️</text>'
+        + f'<text x="{cx}" y="{cy + 22}" text-anchor="middle" class="cst-act" fill="#cdeafe">CORE</text>'
+        + "".join(nodes)
+        + '</svg>'
+    )
+    components.html(
+        f'<div class="cst-wrap">{_CONSTELLATION_CSS}{svg}</div>',
+        height=540,
+        scrolling=False,
+    )
+
 # ---------------------------------------------------------------------------
 # Load data from DB
 # ---------------------------------------------------------------------------
@@ -315,6 +409,9 @@ if agent_summary:
     st.markdown(colored_badge(live_badge, live_color), unsafe_allow_html=True)
 else:
     st.info("עדיין אין פעילות סוכנים. הרץ את `main.py` — הכרטיסים יתחילו לזוז ברגע שהלולאה עולה.")
+
+# Animated agent constellation (nodes orbiting a core with flowing links)
+render_agent_constellation(agent_summary)
 
 # Agent cards grid
 cards_html = ['<div class="agent-grid">']
