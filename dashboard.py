@@ -1680,7 +1680,9 @@ def _perf_snapshot_24h() -> dict:
         gl = abs(_safe_float(s.get("gross_loss"), 0.0))
         out["pf"] = gp / gl if gl > 0 else (2.0 if gp > 0 else 0.0)
         if out["trades"] >= 20:
-            if out["pf"] >= 1.5 and out["wr"] >= 0.50:
+            if out["pf"] >= 2.0 and out["wr"] >= 0.55 and out["trades"] >= 30:
+                out["mult"] = 2.0
+            elif out["pf"] >= 1.5 and out["wr"] >= 0.50:
                 out["mult"] = 1.5
             elif out["pf"] >= 1.2 and out["wr"] >= 0.45:
                 out["mult"] = 1.25
@@ -1923,6 +1925,7 @@ _steps = [
     ("1.0", "ניטרלי", _lad["mult"] == 1.0),
     ("1.25", "מוכח", _lad["mult"] == 1.25),
     ("1.5", "רווחי חזק", _lad["mult"] == 1.5),
+    ("2.0", "מקסימום מורווח", _lad["mult"] == 2.0),
 ]
 _steps_html = "".join(
     f'<div class="perf-step{" on" if on else ""}"><span class="x">×{x}</span>{name}</div>'

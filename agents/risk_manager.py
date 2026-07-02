@@ -449,6 +449,14 @@ class RiskManagerAgent:
             tier_pct = self.config.size_base_pct
             tier = "BASE"
 
+        # Stop distance first — sizing below derives from it (risk parity)
+        atr_pct = atr / entry_price if entry_price > 0 else 0.005
+        tw = {"BASE": 0.85, "HIGH": 1.0, "EXTREME": 1.15}.get(tier, 1.0)
+        scaled = atr_pct * tw
+        # Apply dynamic SL/TP multipliers from trade history analysis
+        sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled * self._sl_multiplier))
+        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4 * self._tp_multiplier))
+
         # Portfolio sizing: divide balance equally among max open positions
         max_pos = max(1, self.config.hft_max_open_positions)
         slice_margin = current_balance / max_pos  # equal share per position
@@ -461,7 +469,7 @@ class RiskManagerAgent:
         # Apply Kelly fraction — reduce sizing when win rate / R:R is poor
         notional *= self._kelly_fraction
         # Performance escalator — size follows proven recent results
-        notional *= max(0.5, min(1.5, self._performance_multiplier))
+        notional *= max(0.5, min(2.0, self._performance_multiplier))
 
         active_drawdown = self._drawdown_pct
         if self.peak_balance > 0 and current_balance > 0:
@@ -499,12 +507,24 @@ class RiskManagerAgent:
         # Hard caps: normal trades stay inside one equal slice; high-conviction
         # trades may use unused room, but never above the configured margin cap.
         normal_cap = slice_margin * self.config.leverage
-        margin_cap = current_balance * self.config.max_margin_fraction * self.config.leverage
+        # Earned margin release: only while the escalator proves a strong
+        # recent edge does the per-position margin cap open 25% -> 30%.
+        margin_fraction = self.config.max_margin_fraction
+        if self._performance_multiplier >= 1.5:
+            margin_fraction = min(0.30, margin_fraction * 1.2)
+        margin_cap = current_balance * margin_fraction * self.config.leverage
         max_notional = min(
             margin_cap if margin_cap > 0 else normal_cap,
             normal_cap * max(1.0, size_multiplier),
         )
         notional = min(notional, max_notional)
+
+        # Risk parity: constant dollar risk per trade regardless of stop width.
+        # Volatile symbols get wide stops with smaller size (room to breathe);
+        # calm symbols get tight stops with bigger size (real dollars per win).
+        risk_budget_pct = float(getattr(self.config, "max_risk_pct", 0.0) or 0.0)
+        if risk_budget_pct > 0 and sl_pct > 0:
+            notional = min(notional, (current_balance * risk_budget_pct) / sl_pct)
 
         # Minimum notional (USDT position size) avoids tiny trades, but it must
         # not freeze a small live account after drawdown or transfer-out events.
@@ -524,12 +544,6 @@ class RiskManagerAgent:
 
         qty = notional / entry_price if entry_price > 0 else 0.0
 
-        atr_pct = atr / entry_price if entry_price > 0 else 0.005
-        tw = {"BASE": 0.85, "HIGH": 1.0, "EXTREME": 1.15}.get(tier, 1.0)
-        scaled = atr_pct * tw
-        # Apply dynamic SL/TP multipliers from trade history analysis
-        sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled * self._sl_multiplier))
-        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4 * self._tp_multiplier))
         runner_mode = (
             bool(getattr(self.config, "trend_runner_enabled", False))
             and score >= float(getattr(self.config, "trend_runner_min_score", 999.0) or 999.0)

@@ -448,10 +448,11 @@ class TradeAnalyzer:
         so escalation happens the moment results justify it — not on a calendar.
 
         Ladder (profit factor = gross_profit / |gross_loss| over the window):
-          PF >= 1.5 and wr >= 0.50 -> 1.5x
-          PF >= 1.2 and wr >= 0.45 -> 1.25x
-          PF <  0.8                -> 0.7x (bleeding: cut size)
-          otherwise                -> 1.0x
+          PF >= 2.0 and wr >= 0.55 and n >= 30 -> 2.0x (also opens margin cap to 30%)
+          PF >= 1.5 and wr >= 0.50             -> 1.5x (also opens margin cap to 30%)
+          PF >= 1.2 and wr >= 0.45             -> 1.25x
+          PF <  0.8                            -> 0.7x (bleeding: cut size)
+          otherwise                            -> 1.0x
         Hard margin caps in RiskManager still bound the final notional.
         """
         ins.performance_size_multiplier = 1.0
@@ -469,7 +470,9 @@ class TradeAnalyzer:
         wr = float(stats.get("win_rate", 0) or 0.0)
         pf = gross_profit / gross_loss if gross_loss > 0 else (2.0 if gross_profit > 0 else 0.0)
 
-        if pf >= 1.5 and wr >= 0.50:
+        if pf >= 2.0 and wr >= 0.55 and total >= 30:
+            ins.performance_size_multiplier = 2.0
+        elif pf >= 1.5 and wr >= 0.50:
             ins.performance_size_multiplier = 1.5
         elif pf >= 1.2 and wr >= 0.45:
             ins.performance_size_multiplier = 1.25
