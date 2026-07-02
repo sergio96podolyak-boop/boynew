@@ -17,6 +17,7 @@ Refreshed every N loops (default 50) — not every tick, to keep DB load low.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -74,6 +75,10 @@ class TradeInsights:
     # Kelly-inspired sizing fraction (0.0 = don't trade, 1.0 = full size)
     kelly_fraction: float = 1.0
 
+    # Performance escalator: earned aggression. >1 only after the recent
+    # window PROVES a positive edge (profit factor); <1 when it's negative.
+    performance_size_multiplier: float = 1.0
+
     # Model health: if False, ML predictions are unreliable
     model_healthy: bool = True
 
@@ -109,6 +114,34 @@ class TradeAnalyzer:
         self._refresh_count = 0
         self._consecutive_losses = 0
         self._last_loss_ts: float = 0.0
+        self.cooldown_enabled = os.getenv("SMART_COOLDOWN_ENABLED", "true").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        # Blacklist a symbol whose cumulative loss is deep even when its win
+        # rate looks fine — a 50% wr symbol can still bleed via oversized losses.
+        self.symbol_blacklist_max_loss = float(
+            os.getenv("SYMBOL_BLACKLIST_MAX_LOSS_USDT", "2.0")
+        )
+        self.cooldown_loss_threshold = int(os.getenv("COOLDOWN_LOSS_THRESHOLD", "3"))
+        self.cooldown_minutes = float(os.getenv("COOLDOWN_MINUTES", "3"))
+        self.severe_cooldown_loss_threshold = int(os.getenv("SEVERE_COOLDOWN_LOSS_THRESHOLD", "5"))
+        self.severe_cooldown_minutes = float(os.getenv("SEVERE_COOLDOWN_MINUTES", "10"))
+        self.kelly_enabled = os.getenv("KELLY_SIZING_ENABLED", "true").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        # Performance escalator: size follows PROVEN recent results, checked on
+        # every analyzer refresh — no calendar waiting, no manual toggling.
+        self.perf_escalator_enabled = os.getenv(
+            "PERF_ESCALATOR_ENABLED", "true"
+        ).lower() in {"1", "true", "yes", "on"}
+        self.perf_escalator_hours = float(os.getenv("PERF_ESCALATOR_HOURS", "24"))
+        self.perf_escalator_min_trades = int(os.getenv("PERF_ESCALATOR_MIN_TRADES", "20"))
 
     @property
     def insights(self) -> TradeInsights:
@@ -122,8 +155,13 @@ class TradeAnalyzer:
         if pnl <= 0:
             self._consecutive_losses += 1
             self._last_loss_ts = time.time()
-            if self._consecutive_losses >= 5:
-                cooldown_minutes = 10
+            if not self.cooldown_enabled:
+                return
+            if (
+                self.severe_cooldown_loss_threshold > 0
+                and self._consecutive_losses >= self.severe_cooldown_loss_threshold
+            ):
+                cooldown_minutes = self.severe_cooldown_minutes
                 self._insights.cooldown_active = True
                 self._insights.cooldown_until = time.time() + cooldown_minutes * 60
                 self._insights.cooldown_reason = (
@@ -132,8 +170,11 @@ class TradeAnalyzer:
                 logger.warning(
                     "COOLDOWN ACTIVATED: %s", self._insights.cooldown_reason
                 )
-            elif self._consecutive_losses >= 3:
-                cooldown_minutes = 3
+            elif (
+                self.cooldown_loss_threshold > 0
+                and self._consecutive_losses >= self.cooldown_loss_threshold
+            ):
+                cooldown_minutes = self.cooldown_minutes
                 self._insights.cooldown_active = True
                 self._insights.cooldown_until = time.time() + cooldown_minutes * 60
                 self._insights.cooldown_reason = (
@@ -241,7 +282,7 @@ class TradeAnalyzer:
 
             # 3. Per-symbol analysis: blacklist + score adjustments
             symbol_stats = self.repo.get_symbol_stats(
-                min_trades=self.min_trades_for_symbol_action,
+                min_trades=min(3, self.min_trades_for_symbol_action),
                 hours_back=self.lookback_hours,
             )
             for ss in symbol_stats:
@@ -255,6 +296,18 @@ class TradeAnalyzer:
                     logger.warning(
                         "TradeAnalyzer: BLACKLISTING %s (win_rate=%.0f%%, trades=%d, pnl=%.4f)",
                         sym, sym_wr * 100, sym_trades, sym_pnl,
+                    )
+                elif (
+                    self.symbol_blacklist_max_loss > 0
+                    and sym_pnl <= -self.symbol_blacklist_max_loss
+                    and sym_trades >= 3
+                ):
+                    ins.symbol_blacklist.add(sym)
+                    logger.warning(
+                        "TradeAnalyzer: BLACKLISTING %s by cumulative loss "
+                        "(pnl=%.2f <= -%.2f, trades=%d, win_rate=%.0f%%)",
+                        sym, sym_pnl, self.symbol_blacklist_max_loss,
+                        sym_trades, sym_wr * 100,
                     )
 
                 if sym_trades >= self.min_trades_for_symbol_action:
@@ -286,6 +339,9 @@ class TradeAnalyzer:
 
             # 6. Kelly-inspired position sizing
             self._compute_kelly_fraction(ins, overall)
+
+            # 6b. Performance escalator — earned aggression
+            self._compute_performance_multiplier(ins)
 
             # 7. Time-of-day analysis
             self._compute_hour_stats(ins)
@@ -342,21 +398,28 @@ class TradeAnalyzer:
         - If take_profit rarely hits → TP is too ambitious → tighten (multiplier < 1)
         - If stop_loss has decent win_rate → SL is well calibrated → keep
         """
-        sl_stats = None
-        tp_stats = None
-        for rs in reason_stats:
-            if rs.get("close_reason") == "stop_loss":
-                sl_stats = rs
-            elif rs.get("close_reason") == "take_profit":
-                tp_stats = rs
+        # An exit recorded through exchange reconcile (e.g.
+        # stop_loss_exchange_reconcile) is the same outcome as its in-loop
+        # twin, and profit_lock/profit_take/scalp exits ARE captured profit —
+        # counting only the bare reasons made TP look like it "never hits"
+        # (because profit_lock fires first) and shrank winners further.
+        def _exits(prefixes: tuple) -> int:
+            return sum(
+                (rs.get("trades", 0) or 0)
+                for rs in reason_stats
+                if any(str(rs.get("close_reason") or "").startswith(p) for p in prefixes)
+            )
+
+        sl_trades = _exits(("stop_loss",))
+        tp_trades = _exits(("take_profit", "scalp_take_profit", "profit_lock", "profit_take"))
 
         total_exits = sum((rs.get("trades", 0) or 0) for rs in reason_stats)
         if total_exits < 10:
             return  # Not enough data
 
         # SL analysis: if SL hits > 50% of exits, it's too tight
-        if sl_stats:
-            sl_pct_of_exits = (sl_stats.get("trades", 0) or 0) / max(total_exits, 1)
+        if sl_trades:
+            sl_pct_of_exits = sl_trades / max(total_exits, 1)
             if sl_pct_of_exits > 0.50:
                 ins.sl_multiplier = 1.3  # widen SL by 30%
                 logger.info("TradeAnalyzer: SL too tight (%.0f%% of exits) → widening 30%%", sl_pct_of_exits * 100)
@@ -366,9 +429,9 @@ class TradeAnalyzer:
                 ins.sl_multiplier = 0.9  # tighten SL — rarely hits, can be closer
                 logger.info("TradeAnalyzer: SL rarely hits (%.0f%%) → tightening 10%%", sl_pct_of_exits * 100)
 
-        # TP analysis: if TP hits < 20% of exits, it's too ambitious
-        if tp_stats:
-            tp_pct_of_exits = (tp_stats.get("trades", 0) or 0) / max(total_exits, 1)
+        # TP analysis: if profit capture (any form) rarely happens, TP is too ambitious
+        if tp_trades:
+            tp_pct_of_exits = tp_trades / max(total_exits, 1)
             if tp_pct_of_exits < 0.15:
                 ins.tp_multiplier = 0.7  # tighten TP — take profits earlier
                 logger.info("TradeAnalyzer: TP too ambitious (only %.0f%% hit) → tightening 30%%", tp_pct_of_exits * 100)
@@ -378,6 +441,47 @@ class TradeAnalyzer:
                 ins.tp_multiplier = 1.2  # TP hitting easily, can be more ambitious
                 logger.info("TradeAnalyzer: TP hits often (%.0f%%) → widening 20%%", tp_pct_of_exits * 100)
 
+    def _compute_performance_multiplier(self, ins: TradeInsights) -> None:
+        """
+        Earned aggression: scale size UP only after the recent window proves a
+        positive edge, and DOWN while it is negative. Checked on every refresh,
+        so escalation happens the moment results justify it — not on a calendar.
+
+        Ladder (profit factor = gross_profit / |gross_loss| over the window):
+          PF >= 1.5 and wr >= 0.50 -> 1.5x
+          PF >= 1.2 and wr >= 0.45 -> 1.25x
+          PF <  0.8                -> 0.7x (bleeding: cut size)
+          otherwise                -> 1.0x
+        Hard margin caps in RiskManager still bound the final notional.
+        """
+        ins.performance_size_multiplier = 1.0
+        if not self.perf_escalator_enabled:
+            return
+        try:
+            stats = self.repo.get_overall_recent_stats(hours_back=int(self.perf_escalator_hours))
+        except Exception:
+            return
+        total = int(stats.get("total_trades", 0) or 0)
+        if total < self.perf_escalator_min_trades:
+            return
+        gross_profit = float(stats.get("gross_profit", 0) or 0.0)
+        gross_loss = abs(float(stats.get("gross_loss", 0) or 0.0))
+        wr = float(stats.get("win_rate", 0) or 0.0)
+        pf = gross_profit / gross_loss if gross_loss > 0 else (2.0 if gross_profit > 0 else 0.0)
+
+        if pf >= 1.5 and wr >= 0.50:
+            ins.performance_size_multiplier = 1.5
+        elif pf >= 1.2 and wr >= 0.45:
+            ins.performance_size_multiplier = 1.25
+        elif pf < 0.8:
+            ins.performance_size_multiplier = 0.7
+
+        if ins.performance_size_multiplier != 1.0:
+            logger.info(
+                "TradeAnalyzer: performance escalator %.2fx (PF=%.2f wr=%.0f%% over %d trades/%.0fh)",
+                ins.performance_size_multiplier, pf, wr * 100, total, self.perf_escalator_hours,
+            )
+
     def _compute_kelly_fraction(self, ins: TradeInsights, overall: Dict) -> None:
         """
         Kelly Criterion: f* = (p * b - q) / b
@@ -385,6 +489,11 @@ class TradeAnalyzer:
 
         We use half-Kelly for safety (f*/2).
         """
+        if not self.kelly_enabled:
+            ins.kelly_fraction = 1.0
+            logger.info("TradeAnalyzer Kelly sizing disabled by config — using full configured size")
+            return
+
         total = overall.get("total_trades", 0) or 0
         if total < 15:
             ins.kelly_fraction = 1.0  # Not enough data, use default sizing
@@ -440,7 +549,7 @@ class TradeAnalyzer:
         cursor = conn.execute(
             """
             SELECT
-                CAST(strftime('%%H', opened_at) AS INTEGER) AS hour_utc,
+                CAST(strftime('%H', opened_at) AS INTEGER) AS hour_utc,
                 COUNT(*) AS trades,
                 ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
                 ROUND(SUM(pnl), 6) AS total_pnl
@@ -461,7 +570,9 @@ class TradeAnalyzer:
             pnl = row["total_pnl"] or 0
             n = row["trades"] or 0
 
-            if wr < 0.30 and n >= 5 and pnl < 0:
+            # Two tiers: very bad on few trades, or consistently weak on many —
+            # hours like 33% wr across 27+ trades were slipping through.
+            if (wr < 0.30 and n >= 5 and pnl < 0) or (wr <= 0.35 and n >= 8 and pnl < 0):
                 ins.bad_hours_utc.add(hour)
                 logger.info(
                     "TradeAnalyzer: hour %02d UTC is BAD (wr=%.0f%%, pnl=%.4f, n=%d)",

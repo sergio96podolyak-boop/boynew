@@ -5,6 +5,9 @@ Handles per-symbol model training and prediction with fallback to sklearn.
 
 import logging
 import warnings
+import json
+import os
+import time
 from typing import Optional, Tuple, Dict, List
 import numpy as np
 import pandas as pd
@@ -26,6 +29,8 @@ except ImportError:
 
 # Suppress XGBoost warnings
 warnings.filterwarnings('ignore', category=UserWarning)
+
+_MODEL_HEALTH_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "model_health.json")
 
 
 class TradingModel:
@@ -155,14 +160,31 @@ class TradingModel:
                     "cannot train classifier"
                 )
                 return False
-
             # Scale features
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X_clean)
 
             # Train-test split
-            X_train, X_test, y_train, y_test = train_test_split(
+            X_train, X_test, y_train_raw, y_test_raw = train_test_split(
                 X_scaled, y_clean, test_size=0.2, shuffle=False
+            )
+
+            train_classes = np.unique(y_train_raw)
+            if len(train_classes) < 2:
+                logger.warning(
+                    f"{symbol}: Single class in training split ({train_classes}), "
+                    "cannot train classifier"
+                )
+                return False
+            class_labels = [int(cls) for cls in train_classes.tolist()]
+            class_to_idx = {label: idx for idx, label in enumerate(class_labels)}
+            y_train = np.array([class_to_idx[int(label)] for label in y_train_raw], dtype=int)
+
+            test_known_mask = np.isin(y_test_raw, train_classes)
+            X_test_eval = X_test[test_known_mask]
+            y_test = np.array(
+                [class_to_idx[int(label)] for label in y_test_raw[test_known_mask]],
+                dtype=int,
             )
 
             # Create and train model
@@ -171,7 +193,7 @@ class TradingModel:
 
             # Calculate accuracy
             train_accuracy = model.score(X_train, y_train)
-            test_accuracy = model.score(X_test, y_test)
+            test_accuracy = model.score(X_test_eval, y_test) if len(y_test) > 0 else 0.0
 
             # Reliability: how much better than the majority-class baseline is the
             # model out-of-sample? A model that only matches "always predict the
@@ -197,13 +219,15 @@ class TradingModel:
                 'reliability': reliability,
                 'n_samples': len(X_clean),
                 'n_features': len(feature_names),
-                'unique_classes': len(unique_classes)
+                'unique_classes': len(unique_classes),
+                'class_labels': class_labels,
             }
 
             logger.info(
                 f"{symbol}: Model trained | Train: {train_accuracy:.3f} | Test: {test_accuracy:.3f} | "
                 f"Baseline: {baseline:.3f} | Reliability: {reliability:.2f} | Samples: {len(X_clean)}"
             )
+            self._write_health_snapshot()
             return True
 
         except Exception as e:
@@ -255,10 +279,20 @@ class TradingModel:
             model = self.models[symbol]
             prediction = model.predict(feature_scaled)[0]
             probabilities = model.predict_proba(feature_scaled)[0]
+            class_labels = self.training_history.get(symbol, {}).get(
+                'class_labels',
+                [0, 1, 2],
+            )
 
             # Map prediction to direction (0=SHORT, 1=FLAT, 2=LONG)
             direction_map = {0: 'SHORT', 1: 'FLAT', 2: 'LONG'}
-            direction = direction_map.get(int(prediction), 'FLAT')
+            pred_idx = int(prediction)
+            pred_label = (
+                int(class_labels[pred_idx])
+                if 0 <= pred_idx < len(class_labels)
+                else pred_idx
+            )
+            direction = direction_map.get(pred_label, 'FLAT')
 
             # Get probability for predicted class
             class_idx = np.argmax(probabilities)
@@ -318,12 +352,54 @@ class TradingModel:
         """Get training statistics for a symbol."""
         return self.training_history.get(symbol)
 
+    def _write_health_snapshot(self) -> None:
+        """Publish per-symbol model health for dashboard/research agents."""
+        try:
+            rows = {}
+            reliabilities = []
+            healthy = 0
+            for symbol, stats in self.training_history.items():
+                reliability = float(stats.get("reliability", 0.0) or 0.0)
+                reliabilities.append(reliability)
+                if reliability >= 0.10:
+                    healthy += 1
+                rows[symbol] = {
+                    "train_accuracy": float(stats.get("train_accuracy", 0.0) or 0.0),
+                    "test_accuracy": float(stats.get("test_accuracy", 0.0) or 0.0),
+                    "baseline": float(stats.get("baseline", 0.0) or 0.0),
+                    "reliability": reliability,
+                    "n_samples": int(stats.get("n_samples", 0) or 0),
+                    "n_features": int(stats.get("n_features", 0) or 0),
+                    "unique_classes": int(stats.get("unique_classes", 0) or 0),
+                    "class_labels": [int(x) for x in stats.get("class_labels", [])],
+                    "calls_since_train": int(self.call_counts.get(symbol, 0) or 0),
+                    "healthy": reliability >= 0.10,
+                }
+
+            avg_reliability = float(np.mean(reliabilities)) if reliabilities else 0.0
+            payload = {
+                "updated_at": time.time(),
+                "model_type": "XGBoost" if XGBOOST_AVAILABLE else "GradientBoosting",
+                "aggregate": {
+                    "trained_symbols": len(rows),
+                    "healthy_symbols": healthy,
+                    "avg_reliability": avg_reliability,
+                },
+                "symbols": rows,
+            }
+            os.makedirs(os.path.dirname(_MODEL_HEALTH_FILE), exist_ok=True)
+            with open(_MODEL_HEALTH_FILE, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            logger.debug("model health snapshot write failed: %s", exc)
+
     def reset_symbol(self, symbol: str) -> None:
         """Reset all data for a symbol."""
         self.models.pop(symbol, None)
         self.scalers.pop(symbol, None)
         self.call_counts.pop(symbol, None)
         self.training_history.pop(symbol, None)
+        self._write_health_snapshot()
         logger.info(f"{symbol}: Model reset")
 
     def reset_all(self) -> None:
@@ -332,4 +408,5 @@ class TradingModel:
         self.scalers.clear()
         self.call_counts.clear()
         self.training_history.clear()
+        self._write_health_snapshot()
         logger.info("All models reset")

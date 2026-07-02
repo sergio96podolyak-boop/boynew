@@ -38,8 +38,21 @@ fi
 
 # 4) הפעלה — main.py מריץ את המנוע וגם מעלה את הדשבורד
 echo ""
+if [[ " $* " == *" --live "* ]]; then
+  echo "🔴 מפעיל LIVE רק אם .env כולל LIVE_TRADING_ENABLED=true + אישור סיכון."
+  echo "   אם זה נעצר — זו נעילת בטיחות, לא קריסה."
+  RUN_ENV=()
+else
+  echo "🟡 מפעיל PAPER גם אם .env מכוון ללייב — בלי כסף אמיתי."
+  RUN_ENV=(PAPER_TRADING=true)
+fi
 echo "🚀 מפעיל את הבוט + הדשבורד..."
 echo "🌐 פתח בדפדפן:  http://localhost:8501"
 echo "   (לעצירה: Ctrl+C)"
 echo ""
-exec ./venv/bin/python main.py "$@"
+# מונע מהמק להירדם בזמן שהבוט רץ — שינה = לולאה קפואה ופוזיציות בלי ניהול
+if command -v caffeinate >/dev/null 2>&1; then
+  exec env "${RUN_ENV[@]}" caffeinate -is ./venv/bin/python main.py "$@"
+else
+  exec env "${RUN_ENV[@]}" ./venv/bin/python main.py "$@"
+fi

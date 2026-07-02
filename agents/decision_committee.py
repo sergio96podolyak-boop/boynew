@@ -33,6 +33,7 @@ class CommitteeDecision:
     consensus: float
     votes_for: int
     votes_total: int
+    high_conviction: bool = False
     reasons: List[str] = field(default_factory=list)
     hard_blocks: List[str] = field(default_factory=list)
     decided_at: float = field(default_factory=time.time)
@@ -52,8 +53,13 @@ class DecisionCommitteeAgent:
         opportunity: Dict[str, Any],
         *,
         news_agent: Optional[Any] = None,
+        catalyst_agent: Optional[Any] = None,
         regime_agent: Optional[Any] = None,
+        flow_agent: Optional[Any] = None,
+        capital_agent: Optional[Any] = None,
+        indirect_agent: Optional[Any] = None,
         open_positions: Optional[Dict[str, Any]] = None,
+        drawdown_pct: float = 0.0,
     ) -> CommitteeDecision:
         symbol = opportunity.get("symbol", "")
         direction = opportunity.get("direction", "LONG")
@@ -91,6 +97,23 @@ class DecisionCommitteeAgent:
                 vote("News", False, "unavailable")
                 score -= 1.0
 
+        # Symbol-specific catalysts: listings/delistings/security incidents.
+        if catalyst_agent is not None:
+            try:
+                catalyst = catalyst_agent.assess_trade(symbol=symbol, direction=direction)
+                score += float(catalyst.get("score_adjustment", 0.0))
+                size_mult *= float(catalyst.get("size_multiplier", 1.0))
+                hard = bool(catalyst.get("hard_block", False))
+                vote(
+                    "Catalyst",
+                    bool(catalyst.get("vote", catalyst.get("approved", True))),
+                    catalyst.get("reason", "neutral"),
+                    hard_block=hard,
+                )
+            except Exception as exc:
+                logger.debug("Catalyst committee check failed: %s", exc)
+                vote("Catalyst", True, "unavailable")
+
         # Broad market regime vote
         if regime_agent is not None:
             try:
@@ -102,6 +125,71 @@ class DecisionCommitteeAgent:
                 logger.debug("Regime committee check failed: %s", exc)
                 vote("Regime", False, "unavailable")
                 score -= 1.0
+
+        # Order-flow / positioning vote
+        if flow_agent is not None:
+            try:
+                flow = flow_agent.assess_trade(symbol=symbol, direction=direction)
+                score += float(getattr(flow, "score_adjustment", 0.0))
+                size_mult *= float(getattr(flow, "size_multiplier", 1.0))
+                vote(
+                    "Flow",
+                    bool(getattr(flow, "vote", getattr(flow, "approved", True))),
+                    getattr(flow, "reason", "neutral"),
+                    hard_block=bool(getattr(flow, "hard_block", False)),
+                )
+            except Exception as exc:
+                logger.debug("Flow committee check failed: %s", exc)
+                vote("Flow", True, "unavailable")
+
+        # Capital allocation vote: can reduce or boost size, but never hard-blocks
+        # unless a future allocator explicitly marks a hard block.
+        if capital_agent is not None:
+            try:
+                capital = capital_agent.assess_trade(
+                    opportunity,
+                    open_positions=open_positions,
+                    drawdown_pct=drawdown_pct,
+                )
+                score += float(getattr(capital, "score_adjustment", 0.0))
+                size_mult *= float(getattr(capital, "size_multiplier", 1.0))
+                vote("Capital", bool(getattr(capital, "vote", True)), getattr(capital, "reason", "normal"))
+            except Exception as exc:
+                logger.debug("Capital allocator check failed: %s", exc)
+                vote("Capital", True, "unavailable")
+
+        # Indirect Grid/DCA/Arbitrage advisory vote. It cannot place orders;
+        # it only adjusts score/size before RiskManager and exchange SL/TP.
+        if indirect_agent is not None:
+            try:
+                indirect = indirect_agent.assess_trade(
+                    opportunity,
+                    open_positions=open_positions,
+                    drawdown_pct=drawdown_pct,
+                )
+                score += float(getattr(indirect, "score_adjustment", 0.0))
+                size_mult *= float(getattr(indirect, "size_multiplier", 1.0))
+                vote(
+                    "Indirect",
+                    bool(getattr(indirect, "vote", True)),
+                    getattr(indirect, "reason", "neutral"),
+                )
+            except Exception as exc:
+                logger.debug("Indirect strategy check failed: %s", exc)
+                vote("Indirect", True, "unavailable")
+
+        funding_reason = opportunity.get("funding_risk") or ""
+        funding_penalty = float(opportunity.get("funding_penalty", 0.0) or 0.0)
+        funding_size = float(opportunity.get("funding_size_multiplier", 1.0) or 1.0)
+        if funding_reason or funding_penalty > 0:
+            size_mult *= max(0.10, min(1.0, funding_size))
+            vote(
+                "Funding",
+                funding_penalty < 5.0,
+                funding_reason or f"penalty {funding_penalty:.1f}",
+            )
+        else:
+            vote("Funding", True, "normal")
 
         # Portfolio-context vote: do not stack too aggressively in one direction.
         open_positions = open_positions or {}
@@ -128,7 +216,41 @@ class DecisionCommitteeAgent:
             else self.config.decision_min_consensus
         )
         approved = not hard_blocks and consensus >= min_consensus and score_pass
-        size_mult = max(0.10, min(1.0, size_mult))
+
+        high_conviction = False
+        max_size_mult = 1.0
+        funding_ok = funding_penalty <= self.config.high_conviction_max_funding_penalty
+        if approved and self.config.high_conviction_enabled:
+            high_conviction = (
+                score >= self.config.high_conviction_min_score
+                and consensus >= self.config.high_conviction_min_consensus
+                and funding_ok
+            )
+            if high_conviction:
+                max_size_mult = max(1.0, self.config.high_conviction_size_multiplier)
+                size_mult *= max_size_mult
+                reasons.append(
+                    "HighConviction: "
+                    f"score {score:.1f}, consensus {consensus:.0%}, size boost {max_size_mult:.2f}x"
+                )
+        if (
+            approved
+            and getattr(self.config, "capital_allocator_enabled", False)
+            and score >= float(getattr(self.config, "capital_allocator_min_score", 999.0) or 999.0)
+            and consensus >= self.config.high_conviction_min_consensus
+            and funding_ok
+        ):
+            capital_max = max(
+                1.0,
+                float(getattr(self.config, "capital_allocator_size_multiplier", 1.0) or 1.0),
+            )
+            max_size_mult = max(max_size_mult, capital_max)
+            reasons.append(
+                "CapitalAllocator: "
+                f"score {score:.1f}, consensus {consensus:.0%}, max size {capital_max:.2f}x"
+            )
+
+        size_mult = max(0.10, min(max_size_mult, size_mult))
 
         decision = CommitteeDecision(
             approved=approved,
@@ -141,6 +263,7 @@ class DecisionCommitteeAgent:
             consensus=consensus,
             votes_for=votes_for,
             votes_total=votes_total,
+            high_conviction=high_conviction,
             reasons=reasons,
             hard_blocks=hard_blocks,
         )
@@ -152,6 +275,7 @@ class DecisionCommitteeAgent:
             detail = (
                 f"{symbol} {direction} consensus={consensus:.0%} "
                 f"score={score:.1f} size={size_mult:.2f}"
+                + (" HC" if high_conviction else "")
             )
             self.monitor.report(
                 "Decision",

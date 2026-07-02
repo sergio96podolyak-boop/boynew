@@ -202,6 +202,30 @@ class TradeRepository:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def cancel_open_paper_trades(self, reason: str = "paper_session_reset") -> int:
+        """
+        Mark open paper trades as cancelled at startup.
+
+        Paper positions live only in process memory; after the process stops,
+        leftover DB rows are stale and should not appear as real open exposure.
+        """
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute(
+            """
+            UPDATE trades
+            SET status = 'cancelled',
+                closed_at = COALESCE(closed_at, ?),
+                close_reason = COALESCE(close_reason, ?),
+                pnl = COALESCE(pnl, 0.0),
+                pnl_pct = COALESCE(pnl_pct, 0.0)
+            WHERE status = 'open'
+            """,
+            (now, reason),
+        )
+        conn.commit()
+        return int(cursor.rowcount or 0)
+
     def get_trade_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Return the most recent closed/cancelled trades."""
         conn = self._get_conn()
@@ -506,7 +530,9 @@ class TradeRepository:
                    SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) AS losses,
                    ROUND(SUM(pnl), 6)                AS total_pnl,
                    ROUND(AVG(pnl), 6)                AS avg_pnl,
-                   ROUND(AVG(pnl_pct), 4)            AS avg_pnl_pct
+                   ROUND(AVG(pnl_pct), 4)            AS avg_pnl_pct,
+                   ROUND(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 6)  AS gross_profit,
+                   ROUND(SUM(CASE WHEN pnl <= 0 THEN pnl ELSE 0 END), 6) AS gross_loss
             FROM trades
             WHERE status = 'closed' AND pnl IS NOT NULL
               AND closed_at >= datetime('now', '-' || ? || ' hours')
@@ -518,7 +544,11 @@ class TradeRepository:
             d = dict(row)
             d["win_rate"] = round(d["wins"] / d["total_trades"], 4) if d["total_trades"] else 0
             return d
-        return {"total_trades": 0, "wins": 0, "losses": 0, "total_pnl": 0, "avg_pnl": 0, "avg_pnl_pct": 0, "win_rate": 0}
+        return {
+            "total_trades": 0, "wins": 0, "losses": 0, "total_pnl": 0,
+            "avg_pnl": 0, "avg_pnl_pct": 0, "win_rate": 0,
+            "gross_profit": 0, "gross_loss": 0,
+        }
 
     def get_score_bracket_stats(self, hours_back: int = 48) -> List[Dict[str, Any]]:
         """
@@ -589,11 +619,15 @@ class TradeRepository:
         cumulative = 0.0
         peak = 0.0
         max_drawdown = 0.0
+        max_drawdown_abs = 0.0
         for p in pnls:
             cumulative += p
             if cumulative > peak:
                 peak = cumulative
-            dd = (peak - cumulative) / peak if peak > 0 else 0.0
+            dd_abs = peak - cumulative
+            if dd_abs > max_drawdown_abs:
+                max_drawdown_abs = dd_abs
+            dd = dd_abs / peak if peak > 0 else 0.0
             if dd > max_drawdown:
                 max_drawdown = dd
 
@@ -618,6 +652,7 @@ class TradeRepository:
             "total_pnl": round(total_pnl, 4),
             "avg_pnl": round(avg_pnl, 4),
             "max_drawdown": round(max_drawdown, 4),
+            "max_drawdown_abs": round(max_drawdown_abs, 4),
             "sharpe_ratio": round(sharpe, 4),
         }
 

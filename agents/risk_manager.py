@@ -93,12 +93,18 @@ class RiskManagerAgent:
         self._adaptive_score_entry: Optional[float] = None
         # Exit reasons that history shows are net-negative (set externally by TradeAnalyzer)
         self._bad_exit_reasons: set = set()
+        # UTC hours that history shows are net-negative (set externally by
+        # TradeAnalyzer) — entries are blocked during them, exits unaffected.
+        self._bad_hours_utc: set = set()
         # Kelly-inspired fraction for position sizing (0.1–1.0, set by TradeAnalyzer)
         self._kelly_fraction: float = 1.0
+        # Performance escalator (0.5–1.5, set by TradeAnalyzer): earned
+        # aggression — proven recent edge sizes up, negative edge sizes down.
+        self._performance_multiplier: float = 1.0
         # Dynamic SL/TP multipliers from trade history
         self._sl_multiplier: float = 1.0
         self._tp_multiplier: float = 1.0
-        # Model health flag — if False, reject all entries
+        # Model health flag — can reject or only warn, depending on config
         self._model_healthy: bool = True
 
     # ------------------------------------------------------------------
@@ -275,6 +281,41 @@ class RiskManagerAgent:
             return current_price <= position.tp_price
         return False
 
+    @staticmethod
+    def favorable_move_pct(position: Position, current_price: float) -> float:
+        if position.entry_price <= 0:
+            return 0.0
+        if position.side == "LONG":
+            return (current_price - position.entry_price) / position.entry_price
+        if position.side == "SHORT":
+            return (position.entry_price - current_price) / position.entry_price
+        return 0.0
+
+    @staticmethod
+    def peak_profit_pct(position: Position) -> float:
+        if position.entry_price <= 0:
+            return 0.0
+        if position.side == "LONG":
+            return (position.peak_price - position.entry_price) / position.entry_price
+        if position.side == "SHORT":
+            return (position.entry_price - position.peak_price) / position.entry_price
+        return 0.0
+
+    @staticmethod
+    def retrace_from_peak_pct(position: Position, current_price: float) -> float:
+        if position.peak_price <= 0:
+            return 0.0
+        if position.side == "LONG":
+            return (position.peak_price - current_price) / position.peak_price
+        if position.side == "SHORT":
+            return (current_price - position.peak_price) / position.peak_price
+        return 0.0
+
+    def estimated_roundtrip_cost_pct(self) -> float:
+        fee = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
+        buffer = float(getattr(self.config, "profit_edge_buffer_pct", 0.0) or 0.0)
+        return max(0.0, fee * 2.0 + buffer)
+
     def register_open_position(self, position: Position) -> None:
         self.open_positions[position.symbol] = position
 
@@ -376,7 +417,7 @@ class RiskManagerAgent:
     ) -> RiskDecision:
         if self.kill_switch:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Kill switch")
-        if not self._model_healthy:
+        if not self._model_healthy and self.config.block_when_model_unhealthy:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Model unhealthy — predictions unreliable")
         if len(open_positions) >= self.config.hft_max_open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Max positions")
@@ -388,6 +429,14 @@ class RiskManagerAgent:
         if score < effective_threshold:
             return RiskDecision(
                 False, 0.0, 0.0, 0.0, f"Score {score:.1f} < {effective_threshold}"
+            )
+
+        # Historically losing hours: no new entries (exit management continues)
+        hour_utc = datetime.now(timezone.utc).hour
+        if hour_utc in self._bad_hours_utc:
+            return RiskDecision(
+                False, 0.0, 0.0, 0.0,
+                f"Hour {hour_utc:02d} UTC historically loses — entries paused",
             )
 
         if score >= self.config.score_extreme:
@@ -411,28 +460,66 @@ class RiskManagerAgent:
         notional = slice_margin * adj_pct * self.config.leverage
         # Apply Kelly fraction — reduce sizing when win rate / R:R is poor
         notional *= self._kelly_fraction
-        # Apply external committee sizing (news/regime/live risk). Never increases risk.
-        size_multiplier = max(0.10, min(1.0, float(size_multiplier or 1.0)))
+        # Performance escalator — size follows proven recent results
+        notional *= max(0.5, min(1.5, self._performance_multiplier))
+
+        active_drawdown = self._drawdown_pct
+        if self.peak_balance > 0 and current_balance > 0:
+            active_drawdown = max(
+                active_drawdown,
+                (self.peak_balance - current_balance) / self.peak_balance,
+            )
+
+        max_size_multiplier = 1.0
+        if (
+            self.config.high_conviction_enabled
+            and active_drawdown <= self.config.high_conviction_max_drawdown_pct
+        ):
+            max_size_multiplier = max(1.0, self.config.high_conviction_size_multiplier)
+        if (
+            getattr(self.config, "capital_allocator_enabled", False)
+            and active_drawdown <= self.config.high_conviction_max_drawdown_pct
+        ):
+            max_size_multiplier = max(
+                max_size_multiplier,
+                float(getattr(self.config, "capital_allocator_size_multiplier", 1.0) or 1.0),
+            )
+
+        size_multiplier = max(0.10, min(max_size_multiplier, float(size_multiplier or 1.0)))
+        if (
+            self.config.drawdown_size_reduction_enabled
+            and active_drawdown >= self.config.drawdown_size_reduction_start_pct
+        ):
+            size_multiplier *= self.config.drawdown_size_multiplier
+
+        # Apply external committee sizing. It can increase only for high-conviction
+        # setups and only while drawdown is inside the configured comfort zone.
         notional *= size_multiplier
-        # Hard-cap: never exceed one full slice × leverage
-        max_notional = slice_margin * self.config.leverage
+
+        # Hard caps: normal trades stay inside one equal slice; high-conviction
+        # trades may use unused room, but never above the configured margin cap.
+        normal_cap = slice_margin * self.config.leverage
+        margin_cap = current_balance * self.config.max_margin_fraction * self.config.leverage
+        max_notional = min(
+            margin_cap if margin_cap > 0 else normal_cap,
+            normal_cap * max(1.0, size_multiplier),
+        )
         notional = min(notional, max_notional)
 
-        # Minimum notional (USDT position size) — avoids tiny “penny” trades; still respects cap above.
+        # Minimum notional (USDT position size) avoids tiny trades, but it must
+        # not freeze a small live account after drawdown or transfer-out events.
         min_n = float(self.config.hft_min_notional_usdt or 0.0)
         if min_n > 0 and max_notional > 0:
             if max_notional < min_n - 1e-9:
-                return RiskDecision(
-                    False,
-                    0.0,
-                    0.0,
-                    0.0,
-                    (
-                        f"Max notional {max_notional:.2f} USDT < HFT_MIN_NOTIONAL_USDT "
-                        f"({min_n:.2f}) — increase balance or raise max_margin / leverage"
-                    ),
+                logger.warning(
+                    "%s: recovery sizing: affordable max notional %.2f is below "
+                    "configured HFT_MIN_NOTIONAL_USDT %.2f; using affordable cap",
+                    symbol,
+                    max_notional,
+                    min_n,
                 )
-            notional = max(notional, min(min_n, max_notional))
+                min_n = max_notional
+            notional = max(notional, min_n)
         notional = min(notional, max_notional)
 
         qty = notional / entry_price if entry_price > 0 else 0.0
@@ -443,6 +530,14 @@ class RiskManagerAgent:
         # Apply dynamic SL/TP multipliers from trade history analysis
         sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled * self._sl_multiplier))
         tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4 * self._tp_multiplier))
+        runner_mode = (
+            bool(getattr(self.config, "trend_runner_enabled", False))
+            and score >= float(getattr(self.config, "trend_runner_min_score", 999.0) or 999.0)
+        )
+        if runner_mode:
+            runner_tp_max = float(getattr(self.config, "trend_runner_tp_max_pct", self.config.tp_max_pct) or self.config.tp_max_pct)
+            runner_mult = float(getattr(self.config, "trend_runner_tp_multiplier", 1.0) or 1.0)
+            tp_pct = min(max(self.config.tp_max_pct, runner_tp_max), max(tp_pct * runner_mult, tp_pct))
 
         if direction == "LONG":
             sl_price = entry_price * (1 - sl_pct)
@@ -452,7 +547,7 @@ class RiskManagerAgent:
             tp_price = entry_price * (1 - tp_pct)
 
         logger.info(
-            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f size_mult=%.2f",
+            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f size_mult=%.2f%s",
             symbol,
             direction,
             score,
@@ -463,8 +558,10 @@ class RiskManagerAgent:
             sl_pct * 100,
             tp_pct * 100,
             size_multiplier,
+            " runner=on" if runner_mode else "",
         )
-        return RiskDecision(True, qty, sl_price, tp_price, f"{tier} score={score:.1f} size={size_multiplier:.2f}")
+        runner_note = " runner" if runner_mode else ""
+        return RiskDecision(True, qty, sl_price, tp_price, f"{tier}{runner_note} score={score:.1f} size={size_multiplier:.2f}")
 
     def check_exits(
         self,
@@ -481,6 +578,67 @@ class RiskManagerAgent:
             # Update trailing stop
             self.update_trailing_stop(pos, px)
 
+            age = (now - pos.opened_at).total_seconds()
+            move = self.favorable_move_pct(pos, px)
+            peak_profit = self.peak_profit_pct(pos)
+            retrace = self.retrace_from_peak_pct(pos, px)
+
+            # Bank a clean scalp even if the exchange-side TP is farther away.
+            profit_take_pct = float(getattr(self.config, "profit_take_pct", 0.0) or 0.0)
+            min_profitable_move = self.estimated_roundtrip_cost_pct()
+            profit_take_age = float(
+                getattr(self.config, "profit_take_min_age_seconds", 0.0) or 0.0
+            )
+            runner_mode = (
+                bool(getattr(self.config, "trend_runner_enabled", False))
+                and pos.score_at_entry >= float(getattr(self.config, "trend_runner_min_score", 999.0) or 999.0)
+            )
+            if (
+                bool(getattr(self.config, "high_conviction_enabled", False))
+                and pos.score_at_entry >= float(getattr(self.config, "high_conviction_min_score", 999.0))
+            ):
+                profit_take_pct *= float(
+                    getattr(self.config, "high_conviction_profit_take_multiplier", 1.0) or 1.0
+                )
+            if runner_mode:
+                profit_take_pct *= float(
+                    getattr(self.config, "trend_runner_profit_take_multiplier", 1.0) or 1.0
+                )
+                profit_take_age = max(
+                    profit_take_age,
+                    float(getattr(self.config, "trend_runner_min_age_seconds", 0.0) or 0.0),
+                )
+            profit_take_pct = max(profit_take_pct, min_profitable_move)
+            if profit_take_pct > 0 and age >= profit_take_age and move >= profit_take_pct:
+                exits.append({"symbol": sym, "reason": "scalp_take_profit"})
+                continue
+
+            # If a trade was nicely profitable but starts giving it back, close
+            # while it is still green instead of waiting for a full round-trip.
+            if bool(getattr(self.config, "profit_lock_enabled", True)):
+                trigger = float(getattr(self.config, "profit_lock_trigger_pct", 0.0) or 0.0)
+                retrace_pct = float(getattr(self.config, "profit_lock_retrace_pct", 0.0) or 0.0)
+                min_net = float(getattr(self.config, "profit_lock_min_net_pct", 0.0) or 0.0)
+                if runner_mode:
+                    trigger = max(
+                        trigger,
+                        float(getattr(self.config, "trend_runner_lock_trigger_pct", trigger) or trigger),
+                    )
+                    retrace_pct = max(
+                        retrace_pct,
+                        float(getattr(self.config, "trend_runner_retrace_pct", retrace_pct) or retrace_pct),
+                    )
+                min_net = max(min_net, min_profitable_move)
+                if (
+                    trigger > 0
+                    and retrace_pct > 0
+                    and peak_profit >= trigger
+                    and retrace >= retrace_pct
+                    and move >= min_net
+                ):
+                    exits.append({"symbol": sym, "reason": "profit_lock"})
+                    continue
+
             if self.is_sl_hit(pos, px):
                 exits.append({"symbol": sym, "reason": "stop_loss"})
                 continue
@@ -488,17 +646,11 @@ class RiskManagerAgent:
                 exits.append({"symbol": sym, "reason": "take_profit"})
                 continue
 
-            age = (now - pos.opened_at).total_seconds()
-
             # ── Fast exit: no movement in 30-45 seconds ──
             # Skip if trade history shows this exit type loses money
             if "fast_exit_no_move" not in self._bad_exit_reasons:
                 fast_sec = self.config.fast_exit_seconds
                 if fast_sec > 0 and age >= fast_sec:
-                    if pos.side == "LONG":
-                        move = (px - pos.entry_price) / pos.entry_price
-                    else:
-                        move = (pos.entry_price - px) / pos.entry_price
                     if move < self.config.min_favorable_move_pct:
                         exits.append({"symbol": sym, "reason": "fast_exit_no_move"})
                         continue
@@ -526,10 +678,6 @@ class RiskManagerAgent:
             if "stale_no_move" not in self._bad_exit_reasons:
                 se = self.config.stale_exit_seconds
                 if se > 0 and age >= se:
-                    if pos.side == "LONG":
-                        move = (px - pos.entry_price) / pos.entry_price
-                    else:
-                        move = (pos.entry_price - px) / pos.entry_price
                     if move < self.config.min_favorable_move_pct:
                         exits.append({"symbol": sym, "reason": "stale_no_move"})
 

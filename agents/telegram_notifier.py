@@ -43,11 +43,13 @@ def _save_subscribers(path: str, subs: Set[str]) -> None:
 class TelegramNotifier:
     """שולח הודעות עדכון למסחר בעברית לכל המנויים — עיצוב מקצועי."""
 
-    def __init__(self, token: str, owner_chat_id: str):
+    def __init__(self, token: str, owner_chat_id: str, enabled: bool = True):
         self.token = token
-        self._enabled = bool(token)
-        self._subscribers: Set[str] = _load_subscribers(_SUBSCRIBERS_FILE)
-        if owner_chat_id:
+        self._enabled = bool(enabled and token)
+        self._subscribers: Set[str] = (
+            _load_subscribers(_SUBSCRIBERS_FILE) if enabled else set()
+        )
+        if enabled and owner_chat_id:
             self._subscribers.add(str(owner_chat_id))
             _save_subscribers(_SUBSCRIBERS_FILE, self._subscribers)
         self._update_offset: int = 0
@@ -60,6 +62,8 @@ class TelegramNotifier:
             logger.info("TelegramNotifier מוכן — %d מנויים", len(self._subscribers))
             t = threading.Thread(target=self._poll_loop, daemon=True)
             t.start()
+        elif not enabled:
+            logger.info("TelegramNotifier כבוי לפי TELEGRAM_ENABLED=false")
         else:
             logger.warning("TelegramNotifier — לא הוגדר token, הודעות מבוטלות")
 
@@ -127,6 +131,8 @@ class TelegramNotifier:
             "fast_exit_no_move": "⚡ יציאה מהירה — אין תנועה",
             "opposite_pressure": "🔄 לחץ הפוך — מגמה התהפכה",
             "trailing_stop": "📉 טריילינג סטופ",
+            "profit_lock": "🔒 נעילת רווח",
+            "scalp_take_profit": "🎯 לקיחת רווח מהירה",
             "KILL_SWITCH": "🚨 קיל סוויץ'",
         }
         reason_he = reason_map.get(reason, reason)
@@ -363,7 +369,7 @@ def get_notifier() -> Optional[TelegramNotifier]:
     return _instance
 
 
-def init_notifier(token: str, chat_id: str) -> TelegramNotifier:
+def init_notifier(token: str, chat_id: str, enabled: bool = True) -> TelegramNotifier:
     global _instance
-    _instance = TelegramNotifier(token=token, owner_chat_id=chat_id)
+    _instance = TelegramNotifier(token=token, owner_chat_id=chat_id, enabled=enabled)
     return _instance

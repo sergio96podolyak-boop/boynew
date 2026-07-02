@@ -19,3 +19,11 @@ dashboard.log
 
 # news/sentiment runtime snapshot
 data/sentiment.json
+data/live_guard.json
+data/market_regime.json
+data/decision_state.json
+
+# runtime artifacts
+logs/
+data/opportunity_radar.json
+.env.backup-*

@@ -43,7 +43,10 @@ def show_db(repo: TradeRepository) -> None:
         print(f"  אחוז הצלחה    : {stats['win_rate'] * 100:.1f}%")
         print(f"  רווח/הפסד מצטבר: {_fmt_money(stats['total_pnl'])} USDT")
         print(f"  ממוצע לעסקה   : {_fmt_money(stats['avg_pnl'])} USDT")
-        print(f"  Max drawdown  : {stats['max_drawdown'] * 100:.1f}%")
+        if "max_drawdown_abs" in stats:
+            print(f"  Max drawdown  : {_fmt_money(stats['max_drawdown_abs'])} USDT")
+        else:
+            print(f"  Max drawdown  : {stats['max_drawdown'] * 100:.1f}%")
         print(f"  Sharpe        : {stats['sharpe_ratio']}")
 
     _hr("עסקאות פתוחות כרגע")
@@ -91,8 +94,18 @@ def show_db(repo: TradeRepository) -> None:
         print(f"  זמן     : {s['timestamp']}")
         print(f"  מאזן    : {_fmt_money(s['balance'])} USDT")
         print(f"  Equity  : {_fmt_money(s['equity'])} USDT")
-        print(f"  PnL כולל: {_fmt_money(s['total_pnl'])} ({s['total_pnl_pct'] * 100:.2f}%)")
-        print(f"  פתוחות  : {s['open_positions']} | win_rate={s['win_rate'] * 100:.1f}%")
+        total_pnl = float(s["total_pnl"] or 0.0)
+        equity = float(s["equity"] or 0.0)
+        starting_equity = equity - total_pnl
+        if starting_equity > 0:
+            pnl_pct = total_pnl / starting_equity
+        else:
+            pnl_pct = float(s["total_pnl_pct"] or 0.0)
+            if abs(pnl_pct) > 1:
+                pnl_pct /= 100.0
+        print(f"  PnL כולל: {_fmt_money(s['total_pnl'])} ({pnl_pct * 100:.2f}%)")
+        wr = s["win_rate"] / 100.0 if s["win_rate"] > 1 else s["win_rate"]
+        print(f"  פתוחות  : {s['open_positions']} | win_rate={wr * 100:.1f}%")
 
     _hr("10 אירועי מערכת אחרונים")
     for e in repo.get_recent_events(limit=10):
@@ -129,23 +142,59 @@ def show_live() -> None:
                 f"lev={p['leverage']}x"
             )
 
-        # Open orders — this is where the new SL/TP protective orders show up
+        # Open protective orders. Newer Binance accounts expose conditional
+        # SL/TP through the Algo Order API instead of regular open orders.
         try:
-            open_orders = client.futures_get_open_orders()
+            regular_orders = client.futures_get_open_orders()
         except Exception as exc:
             print(f"  (לא ניתן למשוך הוראות פתוחות: {exc})")
-            open_orders = []
-        print(f"\n  הוראות הגנה פתוחות (SL/TP על הבורסה): {len(open_orders)}")
-        for o in open_orders:
+            regular_orders = []
+
+        algo_orders = []
+        for p in positions:
+            try:
+                response = client._request_futures_api(
+                    "get",
+                    "openAlgoOrders",
+                    signed=True,
+                    data={"symbol": p["symbol"], "algoType": "CONDITIONAL"},
+                )
+                if isinstance(response, list):
+                    algo_orders.extend(response)
+                elif isinstance(response, dict):
+                    algo_orders.extend(response.get("orders", []))
+            except Exception as exc:
+                print(f"  (לא ניתן למשוך Algo orders עבור {p['symbol']}: {exc})")
+
+        protective_regular = [
+            o for o in regular_orders
+            if o.get("type") in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}
+        ]
+        all_protective = protective_regular + algo_orders
+        print(f"\n  הוראות הגנה פתוחות (SL/TP על הבורסה): {len(all_protective)}")
+        protected_symbols = set()
+        for o in protective_regular:
+            protected_symbols.add(o.get("symbol"))
             print(
                 f"    {o.get('symbol'):12} {o.get('type'):20} "
                 f"side={o.get('side'):4} stop={o.get('stopPrice')} "
                 f"closePosition={o.get('closePosition')}"
             )
-        if not open_orders and positions:
+        for o in algo_orders:
+            sym = o.get("symbol")
+            protected_symbols.add(sym)
             print(
-                "  ⚠️  יש פוזיציה פתוחה אבל אין הוראות הגנה על הבורסה — "
-                "הפוזיציה מוגנת רק כל עוד הבוט רץ."
+                f"    {sym:12} {o.get('type') or o.get('orderType') or 'ALGO':20} "
+                f"side={o.get('side'):4} stop={o.get('triggerPrice') or o.get('stopPrice')} "
+                f"closePosition={o.get('closePosition')} algoId={o.get('algoId')}"
+            )
+        missing_protection = [
+            p["symbol"] for p in positions if p["symbol"] not in protected_symbols
+        ]
+        if missing_protection:
+            print(
+                "  ⚠️  יש פוזיציה פתוחה בלי הוראות הגנה על הבורסה: "
+                f"{', '.join(missing_protection)} — הפוזיציה מוגנת רק כל עוד הבוט רץ."
             )
     except Exception as exc:
         print(f"  שגיאה במשיכת מצב חי: {exc}")
@@ -154,7 +203,10 @@ def show_live() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bot status summary")
     parser.add_argument("--live", action="store_true", help="Also fetch live Binance state")
+    parser.add_argument("--paper", action="store_true", help="Display status with PAPER mode label")
     args = parser.parse_args()
+    if args.paper:
+        config.paper_trading = True
 
     print(f"\nboynew — status @ {datetime.now().isoformat(timespec='seconds')}")
     print(f"mode: {'PAPER' if config.paper_trading else 'LIVE'} | "
