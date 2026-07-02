@@ -108,6 +108,14 @@ class TradingConfig:
     momentum_min_price_change_pct: float = field(
         default_factory=lambda: _env_float("MOMENTUM_MIN_PRICE_CHANGE_PCT", "5")
     )
+    # Fee guard: commissions were the #1 account bleed (69% of losses over
+    # 48h). Budget entries per hour and cool down re-entries per symbol.
+    max_entries_per_hour: int = field(
+        default_factory=lambda: _env_int("MAX_ENTRIES_PER_HOUR", "6")
+    )
+    symbol_reentry_cooldown_seconds: float = field(
+        default_factory=lambda: _env_float("SYMBOL_REENTRY_COOLDOWN_SECONDS", "600")
+    )
     # DEX Watch → scanner: inject Hyperliquid hot movers that also trade on
     # Binance futures into the scan universe (all entry gates still apply).
     dex_hot_scan_enabled: bool = field(
@@ -644,6 +652,10 @@ class TradingConfig:
             raise ValueError("momentum_min_price_change_pct must be >= 0")
         if self.dex_hot_top_n < 0:
             raise ValueError("dex_hot_top_n must be >= 0")
+        if self.max_entries_per_hour < 0:
+            raise ValueError("max_entries_per_hour must be >= 0")
+        if self.symbol_reentry_cooldown_seconds < 0:
+            raise ValueError("symbol_reentry_cooldown_seconds must be >= 0")
         if self.discovery_score_bonus_max < 0:
             raise ValueError("discovery_score_bonus_max must be >= 0")
         if self.technical_fallback_min_score < 0:

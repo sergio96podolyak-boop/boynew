@@ -5,6 +5,7 @@ Risk management: legacy (assess_risk + ExecutionAgent) + aggressive HFT (evaluat
 from __future__ import annotations
 
 import logging
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -96,6 +97,10 @@ class RiskManagerAgent:
         # UTC hours that history shows are net-negative (set externally by
         # TradeAnalyzer) — entries are blocked during them, exits unaffected.
         self._bad_hours_utc: set = set()
+        # Fee guard: commissions were 69% of the account bleed (17.48 USDT in
+        # 48h vs 7.78 to the market). Entry budget + re-entry cooldown cut churn.
+        self._entry_times: deque = deque(maxlen=300)
+        self._last_exit_ts: Dict[str, float] = {}
         # Kelly-inspired fraction for position sizing (0.1–1.0, set by TradeAnalyzer)
         self._kelly_fraction: float = 1.0
         # Performance escalator (0.5–1.5, set by TradeAnalyzer): earned
@@ -318,9 +323,11 @@ class RiskManagerAgent:
 
     def register_open_position(self, position: Position) -> None:
         self.open_positions[position.symbol] = position
+        self._entry_times.append(time.time())
 
     def remove_position(self, symbol: str) -> None:
         self.open_positions.pop(symbol, None)
+        self._last_exit_ts[symbol] = time.time()
 
     def update_balance(self, new_balance: float) -> None:
         self._current_balance = new_balance
@@ -438,6 +445,26 @@ class RiskManagerAgent:
                 False, 0.0, 0.0, 0.0,
                 f"Hour {hour_utc:02d} UTC historically loses — entries paused",
             )
+
+        # Fee guard: churn is the #1 account bleed — every round trip costs
+        # ~0.1% of notional in commissions regardless of outcome.
+        now_ts = time.time()
+        reentry_cd = float(getattr(self.config, "symbol_reentry_cooldown_seconds", 0) or 0)
+        if reentry_cd > 0:
+            last_exit = self._last_exit_ts.get(symbol, 0.0)
+            if last_exit and now_ts - last_exit < reentry_cd:
+                return RiskDecision(
+                    False, 0.0, 0.0, 0.0,
+                    f"{symbol} re-entry cooldown {int(reentry_cd - (now_ts - last_exit))}s (fee guard)",
+                )
+        max_hourly = int(getattr(self.config, "max_entries_per_hour", 0) or 0)
+        if max_hourly > 0:
+            recent_entries = sum(1 for t in self._entry_times if now_ts - t < 3600)
+            if recent_entries >= max_hourly:
+                return RiskDecision(
+                    False, 0.0, 0.0, 0.0,
+                    f"Entry budget {max_hourly}/h reached — only the best setups trade (fee guard)",
+                )
 
         if score >= self.config.score_extreme:
             tier_pct = self.config.size_extreme_pct
