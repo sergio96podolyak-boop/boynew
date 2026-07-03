@@ -97,6 +97,9 @@ class RiskManagerAgent:
         # UTC hours that history shows are net-negative (set externally by
         # TradeAnalyzer) — entries are blocked during them, exits unaffected.
         self._bad_hours_utc: set = set()
+        # Trade-history blacklist enforced at the LAST gate so no signal path
+        # (scanner, TradingView, DEX inject, future agents) can bypass it.
+        self._symbol_blacklist: set = set()
         # Fee guard: commissions were 69% of the account bleed (17.48 USDT in
         # 48h vs 7.78 to the market). Entry budget + re-entry cooldown cut churn.
         self._entry_times: deque = deque(maxlen=300)
@@ -430,6 +433,10 @@ class RiskManagerAgent:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Max positions")
         if symbol in open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Symbol occupied")
+        if symbol in self._symbol_blacklist:
+            return RiskDecision(
+                False, 0.0, 0.0, 0.0, f"{symbol} blacklisted by trade history"
+            )
 
         # Use adaptive threshold from TradeAnalyzer if available
         effective_threshold = self._adaptive_score_entry if self._adaptive_score_entry is not None else self.config.score_entry

@@ -531,6 +531,7 @@ class TradingSystem:
             self.risk_agent._kelly_fraction = insights.kelly_fraction
             self.risk_agent._performance_multiplier = insights.performance_size_multiplier
             self.risk_agent._bad_hours_utc = insights.bad_hours_utc
+            self.risk_agent._symbol_blacklist = insights.symbol_blacklist
             self.risk_agent._sl_multiplier = insights.sl_multiplier
             self.risk_agent._tp_multiplier = insights.tp_multiplier
             self.risk_agent._model_healthy = insights.model_healthy
@@ -930,6 +931,7 @@ class TradingSystem:
                         self.risk_agent._kelly_fraction = insights.kelly_fraction
                         self.risk_agent._performance_multiplier = insights.performance_size_multiplier
                         self.risk_agent._bad_hours_utc = insights.bad_hours_utc
+                        self.risk_agent._symbol_blacklist = insights.symbol_blacklist
                         self.risk_agent._sl_multiplier = insights.sl_multiplier
                         self.risk_agent._tp_multiplier = insights.tp_multiplier
                         self.risk_agent._model_healthy = insights.model_healthy
@@ -1035,7 +1037,13 @@ class TradingSystem:
                     break
                 if tv_opps:
                     have = {o.get("symbol") for o in opportunities}
-                    opportunities.extend(o for o in tv_opps if o["symbol"] not in have)
+                    # TradingView entries must respect the trade-history
+                    # blacklist too — this path bypassed it (SYNUSDT incident)
+                    opportunities.extend(
+                        o for o in tv_opps
+                        if o["symbol"] not in have
+                        and not self.trade_analyzer.should_skip_symbol(o["symbol"])
+                    )
                     opportunities.sort(key=lambda o: o.get("score", 0), reverse=True)
 
                 # 4. Process opportunities: evaluate → enter
