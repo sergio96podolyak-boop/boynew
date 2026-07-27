@@ -328,17 +328,55 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  final List<MarketCustomer> _checkoutQueue = [];
+
   void _updateCustomers(double dt) {
     final removed = <MarketCustomer>[];
     final playerAtCheckout = _near(playerPosition, checkoutZone, 0.13);
 
+    _checkoutQueue.removeWhere(
+      (c) =>
+          !customers.contains(c) ||
+          (c.phase != CustomerPhase.checkout &&
+              c.phase != CustomerPhase.paying),
+    );
+
     for (final customer in customers) {
-      if (customer.phase == CustomerPhase.paying) {
-        if (playerAtCheckout) {
-          customer.phaseTime += dt;
-        }
-      } else {
+      if (customer.phase == CustomerPhase.shopping) {
         customer.phaseTime += dt;
+        if (shelfStock > 0 && customer.phaseTime >= 0.7) {
+          shelfStock--;
+          customer.hasProduct = true;
+          customer.phase = CustomerPhase.checkout;
+          customer.phaseTime = 0;
+          if (!_checkoutQueue.contains(customer)) {
+            _checkoutQueue.add(customer);
+          }
+        }
+      } else if (customer.phase == CustomerPhase.checkout &&
+          !_checkoutQueue.contains(customer)) {
+        _checkoutQueue.add(customer);
+      } else if (customer.phase == CustomerPhase.paying &&
+          !_checkoutQueue.contains(customer)) {
+        _checkoutQueue.insert(0, customer);
+      }
+    }
+
+    for (final customer in customers) {
+      final queueIndex = _checkoutQueue.indexOf(customer);
+
+      switch (customer.phase) {
+        case CustomerPhase.shopping:
+          break;
+        case CustomerPhase.entering:
+        case CustomerPhase.leaving:
+          customer.phaseTime += dt;
+        case CustomerPhase.checkout:
+          break;
+        case CustomerPhase.paying:
+          if (queueIndex == 0 && playerAtCheckout) {
+            customer.phaseTime += dt;
+          }
       }
 
       switch (customer.phase) {
@@ -349,15 +387,18 @@ class GameController extends ChangeNotifier {
             customer.phaseTime = 0;
           }
         case CustomerPhase.shopping:
-          if (shelfStock > 0 && customer.phaseTime >= 0.7) {
-            shelfStock--;
-            customer.hasProduct = true;
-            customer.phase = CustomerPhase.checkout;
-            customer.phaseTime = 0;
-          }
+          break;
         case CustomerPhase.checkout:
-          _moveCustomer(customer, checkoutZone + const Offset(-0.03, 0.1), dt);
-          if (_near(customer.position, checkoutZone, 0.12)) {
+          final effectiveIndex = queueIndex >= 0
+              ? queueIndex
+              : _checkoutQueue.length;
+          final queueTarget =
+              checkoutZone + Offset(-0.03, 0.10 + effectiveIndex * 0.075);
+          _moveCustomer(customer, queueTarget, dt);
+
+          if (queueIndex == 0 &&
+              playerAtCheckout &&
+              _near(customer.position, queueTarget, 0.04)) {
             customer.phase = CustomerPhase.paying;
             customer.phaseTime = 0;
           }
@@ -369,11 +410,13 @@ class GameController extends ChangeNotifier {
             totalActions++;
             customer.phase = CustomerPhase.leaving;
             customer.phaseTime = 0;
+            _checkoutQueue.remove(customer);
           }
         case CustomerPhase.leaving:
           _moveCustomer(customer, exit, dt);
           if (customer.position.dy < -0.04) {
             removed.add(customer);
+            _checkoutQueue.remove(customer);
           }
       }
     }
