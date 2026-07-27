@@ -330,9 +330,17 @@ class GameController extends ChangeNotifier {
 
   void _updateCustomers(double dt) {
     final removed = <MarketCustomer>[];
+    final playerAtCheckout = _near(playerPosition, checkoutZone, 0.13);
 
     for (final customer in customers) {
-      customer.phaseTime += dt;
+      if (customer.phase == CustomerPhase.paying) {
+        if (playerAtCheckout) {
+          customer.phaseTime += dt;
+        }
+      } else {
+        customer.phaseTime += dt;
+      }
+
       switch (customer.phase) {
         case CustomerPhase.entering:
           _moveCustomer(customer, shelfZone + const Offset(0.0, -0.11), dt);

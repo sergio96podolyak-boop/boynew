@@ -34,12 +34,12 @@ void main() {
     expect(game.stockedTotal, game.bagCapacity);
   });
 
-  test('stocked shelves create sales and coins', () {
+  test('stocked shelves create sales and coins when player is at checkout', () {
     game.debugSetPlayerPosition(GameController.stockZone);
     _advance(game, 2.2);
     game.debugSetPlayerPosition(GameController.shelfZone);
     _advance(game, 2);
-    game.debugSetPlayerPosition(const Offset(0.5, 0.72));
+    game.debugSetPlayerPosition(GameController.checkoutZone);
 
     final startingCoins = game.coins;
     _advance(game, 24);
@@ -47,6 +47,51 @@ void main() {
     expect(game.totalSales, greaterThan(0));
     expect(game.coins, greaterThan(startingCoins));
   });
+
+  test(
+    'customer payment requires player presence at checkout and pauses when player leaves',
+    () {
+      game.debugSetPlayerPosition(GameController.stockZone);
+      _advance(game, 2.2);
+      game.debugSetPlayerPosition(GameController.shelfZone);
+      _advance(game, 2);
+
+      // Player moves away from checkout
+      game.debugSetPlayerPosition(const Offset(0.5, 0.72));
+
+      // Advance time for customers to shop and reach checkout
+      _advance(game, 5);
+
+      // Verify a customer is waiting at checkout in paying phase
+      final payingCustomer = game.customers.firstWhere(
+        (c) => c.phase == CustomerPhase.paying,
+      );
+      expect(payingCustomer, isNotNull);
+      final initialPhaseTime = payingCustomer.phaseTime;
+
+      // 1. No payment while player is away
+      _advance(game, 3);
+      expect(game.totalSales, 0);
+      expect(payingCustomer.phaseTime, initialPhaseTime);
+
+      // 2. Payment begins while player is at checkout
+      game.debugSetPlayerPosition(GameController.checkoutZone);
+      _advance(game, 0.2);
+      expect(payingCustomer.phaseTime, greaterThan(initialPhaseTime));
+      final pausedPhaseTime = payingCustomer.phaseTime;
+
+      // 3. Payment pauses when player leaves
+      game.debugSetPlayerPosition(const Offset(0.5, 0.72));
+      _advance(game, 3);
+      expect(game.totalSales, 0);
+      expect(payingCustomer.phaseTime, pausedPhaseTime);
+
+      // 4. Payment resumes and completes when player returns
+      game.debugSetPlayerPosition(GameController.checkoutZone);
+      _advance(game, 2);
+      expect(game.totalSales, greaterThan(0));
+    },
+  );
 
   test('upgrades spend coins and persist', () async {
     game.coins = 500;
@@ -100,49 +145,46 @@ void main() {
     },
   );
 
-  test(
-    'daily bonus is awarded once per local day and grows the streak',
-    () async {
-      final bonusStorage = MemoryGameStorage();
-      var now = DateTime(2026, 7, 26, 9);
-      final first = GameController(
-        storage: bonusStorage,
-        monetization: PreviewMonetizationService(),
-        now: () => now,
-      );
-      await first.initialize();
-      final firstBalance = first.coins;
-      expect(first.dailyBonus.currentStreak, 1);
-      expect(first.pendingDailyBonus?.wasAwarded, isTrue);
-      await first.save();
+  test('daily bonus is awarded once per local day and grows the streak', () async {
+    final bonusStorage = MemoryGameStorage();
+    var now = DateTime(2026, 7, 26, 9);
+    final first = GameController(
+      storage: bonusStorage,
+      monetization: PreviewMonetizationService(),
+      now: () => now,
+    );
+    await first.initialize();
+    final firstBalance = first.coins;
+    expect(first.dailyBonus.currentStreak, 1);
+    expect(first.pendingDailyBonus?.wasAwarded, isTrue);
+    await first.save();
 
-      final sameDay = GameController(
-        storage: bonusStorage,
-        monetization: PreviewMonetizationService(),
-        now: () => now.add(const Duration(hours: 10)),
-      );
-      await sameDay.initialize();
-      expect(sameDay.coins, firstBalance);
-      expect(sameDay.pendingDailyBonus, isNull);
+    final sameDay = GameController(
+      storage: bonusStorage,
+      monetization: PreviewMonetizationService(),
+      now: () => now.add(const Duration(hours: 10)),
+    );
+    await sameDay.initialize();
+    expect(sameDay.coins, firstBalance);
+    expect(sameDay.pendingDailyBonus, isNull);
 
-      now = DateTime(2026, 7, 27, 8);
-      final nextDay = GameController(
-        storage: bonusStorage,
-        monetization: PreviewMonetizationService(),
-        now: () => now,
-      );
-      await nextDay.initialize();
-      expect(nextDay.dailyBonus.currentStreak, 2);
-      expect(nextDay.coins, greaterThan(firstBalance));
-    },
-  );
+    now = DateTime(2026, 7, 27, 8);
+    final nextDay = GameController(
+      storage: bonusStorage,
+      monetization: PreviewMonetizationService(),
+      now: () => now,
+    );
+    await nextDay.initialize();
+    expect(nextDay.dailyBonus.currentStreak, 2);
+    expect(nextDay.coins, greaterThan(firstBalance));
+  });
 
   test('achievement unlocks once and local leaderboard stays top ten', () {
     game.debugSetPlayerPosition(GameController.stockZone);
     _advance(game, 2.2);
     game.debugSetPlayerPosition(GameController.shelfZone);
     _advance(game, 2);
-    game.debugSetPlayerPosition(const Offset(0.5, 0.72));
+    game.debugSetPlayerPosition(GameController.checkoutZone);
     _advance(game, 24);
 
     expect(game.totalSales, greaterThan(0));
