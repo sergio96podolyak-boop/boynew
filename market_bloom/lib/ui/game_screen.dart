@@ -504,127 +504,150 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF315F4A),
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x26315F4A),
-                      blurRadius: 12,
-                      offset: Offset(0, 5),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFDF7EA),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0x1F315F4A)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1A315F4A),
+              blurRadius: 14,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 45,
+                  height: 45,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF315F4A), Color(0xFF22553F)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.storefront_rounded,
-                  color: Colors.white,
-                  size: 27,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'POMARKET',
-                      textDirection: TextDirection.ltr,
-                      style: TextStyle(
-                        color: Color(0xFF214B39),
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                        fontSize: 17,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x26315F4A),
+                        blurRadius: 12,
+                        offset: Offset(0, 5),
                       ),
-                    ),
-                    Text(
-                      'Your mini market',
-                      style: TextStyle(
-                        color: Color(0xFF6B7D72),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              PressableScale(
-                child: IconButton.filledTonal(
-                  tooltip: game.muted ? 'Unmute sound' : 'Mute sound',
-                  onPressed: onMute,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 48,
-                    height: 48,
+                    ],
                   ),
-                  icon: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    child: Icon(
-                      game.muted
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      key: ValueKey(game.muted),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF315F4A),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'LEVEL ${game.storeLevel}',
-                  style: const TextStyle(
+                  child: const Icon(
+                    Icons.storefront_rounded,
                     color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                    size: 27,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: LinearProgressIndicator(
-                    value: game.levelProgress,
-                    minHeight: 9,
-                    color: const Color(0xFF38B879),
-                    backgroundColor: const Color(0x40315F4A),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'POMARKET',
+                        textDirection: TextDirection.ltr,
+                        style: TextStyle(
+                          color: Color(0xFF214B39),
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.8,
+                          fontSize: 17,
+                        ),
+                      ),
+                      Text(
+                        'Your mini market',
+                        style: TextStyle(
+                          color: Color(0xFF6B7D72),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              _CurrencyPill(
-                icon: Icons.monetization_on_rounded,
-                value: game.coins,
-                color: const Color(0xFFF6A623),
-                compact: true,
-              ),
-              const SizedBox(width: 6),
-              _CurrencyPill(
-                icon: Icons.diamond_rounded,
-                value: game.gems,
-                color: const Color(0xFF8B66D8),
-                compact: true,
-              ),
-            ],
-          ),
-        ],
+                PressableScale(
+                  child: IconButton.filledTonal(
+                    tooltip: game.muted ? 'Unmute sound' : 'Mute sound',
+                    onPressed: onMute,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 48,
+                      height: 48,
+                    ),
+                    icon: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(
+                        game.muted
+                            ? Icons.volume_off_rounded
+                            : Icons.volume_up_rounded,
+                        key: ValueKey(game.muted),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF315F4A), Color(0xFF23523D)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'LEVEL ${game.storeLevel}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: LinearProgressIndicator(
+                      value: game.levelProgress,
+                      minHeight: 9,
+                      color: const Color(0xFF38B879),
+                      backgroundColor: const Color(0x40315F4A),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _CurrencyPill(
+                  icon: Icons.monetization_on_rounded,
+                  value: game.coins,
+                  color: const Color(0xFFF6A623),
+                  compact: true,
+                ),
+                const SizedBox(width: 6),
+                _CurrencyPill(
+                  icon: Icons.diamond_rounded,
+                  value: game.gems,
+                  color: const Color(0xFF8B66D8),
+                  compact: true,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -672,73 +695,78 @@ class _QuestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      elevation: 5,
-      color: const Color(0xF7FFFFFF),
-      shadowColor: const Color(0x33315F4A),
-      borderRadius: BorderRadius.circular(18),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-        child: Row(
-          children: [
-            Container(
-              width: 39,
-              height: 39,
-              decoration: BoxDecoration(
-                color: quest.completed
-                    ? const Color(0xFF38B879)
-                    : const Color(0xFFFFE5AF),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Icon(
-                quest.completed ? Icons.check_rounded : Icons.flag_rounded,
-                color: quest.completed ? Colors.white : const Color(0xFFA66B00),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    quest.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: quest.fraction,
-                      minHeight: 6,
-                      color: const Color(0xFFF6A623),
-                      backgroundColor: const Color(0xFFE8E5DC),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            if (quest.completed)
-              FilledButton(
-                onPressed: onClaim,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+      child: Material(
+        elevation: 5,
+        color: const Color(0xFCFFF9F0),
+        shadowColor: const Color(0x33315F4A),
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+          child: Row(
+            children: [
+              Container(
+                width: 39,
+                height: 39,
+                decoration: BoxDecoration(
+                  color: quest.completed
+                      ? const Color(0xFF38B879)
+                      : const Color(0xFFFFE5AF),
+                  borderRadius: BorderRadius.circular(13),
                 ),
-                child: Text('CLAIM ${quest.reward}'),
-              )
-            else
-              Text(
-                '${quest.progress.clamp(0, quest.target)}/${quest.target}',
-                style: const TextStyle(
-                  color: Color(0xFF6B746E),
-                  fontWeight: FontWeight.w900,
+                child: Icon(
+                  quest.completed ? Icons.check_rounded : Icons.flag_rounded,
+                  color: quest.completed
+                      ? Colors.white
+                      : const Color(0xFFA66B00),
                 ),
               ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      quest.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: quest.fraction,
+                        minHeight: 6,
+                        color: const Color(0xFFF6A623),
+                        backgroundColor: const Color(0xFFE8E5DC),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              if (quest.completed)
+                FilledButton(
+                  onPressed: onClaim,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: Text('CLAIM ${quest.reward}'),
+                )
+              else
+                Text(
+                  '${quest.progress.clamp(0, quest.target)}/${quest.target}',
+                  style: const TextStyle(
+                    color: Color(0xFF6B746E),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -767,9 +795,20 @@ class _ControlDeck extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(10, 2, 10, 8),
       padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.76),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFDF8EB), Color(0xFFF2E9D7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: const Color(0x22315F4A)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x17315F4A),
+            blurRadius: 12,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -873,7 +912,9 @@ class _RoundAction extends StatelessWidget {
       enabled: onTap != null,
       child: Material(
         color: onTap == null ? color.withValues(alpha: 0.45) : color,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
+        elevation: 2,
+        shadowColor: const Color(0x33000000),
         child: InkWell(
           onTap: onTap == null
               ? null
@@ -881,28 +922,41 @@ class _RoundAction extends StatelessWidget {
                   unawaited(SfxManager.instance.click());
                   onTap!();
                 },
-          borderRadius: BorderRadius.circular(15),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: Colors.white, size: 18),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.fade,
-                    softWrap: false,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withValues(alpha: onTap == null ? 0.6 : 0.95),
+                  color.withValues(alpha: onTap == null ? 0.45 : 0.8),
+                ],
+              ),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 50),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: Colors.white, size: 17),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.fade,
+                      softWrap: false,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

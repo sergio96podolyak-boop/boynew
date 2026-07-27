@@ -29,26 +29,75 @@ class MarketPainter extends CustomPainter {
 
   void _drawMarket(Canvas canvas, Rect rect) {
     final shadow = RRect.fromRectAndRadius(
-      rect.shift(const Offset(0, 4)),
-      const Radius.circular(26),
+      rect.shift(const Offset(0, 7)),
+      const Radius.circular(30),
     );
-    canvas.drawRRect(shadow, Paint()..color = const Color(0x26000000));
+    canvas.drawRRect(shadow, Paint()..color = const Color(0x1F243529));
 
-    final room = RRect.fromRectAndRadius(rect, const Radius.circular(26));
-    canvas.drawRRect(room, Paint()..color = const Color(0xFFFFFCF2));
+    final room = RRect.fromRectAndRadius(rect, const Radius.circular(28));
+    canvas.drawRRect(
+      room,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFFFF6E2),
+            const Color(0xFFF3D8A6),
+            const Color(0xFFE3BF76),
+          ],
+        ).createShader(rect),
+    );
+
     canvas.save();
     canvas.clipRRect(room);
 
-    const tile = 34.0;
     final gridPaint = Paint()
+      ..color = const Color(0x1A315F4A)
+      ..strokeWidth = 1.0;
+    final diamondPaint = Paint()
       ..color = const Color(0x0F315F4A)
-      ..strokeWidth = 1;
-    for (var x = rect.left; x < rect.right; x += tile) {
+      ..strokeWidth = 0.8;
+
+    final tile = 34.0;
+    final halfTile = tile / 2;
+    for (var x = rect.left; x <= rect.right; x += tile) {
       canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), gridPaint);
     }
-    for (var y = rect.top; y < rect.bottom; y += tile) {
+    for (var y = rect.top; y <= rect.bottom; y += tile) {
       canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
     }
+
+    for (var y = rect.top + halfTile; y <= rect.bottom; y += tile) {
+      final start = Offset(rect.left + halfTile, y);
+      final end = Offset(rect.right, y + halfTile);
+      if (end.dx <= rect.right + 0.1 && end.dy <= rect.bottom + 0.1) {
+        canvas.drawLine(start, end, diamondPaint);
+      }
+    }
+    for (var y = rect.top; y <= rect.bottom - halfTile; y += tile) {
+      final start = Offset(rect.left, y + halfTile);
+      final end = Offset(rect.right - halfTile, y + tile);
+      if (start.dx >= rect.left - 0.1 && end.dx >= rect.left - 0.1) {
+        canvas.drawLine(start, end, diamondPaint);
+      }
+    }
+
+    final glow = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(0.38, 0.16),
+        radius: 1.05,
+        colors: [const Color(0x55FFFFFF), const Color(0x00FFFFFF)],
+      ).createShader(rect);
+    canvas.drawRect(rect, glow);
+
+    final vignette = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(0.5, 0.5),
+        radius: 1.2,
+        colors: [const Color(0x00000000), const Color(0x26000000)],
+      ).createShader(rect);
+    canvas.drawRect(rect, vignette);
     canvas.restore();
 
     canvas.drawRRect(
@@ -56,7 +105,7 @@ class MarketPainter extends CustomPainter {
       Paint()
         ..color = const Color(0xFF315F4A)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 5,
+        ..strokeWidth = 4,
     );
   }
 
@@ -81,17 +130,17 @@ class MarketPainter extends CustomPainter {
     final center = _point(market, GameController.stockZone);
     _interactionGlow(canvas, market, GameController.stockZone, 0.13);
 
-    final crate = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: center, width: 64, height: 52),
-      const Radius.circular(10),
-    );
-    canvas.drawRRect(crate, Paint()..color = const Color(0xFFE0A45B));
-    canvas.drawRRect(
-      crate,
-      Paint()
-        ..color = const Color(0xFF9B6230)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+    _drawStationBox(
+      canvas,
+      center: center,
+      width: 74,
+      height: 58,
+      depth: 15,
+      faceColor: const Color(0xFFE0A45B),
+      sideColor: const Color(0xFFB56B2A),
+      topColor: const Color(0xFFF2B86A),
+      edgeColor: const Color(0xFF9B6230),
+      radius: 12,
     );
     canvas.drawLine(
       center + const Offset(-26, -15),
@@ -114,17 +163,17 @@ class MarketPainter extends CustomPainter {
     final center = _point(market, GameController.shelfZone);
     _interactionGlow(canvas, market, GameController.shelfZone, 0.14);
 
-    final shelf = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: center, width: 104, height: 82),
-      const Radius.circular(13),
-    );
-    canvas.drawRRect(shelf, Paint()..color = const Color(0xFF5B8DEF));
-    canvas.drawRRect(
-      shelf,
-      Paint()
-        ..color = const Color(0xFF315EAC)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4,
+    _drawStationBox(
+      canvas,
+      center: center,
+      width: 112,
+      height: 86,
+      depth: 16,
+      faceColor: const Color(0xFF5B8DEF),
+      sideColor: const Color(0xFF315EAC),
+      topColor: const Color(0xFF7FAAF0),
+      edgeColor: const Color(0xFF315EAC),
+      radius: 14,
     );
     for (final dy in [-19.0, 5.0, 29.0]) {
       canvas.drawLine(
@@ -154,6 +203,16 @@ class MarketPainter extends CustomPainter {
           ][index % 3],
       );
     }
+    if (game.shelfStock == 0) {
+      canvas.drawRect(
+        Rect.fromCenter(
+          center: center + const Offset(0, 8),
+          width: 58,
+          height: 18,
+        ),
+        Paint()..color = const Color(0x33E85D75),
+      );
+    }
     _stationLabel(
       canvas,
       center + const Offset(0, 55),
@@ -165,21 +224,26 @@ class MarketPainter extends CustomPainter {
     final center = _point(market, GameController.checkoutZone);
     _interactionGlow(canvas, market, GameController.checkoutZone, 0.13);
 
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: center, width: 92, height: 56),
-        const Radius.circular(14),
-      ),
-      Paint()..color = const Color(0xFFE85D75),
+    _drawStationBox(
+      canvas,
+      center: center,
+      width: 96,
+      height: 62,
+      depth: 14,
+      faceColor: const Color(0xFFE85D75),
+      sideColor: const Color(0xFFB83D58),
+      topColor: const Color(0xFFF06D8A),
+      edgeColor: const Color(0xFF8E3044),
+      radius: 14,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromCenter(
-          center: center + const Offset(17, -12),
-          width: 29,
-          height: 21,
+          center: center + const Offset(17, -10),
+          width: 30,
+          height: 22,
         ),
-        const Radius.circular(5),
+        const Radius.circular(6),
       ),
       Paint()..color = const Color(0xFF3B4054),
     );
@@ -188,7 +252,115 @@ class MarketPainter extends CustomPainter {
       9,
       Paint()..color = const Color(0xFFFFD166),
     );
+    _drawQueueGuide(canvas, market);
     _stationLabel(canvas, center + const Offset(0, 39), 'CHECKOUT');
+  }
+
+  void _drawQueueGuide(Canvas canvas, Rect market) {
+    final checkoutCenter = _point(market, GameController.checkoutZone);
+    final queueCustomers = game.customers
+        .where(
+          (customer) =>
+              customer.phase == CustomerPhase.checkout ||
+              customer.phase == CustomerPhase.paying,
+        )
+        .toList();
+    if (queueCustomers.isEmpty) {
+      return;
+    }
+
+    final laneStart = Offset(checkoutCenter.dx - 118, checkoutCenter.dy + 4);
+    final laneEnd = Offset(checkoutCenter.dx - 118, checkoutCenter.dy + 92);
+    canvas.drawLine(
+      laneStart,
+      laneEnd,
+      Paint()
+        ..color = const Color(0x1F315F4A)
+        ..strokeWidth = 2,
+    );
+
+    for (var index = 0; index < min(4, queueCustomers.length); index++) {
+      final offset = Offset(laneStart.dx + 6, laneStart.dy + 18 + index * 22);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: offset, width: 22, height: 22),
+          const Radius.circular(8),
+        ),
+        Paint()..color = queueCustomers[index].color.withValues(alpha: 0.95),
+      );
+      canvas.drawCircle(
+        offset + const Offset(0, -5),
+        7,
+        Paint()..color = const Color(0xFFFFD3B6),
+      );
+    }
+  }
+
+  void _drawStationBox(
+    Canvas canvas, {
+    required Offset center,
+    required double width,
+    required double height,
+    required double depth,
+    required Color faceColor,
+    required Color sideColor,
+    required Color topColor,
+    required Color edgeColor,
+    required double radius,
+  }) {
+    final shadowCenter = center + const Offset(6, 7);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: shadowCenter, width: width, height: height),
+        Radius.circular(radius),
+      ),
+      Paint()..color = const Color(0x18000000),
+    );
+
+    final faceRect = Rect.fromCenter(
+      center: center,
+      width: width,
+      height: height,
+    );
+    final topRect = Rect.fromCenter(
+      center: center + Offset(0, -depth * 0.6),
+      width: width,
+      height: depth,
+    );
+    final sideRect = Rect.fromCenter(
+      center: center + Offset(width * 0.4, 4),
+      width: depth,
+      height: height,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(topRect, Radius.circular(radius - 2)),
+      Paint()..color = topColor,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(sideRect, Radius.circular(radius - 2)),
+      Paint()..color = sideColor,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(faceRect, Radius.circular(radius)),
+      Paint()..color = faceColor,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(faceRect, Radius.circular(radius)),
+      Paint()
+        ..color = edgeColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: center + Offset(-width * 0.16, -height * 0.18),
+        width: width * 0.46,
+        height: 6,
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.32),
+    );
   }
 
   void _drawExpansion(Canvas canvas, Rect market) {
@@ -197,6 +369,17 @@ class MarketPainter extends CustomPainter {
     final zone = RRect.fromRectAndRadius(
       Rect.fromCenter(center: center, width: 105, height: 91),
       const Radius.circular(18),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: center + const Offset(4, 5),
+          width: 105,
+          height: 91,
+        ),
+        const Radius.circular(18),
+      ),
+      Paint()..color = const Color(0x14000000),
     );
     canvas.drawRRect(
       zone,
@@ -209,6 +392,14 @@ class MarketPainter extends CustomPainter {
         ..color = unlocked ? const Color(0xFFF6A623) : const Color(0xFFAAA59B)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
+    );
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: center + const Offset(0, -21),
+        width: 54,
+        height: 8,
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.35),
     );
     _text(
       canvas,
@@ -234,8 +425,8 @@ class MarketPainter extends CustomPainter {
     canvas.drawOval(
       Rect.fromCenter(
         center: center + const Offset(0, 19),
-        width: 37,
-        height: 15,
+        width: 39,
+        height: 14,
       ),
       Paint()..color = const Color(0x25000000),
     );
@@ -256,21 +447,26 @@ class MarketPainter extends CustomPainter {
       legPaint,
     );
 
+    final torso = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: bodyCenter, width: 34, height: 42),
+      const Radius.circular(13),
+    );
+    canvas.drawRRect(torso, Paint()..color = const Color(0xFF38B879));
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: bodyCenter, width: 34, height: 42),
-        const Radius.circular(13),
-      ),
-      Paint()..color = const Color(0xFF38B879),
+      torso,
+      Paint()
+        ..color = const Color(0xFF1F6A46)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromCenter(
           center: bodyCenter + const Offset(0, 5),
-          width: 23,
-          height: 25,
+          width: 24,
+          height: 24,
         ),
-        const Radius.circular(7),
+        const Radius.circular(8),
       ),
       Paint()..color = const Color(0xFFFFF3D7),
     );
@@ -278,6 +474,16 @@ class MarketPainter extends CustomPainter {
       bodyCenter - const Offset(0, 27),
       15,
       Paint()..color = const Color(0xFFFFCFAC),
+    );
+    canvas.drawCircle(
+      bodyCenter - const Offset(0, 27),
+      12,
+      Paint()..color = const Color(0xFF2A3E4B),
+    );
+    canvas.drawCircle(
+      bodyCenter - const Offset(0, 28),
+      6,
+      Paint()..color = const Color(0xFFFFE4C9),
     );
 
     final hair = Paint()..color = const Color(0xFF5A3825);
@@ -327,23 +533,51 @@ class MarketPainter extends CustomPainter {
     canvas.drawOval(
       Rect.fromCenter(
         center: center + const Offset(0, 13),
-        width: 28,
-        height: 10,
+        width: 31,
+        height: 12,
       ),
       Paint()..color = const Color(0x22000000),
     );
+
+    final body = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: center + const Offset(0, 3),
+        width: 26,
+        height: 32,
+      ),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(body, Paint()..color = customer.color);
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..color = const Color(0xFF4C3A2F)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromCenter(center: center, width: 24, height: 31),
-        const Radius.circular(9),
+        Rect.fromCenter(
+          center: center + const Offset(0, 2),
+          width: 18,
+          height: 12,
+        ),
+        const Radius.circular(5),
       ),
-      Paint()..color = customer.color,
+      Paint()..color = const Color(0xFFFFF3D7),
     );
     canvas.drawCircle(
       center - const Offset(0, 20),
       11,
       Paint()..color = const Color(0xFFFFD3B6),
     );
+    canvas.drawCircle(
+      center - const Offset(0, 20),
+      8,
+      Paint()..color = const Color(0xFF273043),
+    );
+
     if (customer.hasProduct) {
       canvas.drawCircle(
         center + const Offset(15, 2),
@@ -367,9 +601,11 @@ class MarketPainter extends CustomPainter {
   ) {
     final center = _point(market, zone);
     final active = (game.playerPosition - zone).distance <= radius;
+    final pulse = active ? 0.55 + sin(animationTime * 4) * 0.12 : 0.35;
+    final ringRadius = min(market.width, market.height) * radius;
     canvas.drawCircle(
       center,
-      min(market.width, market.height) * radius,
+      ringRadius,
       Paint()
         ..color = active ? const Color(0x3338B879) : const Color(0x0F315F4A)
         ..style = PaintingStyle.fill,
@@ -377,11 +613,11 @@ class MarketPainter extends CustomPainter {
     if (active) {
       canvas.drawCircle(
         center,
-        min(market.width, market.height) * radius,
+        ringRadius * pulse,
         Paint()
           ..color = const Color(0x9938B879)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2,
+          ..strokeWidth = 2.1,
       );
     }
   }
