@@ -9,6 +9,16 @@ import 'package:pomarket/services/monetization_service.dart';
 import 'package:pomarket/ui/splash_screen.dart';
 
 void main() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    binding.platformDispatcher.localeTestValue = const Locale('en');
+  });
+
+  tearDown(() {
+    binding.platformDispatcher.clearLocaleTestValue();
+  });
+
   testWidgets('renders the playable market and opens upgrades', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -26,6 +36,7 @@ void main() {
     await tester.pumpWidget(
       PoMarketApp(controller: controller, showSplash: false),
     );
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('POMARKET'), findsOneWidget);
@@ -56,6 +67,7 @@ void main() {
     await tester.pumpWidget(
       PoMarketApp(controller: controller, splashDuration: Duration.zero),
     );
+    await tester.pump();
 
     expect(find.text('PoMarket'), findsOneWidget);
     expect(find.text('BUILD. STOCK. GROW.'), findsOneWidget);
@@ -129,6 +141,7 @@ void main() {
     await tester.pumpWidget(
       PoMarketApp(controller: controller, showSplash: false),
     );
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('WELCOME TO POMARKET'), findsOneWidget);
@@ -162,6 +175,7 @@ void main() {
     await tester.pumpWidget(
       PoMarketApp(controller: controller, showSplash: false),
     );
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('DAILY BONUS'), findsOneWidget);
@@ -188,6 +202,7 @@ void main() {
     await tester.pumpWidget(
       PoMarketApp(controller: controller, showSplash: false),
     );
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     await tester.tap(find.text('HUB'));
     await tester.pump();

@@ -312,6 +312,39 @@ void main() {
     expect(game.coins, before + reward);
   });
 
+  test('hireable staff consume coins and persist their levels', () async {
+    game.coins = 600;
+
+    expect(game.hireStaff(StaffRole.cashier), isTrue);
+    expect(game.staffLevel(StaffRole.cashier), 1);
+    expect(game.coins, lessThan(600));
+
+    await game.save();
+
+    final restored = GameController(
+      storage: storage,
+      monetization: PreviewMonetizationService(),
+      random: Random(4),
+    );
+    await restored.initialize();
+
+    expect(restored.staffLevel(StaffRole.cashier), 1);
+  });
+
+  test('inventory orders are delivered once and prevent negative stock', () {
+    game.coins = 400;
+
+    final order = game.placeInventoryOrder('Produce', 4, cost: 40);
+
+    expect(order, isNotNull);
+    expect(game.pendingDeliveryCount, 1);
+
+    expect(game.fulfillPendingDelivery(order!.id), isTrue);
+    expect(game.fulfillPendingDelivery(order.id), isFalse);
+    expect(game.inventoryFor('Produce'), 4);
+    expect(game.inventoryFor('Produce'), isNonNegative);
+  });
+
   test(
     'restores progress, inventory, stats, settings, and score history',
     () async {

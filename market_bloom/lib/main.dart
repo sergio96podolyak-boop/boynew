@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'game/game_controller.dart';
+import 'services/app_localizations.dart';
 import 'services/game_storage.dart';
 import 'services/monetization_service.dart';
 import 'ui/game_screen.dart';
 import 'ui/splash_screen.dart';
+import 'services/app_localizations_delegate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -102,7 +104,8 @@ class _PoMarketAppState extends State<PoMarketApp> {
       title: 'PoMarket',
       debugShowCheckedModeBanner: false,
       locale: const Locale('en'),
-      supportedLocales: const [Locale('en')],
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: [AppLocalizationsDelegate()],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: seed,
@@ -142,33 +145,43 @@ class _PoMarketAppState extends State<PoMarketApp> {
           ),
         ),
       ),
-      home: Directionality(
-        textDirection: TextDirection.ltr,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 520),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.985, end: 1).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: _showSplash
-              ? PoMarketSplash(
-                  key: const ValueKey('pomarket-splash'),
-                  minimumDuration: widget.splashDuration,
-                  readiness: widget.readiness,
-                  onComplete: _openMarket,
-                )
-              : GameScreen(
-                  key: const ValueKey('pomarket-game'),
-                  controller: widget.controller,
-                ),
-        ),
+      home: Builder(
+        builder: (context) {
+          final localizations = AppLocalizations.of(context);
+          return Directionality(
+            textDirection: localizations.isRtl
+                ? TextDirection.rtl
+                : TextDirection.ltr,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 520),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(
+                      begin: 0.985,
+                      end: 1,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: _showSplash
+                  ? PoMarketSplash(
+                      key: const ValueKey('pomarket-splash'),
+                      minimumDuration: widget.splashDuration,
+                      readiness: widget.readiness,
+                      onComplete: _openMarket,
+                    )
+                  : GameScreen(
+                      key: const ValueKey('pomarket-game'),
+                      controller: widget.controller,
+                    ),
+            ),
+          );
+        },
       ),
     );
   }

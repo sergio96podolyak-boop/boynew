@@ -80,6 +80,12 @@ class GameController extends ChangeNotifier {
   List<LeaderboardEntry> _leaderboard = const <LeaderboardEntry>[];
   final Queue<AchievementDefinition> _achievementUnlocks =
       Queue<AchievementDefinition>();
+  final Map<StaffRole, StaffMember> _staff = <StaffRole, StaffMember>{};
+  final List<DepartmentState> _departments = <DepartmentState>[];
+  final List<InventoryDelivery> _pendingDeliveries = <InventoryDelivery>[];
+  final Map<String, int> _inventoryByCategory = <String, int>{};
+  double _staffTimer = 0;
+  double _deliveryTimer = 0;
 
   int get bagCapacity => 3 + bagLevel;
   int get shelfCapacity => 4 + shelfLevel * 2;
@@ -107,6 +113,7 @@ class GameController extends ChangeNotifier {
   int get unlockedAchievementCount =>
       _achievementProgress.where((item) => item.isUnlocked).length;
   bool get hasPendingAchievement => _achievementUnlocks.isNotEmpty;
+  int get pendingDeliveryCount => _pendingDeliveries.length;
 
   String? storePrice(StoreProduct product) => monetization.priceFor(product);
 
@@ -181,6 +188,24 @@ class GameController extends ChangeNotifier {
       icon: Icons.directions_run_rounded,
       color: const Color(0xFF38B879),
     ),
+    UpgradeOffer(
+      type: UpgradeType.checkout,
+      title: 'Checkout Boost',
+      subtitle: 'Serve customers faster',
+      level: staffLevel(StaffRole.cashier),
+      cost: _upgradeCost(80, staffLevel(StaffRole.cashier)),
+      icon: Icons.payments_rounded,
+      color: const Color(0xFF8B66D8),
+    ),
+    UpgradeOffer(
+      type: UpgradeType.restock,
+      title: 'Restock Flow',
+      subtitle: 'Keep shelves filled smoothly',
+      level: staffLevel(StaffRole.stocker),
+      cost: _upgradeCost(75, staffLevel(StaffRole.stocker)),
+      icon: Icons.local_shipping_rounded,
+      color: const Color(0xFF1FA8A8),
+    ),
   ];
 
   String get interactionHint {
@@ -225,6 +250,7 @@ class GameController extends ChangeNotifier {
           }
         }
       }
+      _bootstrapSystems();
       shouldPersist = _applyDailyBonus();
       _recordPerformanceSample(force: _performanceHistory.isEmpty);
       _updateHighs();
@@ -303,7 +329,7 @@ class GameController extends ChangeNotifier {
   void _updateStations(double dt) {
     if (_near(playerPosition, stockZone, 0.13) && carried < bagCapacity) {
       _stockActionTimer += dt;
-      if (_stockActionTimer >= 0.42) {
+      if (_stockActionTimer >= 0.42 - staffLevel(StaffRole.stocker) * 0.04) {
         _stockActionTimer = 0;
         carried++;
         totalActions++;
@@ -316,7 +342,7 @@ class GameController extends ChangeNotifier {
         carried > 0 &&
         shelfStock < shelfCapacity) {
       _shelfActionTimer += dt;
-      if (_shelfActionTimer >= 0.28) {
+      if (_shelfActionTimer >= 0.28 - staffLevel(StaffRole.stocker) * 0.03) {
         _shelfActionTimer = 0;
         carried--;
         shelfStock++;
@@ -325,6 +351,18 @@ class GameController extends ChangeNotifier {
       }
     } else {
       _shelfActionTimer = 0;
+    }
+
+    _staffTimer += dt;
+    if (_staffTimer >= 1.2) {
+      _staffTimer = 0;
+      _applyStaffAutomation(dt);
+    }
+
+    _deliveryTimer += dt;
+    if (_deliveryTimer >= 5) {
+      _deliveryTimer = 0;
+      _advancePendingDeliveries();
     }
   }
 
@@ -432,13 +470,18 @@ class GameController extends ChangeNotifier {
       Color(0xFFF2B134),
       Color(0xFF2A9D8F),
     ];
-    customers.add(
-      MarketCustomer(
-        id: _customerId++,
-        position: entrance + Offset((_random.nextDouble() - 0.5) * 0.08, 0),
-        color: palette[_random.nextInt(palette.length)],
-      ),
+    final customer = MarketCustomer(
+      id: _customerId++,
+      position: entrance + Offset((_random.nextDouble() - 0.5) * 0.08, 0),
+      color: palette[_random.nextInt(palette.length)],
+      patience: 7.4 + _random.nextDouble() * 1.4,
+      satisfaction: 0.95 + _random.nextDouble() * 0.05,
+      isVip: _random.nextDouble() < 0.16,
+      tipValue: _random.nextBool() ? 2 : 0,
+      basketCount: 1 + (_random.nextInt(3)),
+      emotion: _random.nextDouble() < 0.3 ? 'happy' : 'neutral',
     );
+    customers.add(customer);
   }
 
   void _moveCustomer(MarketCustomer customer, Offset target, double dt) {
@@ -466,6 +509,10 @@ class GameController extends ChangeNotifier {
         priceLevel++;
       case UpgradeType.speed:
         speedLevel++;
+      case UpgradeType.checkout:
+        _ensureStaff(StaffRole.cashier).level++;
+      case UpgradeType.restock:
+        _ensureStaff(StaffRole.stocker).level++;
     }
     upgradesBought++;
     totalActions++;
@@ -576,6 +623,168 @@ class GameController extends ChangeNotifier {
     return purchased;
   }
 
+  void _bootstrapSystems() {
+    for (final role in StaffRole.values) {
+      _ensureStaff(role);
+    }
+    if (_departments.isEmpty) {
+      _departments.addAll(
+        DepartmentType.values.map(
+          (type) => DepartmentState(
+            type: type,
+            level: 0,
+            unlocked: type == DepartmentType.generalGoods,
+          ),
+        ),
+      );
+    }
+  }
+
+  bool hireStaff(StaffRole role) {
+    final member = _ensureStaff(role);
+    if (member.hired || coins < member.hireCost) {
+      return false;
+    }
+    coins -= member.hireCost;
+    member.hired = true;
+    member.level = max(1, member.level);
+    totalActions++;
+    _afterProgressChanged();
+    notifyListeners();
+    return true;
+  }
+
+  bool upgradeStaff(StaffRole role) {
+    final member = _ensureStaff(role);
+    if (!member.hired || coins < member.upgradeCost) {
+      return false;
+    }
+    coins -= member.upgradeCost;
+    member.level++;
+    totalActions++;
+    _afterProgressChanged();
+    notifyListeners();
+    return true;
+  }
+
+  int staffLevel(StaffRole role) => _ensureStaff(role).level;
+
+  bool isStaffHired(StaffRole role) => _ensureStaff(role).hired;
+
+  List<StaffMember> get staffMembers => _staff.values.toList(growable: false);
+
+  StaffMember _ensureStaff(StaffRole role) {
+    return _staff.putIfAbsent(role, () => StaffMember(role: role));
+  }
+
+  int inventoryFor(String category) =>
+      max(0, _inventoryByCategory[category] ?? 0);
+
+  InventoryDelivery? placeInventoryOrder(
+    String category,
+    int quantity, {
+    int cost = 20,
+  }) {
+    if (quantity <= 0 || coins < cost) {
+      return null;
+    }
+    coins -= cost;
+    final delivery = InventoryDelivery(
+      id: 'delivery-${DateTime.now().millisecondsSinceEpoch}-${_random.nextInt(1000)}',
+      category: category,
+      quantity: quantity,
+      cost: cost,
+      readyAt: _now().add(const Duration(seconds: 6)),
+    );
+    _pendingDeliveries.add(delivery);
+    totalActions++;
+    _afterProgressChanged();
+    notifyListeners();
+    return delivery;
+  }
+
+  bool fulfillPendingDelivery(String id) {
+    final delivery = _pendingDeliveries.firstWhere(
+      (item) => item.id == id,
+      orElse: () => InventoryDelivery(
+        id: '',
+        category: '',
+        quantity: 0,
+        cost: 0,
+        readyAt: _now(),
+      ),
+    );
+    if (delivery.id.isEmpty || delivery.completed) {
+      return false;
+    }
+    delivery.completed = true;
+    _pendingDeliveries.remove(delivery);
+    _inventoryByCategory[delivery.category] =
+        inventoryFor(delivery.category) + delivery.quantity;
+    totalActions++;
+    _afterProgressChanged();
+    notifyListeners();
+    return true;
+  }
+
+  void _applyStaffAutomation(double dt) {
+    final cashierLevel = staffLevel(StaffRole.cashier);
+    final stockerLevel = staffLevel(StaffRole.stocker);
+    final cleanerLevel = staffLevel(StaffRole.cleaner);
+    final managerLevel = staffLevel(StaffRole.manager);
+
+    if (cashierLevel > 0 && customers.isNotEmpty && shelfStock > 0) {
+      final efficiency = 0.12 + cashierLevel * 0.02;
+      for (final customer in customers) {
+        if (customer.phase == CustomerPhase.checkout &&
+            customer.position.distance < 0.45) {
+          customer.phaseTime += efficiency * dt;
+          if (customer.phaseTime > 0.85) {
+            customer.phaseTime = 0.85;
+          }
+          break;
+        }
+      }
+    }
+
+    if (stockerLevel > 0 && carried > 0 && shelfStock < shelfCapacity) {
+      carried = max(0, carried - 1);
+      shelfStock = min(shelfCapacity, shelfStock + 1);
+      stockedTotal++;
+    }
+
+    if (cleanerLevel > 0 && customers.isNotEmpty) {
+      for (final customer in customers) {
+        if (customer.satisfaction < 1.0) {
+          customer.satisfaction = min(1.0, customer.satisfaction + 0.03);
+          break;
+        }
+      }
+    }
+
+    if (managerLevel > 0 && totalActions > 0) {
+      final bonus = managerLevel * 2;
+      if (bonus > 0) {
+        coins = max(0, coins + bonus);
+      }
+    }
+  }
+
+  void _advancePendingDeliveries() {
+    for (final delivery in _pendingDeliveries) {
+      if (!delivery.completed && _now().isAfter(delivery.readyAt)) {
+        delivery.completed = true;
+        _inventoryByCategory[delivery.category] =
+            inventoryFor(delivery.category) + delivery.quantity;
+      }
+    }
+    if (_pendingDeliveries.any((item) => item.completed)) {
+      _pendingDeliveries.removeWhere((item) => item.completed);
+      _afterProgressChanged();
+      notifyListeners();
+    }
+  }
+
   Future<void> save() {
     _saveRequested = true;
     final activeSave = _saveInProgress;
@@ -652,6 +861,39 @@ class GameController extends ChangeNotifier {
           .toList(growable: false),
       'leaderboard': _leaderboard
           .map((item) => item.toJson())
+          .toList(growable: false),
+      'staff': _staff.entries
+          .map(
+            (entry) => <String, Object>{
+              'role': entry.key.name,
+              'level': entry.value.level,
+              'hired': entry.value.hired,
+            },
+          )
+          .toList(growable: false),
+      'departments': _departments
+          .map(
+            (item) => <String, Object>{
+              'type': item.type.name,
+              'level': item.level,
+              'unlocked': item.unlocked,
+            },
+          )
+          .toList(growable: false),
+      'inventory': _inventoryByCategory.map(
+        (key, value) => MapEntry(key, value),
+      ),
+      'deliveries': _pendingDeliveries
+          .map(
+            (item) => <String, Object>{
+              'id': item.id,
+              'category': item.category,
+              'quantity': item.quantity,
+              'cost': item.cost,
+              'readyAt': item.readyAt.toIso8601String(),
+              'completed': item.completed,
+            },
+          )
           .toList(growable: false),
     };
   }
@@ -809,6 +1051,82 @@ class GameController extends ChangeNotifier {
       saved['performanceHistory'],
     );
     _leaderboard = LeaderboardEntry.top(saved['leaderboard']);
+    final restoredStaff = saved['staff'] is List
+        ? saved['staff'] as List
+        : null;
+    if (restoredStaff != null) {
+      for (final item in restoredStaff) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+        final role = StaffRole.values.firstWhere(
+          (candidate) => candidate.name == item['role'],
+          orElse: () => StaffRole.cashier,
+        );
+        final member = _ensureStaff(role);
+        member.level = _readInt(item, 'level', 0);
+        member.hired = item['hired'] is bool ? item['hired'] as bool : false;
+      }
+    }
+    final restoredDepartments = saved['departments'] is List
+        ? saved['departments'] as List
+        : null;
+    if (restoredDepartments != null) {
+      _departments.clear();
+      for (final item in restoredDepartments) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+        final type = DepartmentType.values.firstWhere(
+          (candidate) => candidate.name == item['type'],
+          orElse: () => DepartmentType.generalGoods,
+        );
+        _departments.add(
+          DepartmentState(
+            type: type,
+            level: _readInt(item, 'level', 0),
+            unlocked: item['unlocked'] is bool
+                ? item['unlocked'] as bool
+                : false,
+          ),
+        );
+      }
+    }
+    final restoredInventory = saved['inventory'] is Map
+        ? saved['inventory'] as Map
+        : null;
+    if (restoredInventory != null) {
+      _inventoryByCategory.clear();
+      for (final entry in restoredInventory.entries) {
+        if (entry.key is String && entry.value is num) {
+          _inventoryByCategory[entry.key as String] = entry.value.toInt();
+        }
+      }
+    }
+    final restoredDeliveries = saved['deliveries'] is List
+        ? saved['deliveries'] as List
+        : null;
+    if (restoredDeliveries != null) {
+      _pendingDeliveries.clear();
+      for (final item in restoredDeliveries) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+        final readyAt = DateTime.tryParse(item['readyAt'] as String? ?? '');
+        _pendingDeliveries.add(
+          InventoryDelivery(
+            id: item['id']?.toString() ?? '',
+            category: item['category']?.toString() ?? 'General',
+            quantity: _readInt(item, 'quantity', 0),
+            cost: _readInt(item, 'cost', 0),
+            readyAt: readyAt ?? _now(),
+            completed: item['completed'] is bool
+                ? item['completed'] as bool
+                : false,
+          ),
+        );
+      }
+    }
     final restoredX = _readDouble(saved, 'playerX', 0.5);
     final restoredY = _readDouble(saved, 'playerY', 0.72);
     playerPosition = Offset(
