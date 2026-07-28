@@ -542,8 +542,8 @@ void main() {
     await controller.initialize();
     controller.completeOnboarding();
     controller.acknowledgeDailyBonus();
-    controller.debugSetProgress(sales: 16);
-    controller.coins = 1000;
+    controller.debugSetProgress(sales: 48);
+    controller.coins = 2000;
     for (final role in StaffRole.values) {
       expect(controller.hireStaff(role), isTrue, reason: role.name);
     }
@@ -562,6 +562,77 @@ void main() {
       expect(controller.isStaffHired(role), isTrue, reason: role.name);
     }
     expect(find.byType(CustomPaint), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 700));
+  });
+
+  testWidgets('staff operations unlock roles and add workers by store level', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+    controller.debugSetProgress(sales: 32);
+    controller.coins = 1000;
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: _testSettings(),
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final rail = find.byType(NavigationRail);
+    await tester.tap(find.descendant(of: rail, matching: find.text('Staff')));
+    await tester.pump(const Duration(milliseconds: 180));
+
+    expect(find.text('Team Operations'), findsOneWidget);
+    final stockerCard = find.byKey(const ValueKey('staff-card-stocker'));
+    await tester.ensureVisible(stockerCard);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(
+      find.descendant(
+        of: stockerCard,
+        matching: find.widgetWithText(FilledButton, 'Hire — 90'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(controller.staffWorkerCount(StaffRole.stocker), 1);
+
+    await tester.tap(
+      find.descendant(
+        of: stockerCard,
+        matching: find.widgetWithText(FilledButton, 'Add worker · 155'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(controller.staffWorkerCount(StaffRole.stocker), 2);
+
+    final promoterCard = find.byKey(const ValueKey('staff-card-promoter'));
+    await tester.scrollUntilVisible(
+      promoterCard,
+      500,
+      scrollable: find
+          .descendant(
+            of: find.byType(StaffScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.text('Role unlocks at store level 7'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(milliseconds: 700));
   });

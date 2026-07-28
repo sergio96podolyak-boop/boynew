@@ -133,7 +133,13 @@ class AppLocalizations {
 
   String get staffRoleCleaner => _t('staffRoleCleaner');
 
+  String get staffRoleBaker => _t('staffRoleBaker');
+
   String get staffRoleManager => _t('staffRoleManager');
+
+  String get staffRoleCourier => _t('staffRoleCourier');
+
+  String get staffRolePromoter => _t('staffRolePromoter');
 
   String get staffSummaryCashier => _t('staffSummaryCashier');
 
@@ -141,7 +147,13 @@ class AppLocalizations {
 
   String get staffSummaryCleaner => _t('staffSummaryCleaner');
 
+  String get staffSummaryBaker => _t('staffSummaryBaker');
+
   String get staffSummaryManager => _t('staffSummaryManager');
+
+  String get staffSummaryCourier => _t('staffSummaryCourier');
+
+  String get staffSummaryPromoter => _t('staffSummaryPromoter');
 
   String get staffLocked => _t('staffLocked');
 
@@ -159,9 +171,19 @@ class AppLocalizations {
 
   String get statusStocking => _t('statusStocking');
 
+  String get statusWaitingStock => _t('statusWaitingStock');
+
+  String get statusWaitingShelf => _t('statusWaitingShelf');
+
   String get statusCleaning => _t('statusCleaning');
 
+  String get statusBaking => _t('statusBaking');
+
   String get statusManaging => _t('statusManaging');
+
+  String get statusDelivering => _t('statusDelivering');
+
+  String get statusPromoting => _t('statusPromoting');
 
   String get assignmentCheckout => _t('assignmentCheckout');
 
@@ -169,9 +191,31 @@ class AppLocalizations {
 
   String get assignmentFloor => _t('assignmentFloor');
 
+  String get assignmentBakery => _t('assignmentBakery');
+
   String get assignmentOffice => _t('assignmentOffice');
 
+  String get assignmentDelivery => _t('assignmentDelivery');
+
+  String get assignmentEntrance => _t('assignmentEntrance');
+
   String get serviceTime => _t('serviceTime');
+
+  String get teamOverview => _t('teamOverview');
+
+  String get teamMembers => _t('teamMembers');
+
+  String get teamPower => _t('teamPower');
+
+  String get addWorker => _t('addWorker');
+
+  String get maxWorkers => _t('maxWorkers');
+
+  String get nextWorkerSlot => _t('nextWorkerSlot');
+
+  String get roleUnlockAtLevel => _t('roleUnlockAtLevel');
+
+  String get workerRoute => _t('workerRoute');
 
   // ---------------------------------------------------------------------------
   // Departments screen
@@ -645,11 +689,17 @@ class AppLocalizations {
     'staffRoleCashier': 'Cashier',
     'staffRoleStocker': 'Stocker',
     'staffRoleCleaner': 'Cleaner',
+    'staffRoleBaker': 'Baker',
     'staffRoleManager': 'Manager',
+    'staffRoleCourier': 'Courier',
+    'staffRolePromoter': 'Promoter',
     'staffSummaryCashier': 'Speeds checkout and tips',
     'staffSummaryStocker': 'Restocks shelves faster',
     'staffSummaryCleaner': 'Keeps satisfaction steady',
+    'staffSummaryBaker': 'Bakes fresh goods faster',
     'staffSummaryManager': 'Boosts global efficiency',
+    'staffSummaryCourier': 'Speeds up stock deliveries',
+    'staffSummaryPromoter': 'Attracts more customers',
     'staffLocked': 'Staff feature locked',
     'staffUnlockRequirement': 'Unlock at store level 3',
     'staffNeedsCoins': 'You need {cost} coins to hire this worker',
@@ -658,13 +708,29 @@ class AppLocalizations {
     'statusIdle': 'Idle',
     'statusServing': 'Serving',
     'statusStocking': 'Stocking',
+    'statusWaitingStock': 'Waiting for stock',
+    'statusWaitingShelf': 'Shelf is full',
     'statusCleaning': 'Cleaning',
+    'statusBaking': 'Baking',
     'statusManaging': 'Managing',
+    'statusDelivering': 'Delivering',
+    'statusPromoting': 'Promoting',
     'assignmentCheckout': 'Checkout',
     'assignmentShelves': 'Shelves',
     'assignmentFloor': 'Market floor',
+    'assignmentBakery': 'Bakery',
     'assignmentOffice': 'Office',
+    'assignmentDelivery': 'Deliveries',
+    'assignmentEntrance': 'Entrance',
     'serviceTime': '{value}s per customer',
+    'teamOverview': 'Team Operations',
+    'teamMembers': '{count} workers hired',
+    'teamPower': 'Team power {power}',
+    'addWorker': 'Add worker',
+    'maxWorkers': 'Maximum team reached',
+    'nextWorkerSlot': 'Next worker slot at level {level}',
+    'roleUnlockAtLevel': 'Role unlocks at store level {level}',
+    'workerRoute': 'Live route: storage → shelf',
     'departmentsTitle': 'Departments',
     'unlocked': 'Unlocked',
     'locked': 'Locked',
@@ -917,17 +983,23 @@ class AppLocalizations {
     'questCompleteMoreSales': 'השלימו עוד {target} מכירות',
     'staffManagement': 'ניהול צוות',
     'hire': 'שכור',
-    'hired': 'שוכר',
+    'hired': 'גויס',
     'hireStaff': 'שכור עובדים',
     'upgradeStaff': 'שדרג צוות',
     'staffRoleCashier': 'קופאי',
-    'staffRoleStocker': 'ממלא',
-    'staffRoleCleaner': 'ניקיי',
+    'staffRoleStocker': 'סדרן מדפים',
+    'staffRoleCleaner': 'מנקה',
+    'staffRoleBaker': 'אופה',
     'staffRoleManager': 'מנהל',
-    'staffSummaryCashier': 'מהיר בקופה ומבצע טיפים',
+    'staffRoleCourier': 'שליח',
+    'staffRolePromoter': 'מקדם מכירות',
+    'staffSummaryCashier': 'מזרז את השירות בקופה',
     'staffSummaryStocker': 'ממלא מדפים מהר יותר',
-    'staffSummaryCleaner': 'שומר שביעות רצון קבועה',
-    'staffSummaryManager': 'מגביר יעילות גלובלית',
+    'staffSummaryCleaner': 'שומר על שביעות רצון הלקוחות',
+    'staffSummaryBaker': 'מייצר מאפים טריים מהר יותר',
+    'staffSummaryManager': 'מגביר את יעילות החנות',
+    'staffSummaryCourier': 'מקצר את זמן משלוחי המלאי',
+    'staffSummaryPromoter': 'מושך יותר לקוחות לחנות',
     'staffLocked': 'תכונת צוות נעולה',
     'staffUnlockRequirement': 'פתח ברמת חנות 3',
     'staffNeedsCoins': 'צריך {cost} מטבעות כדי לגייס את העובד הזה',
@@ -936,13 +1008,29 @@ class AppLocalizations {
     'statusIdle': 'פנוי',
     'statusServing': 'משרת לקוח',
     'statusStocking': 'מסדר מדפים',
+    'statusWaitingStock': 'ממתין למלאי במחסן',
+    'statusWaitingShelf': 'המדף מלא',
     'statusCleaning': 'מנקה',
+    'statusBaking': 'אופה',
     'statusManaging': 'מנהל',
+    'statusDelivering': 'מביא משלוח',
+    'statusPromoting': 'מקדם את החנות',
     'assignmentCheckout': 'קופה',
     'assignmentShelves': 'מדפים',
     'assignmentFloor': 'רצפת החנות',
+    'assignmentBakery': 'מאפייה',
     'assignmentOffice': 'משרד',
+    'assignmentDelivery': 'משלוחים',
+    'assignmentEntrance': 'כניסה',
     'serviceTime': '{value} שנ׳ ללקוח',
+    'teamOverview': 'מרכז תפעול הצוות',
+    'teamMembers': '{count} עובדים גויסו',
+    'teamPower': 'עוצמת צוות {power}',
+    'addWorker': 'גיוס עובד נוסף',
+    'maxWorkers': 'הצוות בתפוסה מלאה',
+    'nextWorkerSlot': 'מקום נוסף נפתח ברמה {level}',
+    'roleUnlockAtLevel': 'התפקיד נפתח ברמת חנות {level}',
+    'workerRoute': 'מסלול חי: מחסן → מדף',
     'departmentsTitle': 'מחלקות',
     'unlocked': 'פתוח',
     'locked': 'נעול',
@@ -1194,12 +1282,18 @@ class AppLocalizations {
     'upgradeStaff': 'تطوير الموظفين',
     'staffRoleCashier': 'أمين صندوق',
     'staffRoleStocker': 'معبئ الأرفف',
-    'staffRoleCleaner': 'نظيف',
+    'staffRoleCleaner': 'عامل نظافة',
+    'staffRoleBaker': 'خباز',
     'staffRoleManager': 'مدير',
+    'staffRoleCourier': 'مندوب توصيل',
+    'staffRolePromoter': 'مسوق',
     'staffSummaryCashier': 'يسرع الخدمة ويضيف تبريعات',
     'staffSummaryStocker': 'يعيد ملء الأرفف بسرعة',
     'staffSummaryCleaner': 'يحافظ على رضا العملاء',
+    'staffSummaryBaker': 'يخبز المنتجات الطازجة بسرعة أكبر',
     'staffSummaryManager': 'يعزز الكفاءة العامة',
+    'staffSummaryCourier': 'يسرع شحنات المخزون',
+    'staffSummaryPromoter': 'يجذب المزيد من العملاء',
     'staffLocked': 'ميزة الموظفين مقفلة',
     'staffUnlockRequirement': 'افتح عند مستوى المتجر 3',
     'staffNeedsCoins': 'تحتاج إلى {cost} عملات لتوظيف هذا العامل',
@@ -1208,13 +1302,29 @@ class AppLocalizations {
     'statusIdle': 'متاح',
     'statusServing': 'يخدم',
     'statusStocking': 'يرتب الأرفف',
+    'statusWaitingStock': 'ينتظر المخزون',
+    'statusWaitingShelf': 'الرف ممتلئ',
     'statusCleaning': 'ينظف',
+    'statusBaking': 'يخبز',
     'statusManaging': 'يدير',
+    'statusDelivering': 'يوصل',
+    'statusPromoting': 'يسوق',
     'assignmentCheckout': 'صندوق الدفع',
     'assignmentShelves': 'الرفوف',
     'assignmentFloor': 'أرضية المتجر',
+    'assignmentBakery': 'المخبز',
     'assignmentOffice': 'المكتب',
+    'assignmentDelivery': 'الشحنات',
+    'assignmentEntrance': 'المدخل',
     'serviceTime': '{value} ث لكل عميل',
+    'teamOverview': 'مركز عمليات الفريق',
+    'teamMembers': 'تم توظيف {count} عامل',
+    'teamPower': 'قوة الفريق {power}',
+    'addWorker': 'إضافة عامل',
+    'maxWorkers': 'اكتمل الفريق',
+    'nextWorkerSlot': 'مكان عامل جديد عند المستوى {level}',
+    'roleUnlockAtLevel': 'يفتح الدور عند مستوى المتجر {level}',
+    'workerRoute': 'مسار مباشر: المخزن → الرف',
     'departmentsTitle': 'الأقسام',
     'unlocked': 'مفتوح',
     'locked': 'مقفل',

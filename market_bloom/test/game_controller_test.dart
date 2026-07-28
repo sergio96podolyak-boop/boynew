@@ -548,15 +548,18 @@ void main() {
   );
 
   test('every staff role can be hired and persists across restart', () async {
-    game.debugSetProgress(sales: 16);
-    game.coins = 1000;
+    game.debugSetProgress(sales: 48);
+    game.coins = 2000;
 
     for (final role in StaffRole.values) {
       expect(game.hireStaff(role), isTrue, reason: role.name);
       expect(game.staffLevel(role), 1, reason: role.name);
       expect(game.isStaffHired(role), isTrue, reason: role.name);
     }
-    expect(game.coins, lessThan(1000));
+    expect(game.hireAdditionalStaff(StaffRole.stocker), isTrue);
+    expect(game.hireAdditionalStaff(StaffRole.stocker), isTrue);
+    expect(game.staffWorkerCount(StaffRole.stocker), 3);
+    expect(game.coins, lessThan(2000));
 
     await game.save();
 
@@ -571,22 +574,31 @@ void main() {
       expect(restored.staffLevel(role), 1, reason: role.name);
       expect(restored.isStaffHired(role), isTrue, reason: role.name);
     }
+    expect(restored.staffWorkerCount(StaffRole.stocker), 3);
   });
 
   test('stocker, cleaner, and manager perform visible gameplay work', () {
-    game.debugSetProgress(sales: 16);
+    game.debugSetProgress(sales: 48);
     game.coins = 1000;
 
     expect(game.hireStaff(StaffRole.stocker), isTrue);
     final initialInventory = game.inventoryFor('General');
-    _advance(game, 1.3);
-    expect(game.shelfStock, 1);
+    _advance(game, 0.15);
+    expect(game.stockerCarried, 1);
+    expect(game.stockerPosition, isNot(GameController.stockerPickupZone));
     expect(game.inventoryFor('General'), initialInventory - 1);
 
+    _advance(game, 3.2);
+    expect(game.shelfStock, 1);
+    expect(game.stockerCarried, 0);
+    game.shelfStock = game.shelfCapacity;
+    expect(game.staffStatus(StaffRole.stocker), StaffStatus.waitingForShelf);
+    game.shelfStock = 1;
+
     expect(game.upgradeStaff(StaffRole.stocker), isTrue);
-    final shelfBeforeLevelTwo = game.shelfStock;
-    _advance(game, 1.3);
-    expect(game.shelfStock, shelfBeforeLevelTwo + 2);
+    final stockedBeforeLevelTwo = game.stockedTotal;
+    _advance(game, 6);
+    expect(game.stockedTotal, greaterThanOrEqualTo(stockedBeforeLevelTwo + 2));
 
     final customer = MarketCustomer(
       id: 990,
@@ -606,6 +618,117 @@ void main() {
     _advance(game, 1.3);
     expect(game.coins, greaterThan(coinsBeforeManagerWork));
   });
+
+  test('advanced staff roles unlock by level and improve live systems', () {
+    game.debugSetProgress(sales: 16);
+    expect(game.storeLevel, 3);
+    expect(game.isStaffRoleUnlocked(StaffRole.stocker), isTrue);
+    expect(game.isStaffRoleUnlocked(StaffRole.cleaner), isFalse);
+    expect(game.hireStaff(StaffRole.cleaner), isFalse);
+
+    game.debugSetProgress(sales: 48);
+    game.coins = 1000;
+    expect(game.storeLevel, 7);
+
+    final bakeryBefore = game.bakeryProductionSeconds;
+    final deliveryBefore = game.effectiveInventoryOrderDelay;
+    final capacityBefore = game.customerCapacity;
+    final spawnBefore = game.customerSpawnInterval;
+
+    expect(game.hireStaff(StaffRole.baker), isTrue);
+    expect(game.hireStaff(StaffRole.courier), isTrue);
+    expect(game.hireStaff(StaffRole.promoter), isTrue);
+
+    expect(game.bakeryProductionSeconds, lessThan(bakeryBefore));
+    expect(game.effectiveInventoryOrderDelay, lessThan(deliveryBefore));
+    expect(game.customerCapacity, greaterThan(capacityBefore));
+    expect(game.customerSpawnInterval, lessThan(spawnBefore));
+  });
+
+  test('additional worker slots open with store progression', () {
+    game.debugSetProgress(sales: 16);
+    game.coins = 1000;
+    expect(game.hireStaff(StaffRole.stocker), isTrue);
+    expect(game.availableWorkerSlots(StaffRole.stocker), 1);
+    expect(game.nextWorkerSlotLevel(StaffRole.stocker), 5);
+    expect(game.hireAdditionalStaff(StaffRole.stocker), isFalse);
+
+    game.debugSetProgress(sales: 32);
+    expect(game.storeLevel, 5);
+    expect(game.availableWorkerSlots(StaffRole.stocker), 2);
+    expect(game.hireAdditionalStaff(StaffRole.stocker), isTrue);
+    expect(game.staffWorkerCount(StaffRole.stocker), 2);
+
+    game.debugSetProgress(sales: 48);
+    expect(game.availableWorkerSlots(StaffRole.stocker), 3);
+    expect(game.hireAdditionalStaff(StaffRole.stocker), isTrue);
+    expect(game.staffWorkerCount(StaffRole.stocker), 3);
+    expect(game.nextWorkerSlotLevel(StaffRole.stocker), isNull);
+  });
+
+  test('stocker route and carried stock survive a restart', () async {
+    game.debugSetProgress(sales: 16);
+    game.coins = 500;
+    expect(game.hireStaff(StaffRole.stocker), isTrue);
+
+    _advance(game, 0.2);
+    final inventoryAfterPickup = game.inventoryFor('General');
+    final savedPosition = game.stockerPosition;
+    expect(game.stockerCarried, 1);
+    await game.save();
+
+    final restored = GameController(
+      storage: storage,
+      monetization: PreviewMonetizationService(),
+      random: Random(4),
+    );
+    await restored.initialize();
+
+    expect(restored.stockerCarried, 1);
+    expect(restored.inventoryFor('General'), inventoryAfterPickup);
+    expect(restored.stockerPosition.dx, closeTo(savedPosition.dx, 0.0001));
+    expect(restored.stockerPosition.dy, closeTo(savedPosition.dy, 0.0001));
+
+    _advance(restored, 3);
+    expect(restored.stockerCarried, 0);
+    expect(restored.stockedTotal, greaterThan(0));
+  });
+
+  test(
+    'legacy level-3 hires stay active after progressive role migration',
+    () async {
+      final legacyStorage = MemoryGameStorage()
+        ..data = <String, dynamic>{
+          'coins': 100,
+          'totalSales': 16,
+          'staff': <Object>[
+            <String, Object>{
+              'role': 'cleaner',
+              'level': 1,
+              'hired': true,
+              'assignment': 'floor',
+            },
+            <String, Object>{
+              'role': 'manager',
+              'level': 2,
+              'hired': true,
+              'assignment': 'office',
+            },
+          ],
+        };
+      final restored = GameController(
+        storage: legacyStorage,
+        monetization: PreviewMonetizationService(),
+      );
+      await restored.initialize();
+
+      expect(restored.storeLevel, 3);
+      expect(restored.isStaffRoleUnlocked(StaffRole.cleaner), isTrue);
+      expect(restored.isStaffRoleUnlocked(StaffRole.manager), isTrue);
+      expect(restored.staffWorkerCount(StaffRole.cleaner), 1);
+      expect(restored.staffWorkerCount(StaffRole.manager), 1);
+    },
+  );
 
   test(
     'field-level save migration preserves valid progress and reconciles corruption',
@@ -649,6 +772,7 @@ void main() {
       expect(restored.bakeryUnlocked, isTrue);
       expect(restored.isStaffHired(StaffRole.cashier), isTrue);
       expect(restored.staffLevel(StaffRole.cashier), 2);
+      expect(restored.staffWorkerCount(StaffRole.cashier), 1);
       expect(
         restored.staffMembers.where(
           (member) => member.role == StaffRole.cashier,

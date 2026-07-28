@@ -22,6 +22,8 @@ class GameController extends ChangeNotifier {
   static const shelfZone = Offset(0.43, 0.47);
   static const checkoutZone = Offset(0.77, 0.25);
   static const bakeryZone = Offset(0.78, 0.76);
+  static const stockerPickupZone = Offset(0.24, 0.73);
+  static const stockerShelfZone = Offset(0.56, 0.53);
   static const entrance = Offset(0.5, 0.04);
   static const exit = Offset(0.62, -0.08);
 
@@ -31,6 +33,7 @@ class GameController extends ChangeNotifier {
   final DateTime Function() _now;
 
   Offset playerPosition = const Offset(0.5, 0.72);
+  Offset stockerPosition = stockerPickupZone;
   Offset movement = Offset.zero;
   Offset? _movementTarget;
   final List<MarketCustomer> customers = [];
@@ -73,6 +76,7 @@ class GameController extends ChangeNotifier {
   double _shelfActionTimer = 0;
   double _bakeryProductionTimer = 0;
   double _bakeryCollectTimer = 0;
+  int _stockerLoad = 0;
   double _saveTimer = 0;
   double _historyTimer = 0;
   int _customerId = 0;
@@ -123,6 +127,32 @@ class GameController extends ChangeNotifier {
   double get levelProgress => salesIntoLevel / GameBalance.salesPerStoreLevel;
   Offset? get movementTarget => _movementTarget;
   bool get bakeryUnlocked => isDepartmentUnlocked(DepartmentType.bakery);
+  int get stockerCarried => _stockerLoad;
+  double get bakeryProductionSeconds {
+    final bakerPower = staffProductivity(StaffRole.baker);
+    return max(
+      2.5,
+      GameBalance.bakeryProductionInterval.inMilliseconds / 1000 -
+          bakerPower * 0.55,
+    );
+  }
+
+  Duration get effectiveInventoryOrderDelay {
+    final courierPower = staffProductivity(StaffRole.courier);
+    return Duration(
+      milliseconds: max(
+        2000,
+        GameBalance.inventoryOrderDelay.inMilliseconds - courierPower * 600,
+      ).round(),
+    );
+  }
+
+  int get customerCapacity =>
+      min(12, 3 + storeLevel + staffProductivity(StaffRole.promoter));
+  double get customerSpawnInterval => max(
+    0.85,
+    3.2 - storeLevel * 0.12 - staffProductivity(StaffRole.promoter) * 0.15,
+  );
   bool get hasPendingGeneralDelivery => _pendingDeliveries.any(
     (delivery) => delivery.category.toLowerCase() == 'general',
   );
@@ -141,7 +171,7 @@ class GameController extends ChangeNotifier {
   }
 
   double get cashierCheckoutSeconds {
-    final staffBonus = max(0, staffLevel(StaffRole.cashier) - 1) * 0.07;
+    final staffBonus = max(0, staffProductivity(StaffRole.cashier) - 1) * 0.07;
     final upgradeBonus = max(0, checkoutLevel - 1) * 0.09;
     return max(
       GameBalance.minimumCheckoutSeconds,
@@ -383,9 +413,9 @@ class GameController extends ChangeNotifier {
     _dirty = true;
 
     _customerSpawnTimer -= safeDt;
-    if (_customerSpawnTimer <= 0 && customers.length < min(8, 3 + storeLevel)) {
+    if (_customerSpawnTimer <= 0 && customers.length < customerCapacity) {
       _spawnCustomer();
-      _customerSpawnTimer = max(1.35, 3.2 - storeLevel * 0.12);
+      _customerSpawnTimer = customerSpawnInterval;
     }
 
     _saveTimer += safeDt;
@@ -434,8 +464,7 @@ class GameController extends ChangeNotifier {
     if (bakeryUnlocked) {
       if (bakeryReadyStock < GameBalance.bakeryReadyCapacity) {
         _bakeryProductionTimer += dt;
-        if (_bakeryProductionTimer >=
-            GameBalance.bakeryProductionInterval.inMilliseconds / 1000) {
+        if (_bakeryProductionTimer >= bakeryProductionSeconds) {
           _bakeryProductionTimer = 0;
           bakeryReadyStock++;
           totalActions++;
@@ -493,10 +522,12 @@ class GameController extends ChangeNotifier {
       _shelfActionTimer = 0;
     }
 
+    _updateStocker(dt);
+
     _staffTimer += dt;
     if (_staffTimer >= 1.2) {
       _staffTimer = 0;
-      _applyStaffAutomation(dt);
+      _applyStaffAutomation();
     }
 
     _deliveryTimer += dt;
@@ -504,6 +535,78 @@ class GameController extends ChangeNotifier {
       _deliveryTimer = 0;
       _advancePendingDeliveries();
     }
+  }
+
+  void _updateStocker(double dt) {
+    if (!isStaffHired(StaffRole.stocker)) {
+      stockerPosition = stockerPickupZone;
+      _stockerLoad = 0;
+      return;
+    }
+
+    final stockerLevel = staffLevel(StaffRole.stocker);
+    final stockerWorkers = staffWorkerCount(StaffRole.stocker);
+    final speed =
+        0.115 +
+        stockerLevel * 0.012 +
+        max(0, stockerWorkers - 1) * 0.01 +
+        max(0, restockLevel - 1) * 0.004;
+
+    if (_stockerLoad > 0) {
+      stockerPosition = _moveStaffToward(
+        stockerPosition,
+        stockerShelfZone,
+        speed,
+        dt,
+      );
+      if (_near(stockerPosition, stockerShelfZone, 0.018)) {
+        final delivered = min(_stockerLoad, shelfCapacity - shelfStock);
+        if (delivered > 0) {
+          shelfStock += delivered;
+          stockedTotal += delivered;
+          totalActions += delivered;
+        }
+        final remainder = _stockerLoad - delivered;
+        if (remainder > 0) {
+          _inventoryByCategory['General'] = inventoryFor('General') + remainder;
+        }
+        _stockerLoad = 0;
+      }
+      return;
+    }
+
+    stockerPosition = _moveStaffToward(
+      stockerPosition,
+      stockerPickupZone,
+      speed,
+      dt,
+    );
+    if (!_near(stockerPosition, stockerPickupZone, 0.018) ||
+        inventoryFor('General') <= 0 ||
+        shelfStock >= shelfCapacity) {
+      return;
+    }
+
+    final loadCapacity = max(1, stockerLevel * max(1, stockerWorkers)).toInt();
+    _stockerLoad = min(
+      loadCapacity,
+      min(inventoryFor('General'), shelfCapacity - shelfStock),
+    );
+    _inventoryByCategory['General'] = inventoryFor('General') - _stockerLoad;
+  }
+
+  Offset _moveStaffToward(
+    Offset current,
+    Offset target,
+    double speed,
+    double dt,
+  ) {
+    final delta = target - current;
+    if (delta.distance <= 0.004) {
+      return target;
+    }
+    final step = min(delta.distance, speed * dt);
+    return current + delta / delta.distance * step;
   }
 
   final List<MarketCustomer> _checkoutQueue = [];
@@ -938,14 +1041,13 @@ class GameController extends ChangeNotifier {
 
   bool hireStaff(StaffRole role) {
     final member = _ensureStaff(role);
-    if (storeLevel < GameBalance.staffUnlockLevel ||
-        member.hired ||
-        coins < member.hireCost) {
+    if (!isStaffRoleUnlocked(role) || member.hired || coins < member.hireCost) {
       return false;
     }
     coins -= member.hireCost;
     member.hired = true;
     member.level = max(1, member.level);
+    member.workerCount = 1;
     totalActions++;
     _afterProgressChanged();
     notifyListeners();
@@ -954,7 +1056,7 @@ class GameController extends ChangeNotifier {
 
   bool upgradeStaff(StaffRole role) {
     final member = _ensureStaff(role);
-    if (!member.hired || coins < member.upgradeCost) {
+    if (!member.hired || member.level >= 10 || coins < member.upgradeCost) {
       return false;
     }
     coins -= member.upgradeCost;
@@ -965,7 +1067,49 @@ class GameController extends ChangeNotifier {
     return true;
   }
 
+  bool hireAdditionalStaff(StaffRole role) {
+    final member = _ensureStaff(role);
+    final availableSlots = availableWorkerSlots(role);
+    if (!member.hired ||
+        member.workerCount >= availableSlots ||
+        member.workerCount >= GameBalance.maxWorkersPerRole ||
+        coins < member.additionalHireCost) {
+      return false;
+    }
+    coins -= member.additionalHireCost;
+    member.workerCount++;
+    totalActions++;
+    _afterProgressChanged();
+    notifyListeners();
+    return true;
+  }
+
+  bool isStaffRoleUnlocked(StaffRole role) =>
+      isStaffHired(role) ||
+      storeLevel >= GameBalance.staffRoleUnlockLevel(role);
+
+  int availableWorkerSlots(StaffRole role) => max(
+    staffWorkerCount(role),
+    GameBalance.availableWorkerSlots(role, storeLevel),
+  );
+
+  int? nextWorkerSlotLevel(StaffRole role) =>
+      GameBalance.nextWorkerSlotLevel(role, storeLevel, staffWorkerCount(role));
+
   int staffLevel(StaffRole role) => _ensureStaff(role).level;
+
+  int staffWorkerCount(StaffRole role) =>
+      max(0, _ensureStaff(role).workerCount);
+
+  int staffProductivity(StaffRole role) {
+    final member = _ensureStaff(role);
+    return member.hired ? member.productivity : 0;
+  }
+
+  int get totalHiredWorkers => StaffRole.values.fold<int>(
+    0,
+    (total, role) => total + staffWorkerCount(role),
+  );
 
   bool isStaffHired(StaffRole role) => _ensureStaff(role).hired;
 
@@ -987,14 +1131,27 @@ class GameController extends ChangeNotifier {
             ? StaffStatus.serving
             : StaffStatus.idle,
       StaffRole.stocker =>
-        shelfStock < shelfCapacity && inventoryFor('General') > 0
+        _stockerLoad > 0
             ? StaffStatus.stocking
-            : StaffStatus.idle,
+            : shelfStock >= shelfCapacity
+            ? StaffStatus.waitingForShelf
+            : inventoryFor('General') <= 0
+            ? StaffStatus.waitingForStock
+            : StaffStatus.stocking,
       StaffRole.cleaner =>
         customers.any((customer) => customer.satisfaction < 1)
             ? StaffStatus.cleaning
             : StaffStatus.idle,
+      StaffRole.baker =>
+        bakeryUnlocked && bakeryReadyStock < GameBalance.bakeryReadyCapacity
+            ? StaffStatus.baking
+            : StaffStatus.idle,
       StaffRole.manager => StaffStatus.managing,
+      StaffRole.courier =>
+        _pendingDeliveries.isNotEmpty
+            ? StaffStatus.delivering
+            : StaffStatus.idle,
+      StaffRole.promoter => StaffStatus.promoting,
     };
   }
 
@@ -1034,7 +1191,7 @@ class GameController extends ChangeNotifier {
       category: category.trim(),
       quantity: quantity,
       cost: cost,
-      readyAt: _now().add(GameBalance.inventoryOrderDelay),
+      readyAt: _now().add(effectiveInventoryOrderDelay),
     );
     _pendingDeliveries.add(delivery);
     totalActions++;
@@ -1131,43 +1288,33 @@ class GameController extends ChangeNotifier {
     return null;
   }
 
-  void _applyStaffAutomation(double dt) {
-    final stockerLevel = staffLevel(StaffRole.stocker);
+  void _applyStaffAutomation() {
     final cleanerLevel = staffLevel(StaffRole.cleaner);
-    final managerLevel = staffLevel(StaffRole.manager);
-
-    if (isStaffHired(StaffRole.stocker) &&
-        stockerLevel > 0 &&
-        inventoryFor('General') > 0 &&
-        shelfStock < shelfCapacity) {
-      final quantity = min(
-        stockerLevel,
-        min(inventoryFor('General'), shelfCapacity - shelfStock),
-      );
-      _inventoryByCategory['General'] = inventoryFor('General') - quantity;
-      shelfStock += quantity;
-      stockedTotal += quantity;
-      totalActions += quantity;
-    }
+    final cleanerWorkers = staffWorkerCount(StaffRole.cleaner);
+    final managerPower = staffProductivity(StaffRole.manager);
 
     if (isStaffHired(StaffRole.cleaner) &&
         cleanerLevel > 0 &&
         customers.isNotEmpty) {
+      var cleanedCustomers = 0;
       for (final customer in customers) {
         if (customer.satisfaction < 1.0) {
           customer.satisfaction = min(
             1.0,
             customer.satisfaction + 0.03 * cleanerLevel,
           );
-          break;
+          cleanedCustomers++;
+          if (cleanedCustomers >= cleanerWorkers) {
+            break;
+          }
         }
       }
     }
 
     if (isStaffHired(StaffRole.manager) &&
-        managerLevel > 0 &&
+        managerPower > 0 &&
         totalActions > 0) {
-      final bonus = managerLevel * 2;
+      final bonus = managerPower * 2;
       if (bonus > 0) {
         coins = max(0, coins + bonus);
       }
@@ -1231,7 +1378,7 @@ class GameController extends ChangeNotifier {
 
   Map<String, dynamic> _saveSnapshot() {
     return <String, dynamic>{
-      'version': 4,
+      'version': 5,
       'savedAt': _now().toIso8601String(),
       'coins': coins,
       'gems': gems,
@@ -1239,6 +1386,9 @@ class GameController extends ChangeNotifier {
       'shelfStock': shelfStock,
       'bakeryReadyStock': bakeryReadyStock,
       'bakeryActivated': _bakeryActivated,
+      'stockerX': stockerPosition.dx,
+      'stockerY': stockerPosition.dy,
+      'stockerLoad': _stockerLoad,
       'totalSales': totalSales,
       'totalCoinsEarned': totalCoinsEarned,
       'stockedTotal': stockedTotal,
@@ -1289,6 +1439,7 @@ class GameController extends ChangeNotifier {
               'role': entry.key.name,
               'level': entry.value.level,
               'hired': entry.value.hired,
+              'workerCount': entry.value.workerCount,
               'assignment': entry.value.assignment.name,
             },
           )
@@ -1361,6 +1512,8 @@ class GameController extends ChangeNotifier {
     _inventoryByCategory.clear();
     _pendingDeliveries.clear();
     _checkoutQueue.clear();
+    stockerPosition = stockerPickupZone;
+    _stockerLoad = 0;
     _restoredInventoryPresent = false;
     _lastEmergencyStockAt = null;
     _bakeryActivated = false;
@@ -1506,6 +1659,22 @@ class GameController extends ChangeNotifier {
       maximum: GameBalance.bakeryReadyCapacity,
     );
     _bakeryActivated = _readBoolAny(saved, const ['bakeryActivated'], false);
+    stockerPosition = Offset(
+      _readDoubleAny(saved, const [
+        'stockerX',
+        'stockerPositionX',
+      ], stockerPickupZone.dx).clamp(0.06, 0.94),
+      _readDoubleAny(saved, const [
+        'stockerY',
+        'stockerPositionY',
+      ], stockerPickupZone.dy).clamp(0.09, 0.94),
+    );
+    _stockerLoad = _readIntAny(
+      saved,
+      const ['stockerLoad', 'stockerCarried'],
+      0,
+      maximum: 100,
+    );
     totalSales = _readIntAny(saved, const ['totalSales', 'sales'], 0);
     totalCoinsEarned = _readIntAny(saved, const [
       'totalCoinsEarned',
@@ -1620,6 +1789,16 @@ class GameController extends ChangeNotifier {
         member.hired =
             member.hired ||
             _readBoolAny(itemMap, const ['hired', 'isHired'], false);
+        member.workerCount = max(
+          member.workerCount,
+          _readIntAny(
+            itemMap,
+            const ['workerCount', 'count'],
+            member.hired ? 1 : 0,
+            maximum: GameBalance.maxWorkersPerRole,
+          ),
+        );
+        member.hired = member.hired || member.workerCount > 0;
         member.assignment =
             _enumByName(StaffAssignment.values, itemMap['assignment']) ??
             StaffMember.defaultAssignmentFor(role);
@@ -1633,6 +1812,7 @@ class GameController extends ChangeNotifier {
       final cashier = _ensureStaff(StaffRole.cashier);
       cashier
         ..hired = true
+        ..workerCount = max(1, cashier.workerCount)
         ..level = max(
           cashier.level,
           _readIntAny(saved, const ['cashierLevel'], 1, minimum: 1),
@@ -1740,10 +1920,27 @@ class GameController extends ChangeNotifier {
       if (entry.value.hired && entry.value.level < 1) {
         entry.value.level = 1;
       }
-      if (!entry.value.hired) {
+      if (entry.value.hired) {
+        entry.value.workerCount = max(
+          1,
+          entry.value.workerCount,
+        ).clamp(1, GameBalance.maxWorkersPerRole);
+      } else {
         entry.value.level = max(0, entry.value.level);
+        entry.value.workerCount = 0;
       }
     }
+
+    if (!isStaffHired(StaffRole.stocker) && _stockerLoad > 0) {
+      _inventoryByCategory['General'] = inventoryFor('General') + _stockerLoad;
+      _stockerLoad = 0;
+      stockerPosition = stockerPickupZone;
+    }
+    _stockerLoad = _stockerLoad.clamp(0, storageCapacity);
+    stockerPosition = Offset(
+      stockerPosition.dx.clamp(0.06, 0.94),
+      stockerPosition.dy.clamp(0.09, 0.94),
+    );
 
     final seen = <int>{};
     for (final customer in customers) {

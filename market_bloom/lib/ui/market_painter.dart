@@ -40,15 +40,20 @@ class MarketPainter extends CustomPainter {
     _drawMovementTarget(canvas, market);
 
     if (game.isStaffHired(StaffRole.cashier)) {
-      _drawCashier(canvas, market);
+      for (
+        var index = 0;
+        index < game.staffWorkerCount(StaffRole.cashier);
+        index++
+      ) {
+        _drawCashier(canvas, market, index);
+      }
     }
-    for (final role in const <StaffRole>[
-      StaffRole.stocker,
-      StaffRole.cleaner,
-      StaffRole.manager,
-    ]) {
-      if (game.isStaffHired(role)) {
-        _drawStaffMember(canvas, market, role);
+    for (final role in StaffRole.values) {
+      if (role == StaffRole.cashier || !game.isStaffHired(role)) {
+        continue;
+      }
+      for (var index = 0; index < game.staffWorkerCount(role); index++) {
+        _drawStaffMember(canvas, market, role, index);
       }
     }
     for (final customer in game.customers) {
@@ -490,10 +495,11 @@ class MarketPainter extends CustomPainter {
     canvas.drawCircle(center, 3.5, Paint()..color = const Color(0xFF38B879));
   }
 
-  void _drawCashier(Canvas canvas, Rect market) {
+  void _drawCashier(Canvas canvas, Rect market, int workerIndex) {
     final center = _point(
       market,
-      GameController.checkoutZone + const Offset(0.075, 0.035),
+      GameController.checkoutZone +
+          Offset(0.075 + workerIndex * 0.035, 0.035 + workerIndex * 0.055),
     );
     final serving = game.staffStatus(StaffRole.cashier) == StaffStatus.serving;
     final bounce = serving ? sin(animationTime * 12) * 1.2 : 0.0;
@@ -577,28 +583,58 @@ class MarketPainter extends CustomPainter {
     }
   }
 
-  void _drawStaffMember(Canvas canvas, Rect market, StaffRole role) {
+  void _drawStaffMember(
+    Canvas canvas,
+    Rect market,
+    StaffRole role,
+    int workerIndex,
+  ) {
     final status = game.staffStatus(role);
-    final active = status != StaffStatus.idle;
-    final basePosition = switch (role) {
-      StaffRole.stocker => GameController.shelfZone + const Offset(0.15, 0.055),
-      StaffRole.cleaner => Offset(0.52 + sin(animationTime * 0.7) * 0.09, 0.84),
-      StaffRole.manager => const Offset(0.22, 0.25),
-      StaffRole.cashier => GameController.checkoutZone,
-    };
+    final active =
+        status != StaffStatus.idle &&
+        status != StaffStatus.waitingForStock &&
+        status != StaffStatus.waitingForShelf;
+    final workerOffset = Offset((workerIndex % 2) * 0.025, workerIndex * 0.035);
+    final basePosition =
+        switch (role) {
+          StaffRole.stocker => game.stockerPosition,
+          StaffRole.cleaner => Offset(
+            0.52 + sin(animationTime * 0.7) * 0.09,
+            0.84,
+          ),
+          StaffRole.baker =>
+            GameController.bakeryZone + const Offset(-0.13, -0.01),
+          StaffRole.manager => const Offset(0.22, 0.25),
+          StaffRole.courier =>
+            status == StaffStatus.delivering
+                ? Offset(
+                    0.18 + ((sin(animationTime * 1.2) + 1) / 2) * 0.25,
+                    0.61 + cos(animationTime * 1.2) * 0.035,
+                  )
+                : const Offset(0.29, 0.61),
+          StaffRole.promoter => const Offset(0.32, 0.18),
+          StaffRole.cashier => GameController.checkoutZone,
+        } +
+        workerOffset;
     final bounce = active ? sin(animationTime * 8 + role.index) * 1.3 : 0.0;
     final center = _point(market, basePosition);
     final bodyCenter = center + Offset(0, bounce);
     final uniformColor = switch (role) {
       StaffRole.stocker => const Color(0xFF5B8DEF),
       StaffRole.cleaner => const Color(0xFF1FA8A8),
+      StaffRole.baker => const Color(0xFFF6A623),
       StaffRole.manager => const Color(0xFF8B66D8),
+      StaffRole.courier => const Color(0xFFE85D75),
+      StaffRole.promoter => const Color(0xFF38B879),
       StaffRole.cashier => const Color(0xFF315F8F),
     };
     final hairColor = switch (role) {
       StaffRole.stocker => const Color(0xFF473126),
       StaffRole.cleaner => const Color(0xFF2F3E52),
+      StaffRole.baker => const Color(0xFF8A623D),
       StaffRole.manager => const Color(0xFF6B4528),
+      StaffRole.courier => const Color(0xFF2F3E52),
+      StaffRole.promoter => const Color(0xFF473126),
       StaffRole.cashier => const Color(0xFF473126),
     };
 
@@ -680,24 +716,31 @@ class MarketPainter extends CustomPainter {
 
     switch (role) {
       case StaffRole.stocker:
-        final box = RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: bodyCenter + const Offset(15, 4),
-            width: 15,
-            height: 13,
-          ),
-          const Radius.circular(3),
-        );
-        canvas.drawRRect(box, Paint()..color = const Color(0xFFF6A623));
-        canvas.drawLine(
-          bodyCenter + const Offset(8, 1),
-          bodyCenter + const Offset(22, 1),
-          Paint()
-            ..color = const Color(0xFFB76E00)
-            ..strokeWidth = 1.2,
-        );
-        if (status == StaffStatus.stocking) {
-          _bubble(canvas, bodyCenter - const Offset(15, 39), '📦');
+        if (game.stockerCarried > 0) {
+          final box = RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: bodyCenter + const Offset(15, 4),
+              width: 15,
+              height: 13,
+            ),
+            const Radius.circular(3),
+          );
+          canvas.drawRRect(box, Paint()..color = const Color(0xFFF6A623));
+          canvas.drawLine(
+            bodyCenter + const Offset(8, 1),
+            bodyCenter + const Offset(22, 1),
+            Paint()
+              ..color = const Color(0xFFB76E00)
+              ..strokeWidth = 1.2,
+          );
+        }
+        if (workerIndex == 0) {
+          final bubble = switch (status) {
+            StaffStatus.waitingForStock => '📦?',
+            StaffStatus.waitingForShelf => '✓',
+            _ => game.stockerCarried > 0 ? '📦' : '…',
+          };
+          _bubble(canvas, bodyCenter - const Offset(15, 39), bubble);
         }
         break;
       case StaffRole.cleaner:
@@ -720,8 +763,24 @@ class MarketPainter extends CustomPainter {
               ..strokeCap = StrokeCap.round,
           );
         }
-        if (status == StaffStatus.cleaning) {
+        if (workerIndex == 0 && status == StaffStatus.cleaning) {
           _bubble(canvas, bodyCenter - const Offset(15, 39), '✨');
+        }
+        break;
+      case StaffRole.baker:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: bodyCenter + const Offset(0, -10),
+              width: 22,
+              height: 6,
+            ),
+            const Radius.circular(4),
+          ),
+          Paint()..color = Colors.white,
+        );
+        if (workerIndex == 0 && status == StaffStatus.baking) {
+          _bubble(canvas, bodyCenter - const Offset(15, 39), '🥐');
         }
         break;
       case StaffRole.manager:
@@ -748,7 +807,45 @@ class MarketPainter extends CustomPainter {
             ..color = const Color(0xFF8B66D8)
             ..strokeWidth = 1.3,
         );
-        _bubble(canvas, bodyCenter - const Offset(15, 39), '📈');
+        if (workerIndex == 0) {
+          _bubble(canvas, bodyCenter - const Offset(15, 39), '📈');
+        }
+        break;
+      case StaffRole.courier:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+              center: bodyCenter + const Offset(0, -11),
+              width: 24,
+              height: 7,
+            ),
+            const Radius.circular(4),
+          ),
+          Paint()..color = const Color(0xFFFFF3D7),
+        );
+        if (workerIndex == 0 && status == StaffStatus.delivering) {
+          _bubble(canvas, bodyCenter - const Offset(15, 39), '🚚');
+        }
+        break;
+      case StaffRole.promoter:
+        final signCenter = bodyCenter + const Offset(17, -2);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: signCenter, width: 17, height: 14),
+            const Radius.circular(3),
+          ),
+          Paint()..color = const Color(0xFFFFD278),
+        );
+        canvas.drawLine(
+          signCenter + const Offset(0, 7),
+          signCenter + const Offset(0, 20),
+          Paint()
+            ..color = const Color(0xFF6B5545)
+            ..strokeWidth = 2,
+        );
+        if (workerIndex == 0) {
+          _bubble(canvas, bodyCenter - const Offset(15, 39), '📣');
+        }
         break;
       case StaffRole.cashier:
         break;
