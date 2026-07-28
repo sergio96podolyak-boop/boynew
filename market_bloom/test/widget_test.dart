@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pomarket/services/app_settings.dart';
 import 'package:pomarket/services/monetization_service.dart';
 import 'package:pomarket/ui/splash_screen.dart';
+import 'package:pomarket/ui/widgets/global_hud.dart';
 
 AppSettings _testSettings() {
   return AppSettings(preferences: _MockSharedPrefs());
@@ -107,10 +108,11 @@ void main() {
 
     expect(find.text('POMARKET'), findsOneWidget);
     expect(find.text('Your mini market'), findsOneWidget);
-    expect(find.text('UPGRADES'), findsOneWidget);
     expect(find.text('Stock 5 products on the shelf'), findsOneWidget);
 
-    await tester.tap(find.text('UPGRADES'));
+    final upgradesNavigation = find.widgetWithText(IconButton, 'Upgrades');
+    expect(upgradesNavigation, findsOneWidget);
+    await tester.tap(upgradesNavigation);
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Upgrade Your Business'), findsOneWidget);
     expect(find.text('Bigger Bag'), findsOneWidget);
@@ -283,7 +285,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('business hub is thumb-friendly at 320 pixels wide', (
+  testWidgets('persistent HUD is singular and fits at 320 pixels wide', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 568);
@@ -308,21 +310,10 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    await tester.tap(find.text('HUB'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('Business Hub'), findsOneWidget);
-    expect(find.text('ACHIEVEMENTS'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    final tabs = DefaultTabController.of(
-      tester.element(find.text('Business Hub')),
-    );
-    tabs.animateTo(1, duration: Duration.zero);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-    expect(find.text('PLAY TIME'), findsOneWidget);
+    expect(find.byType(GlobalHud), findsOneWidget);
+    expect(find.text('HUB'), findsNothing);
+    expect(find.text('Business Hub'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -391,13 +382,18 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.text('Market'), findsOneWidget);
-    expect(find.text('Upgrades'), findsOneWidget);
+    final rail = find.byType(NavigationRail);
+    expect(rail, findsOneWidget);
     expect(
-      MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
-      isNotNull,
+      find.descendant(of: rail, matching: find.text('Market')),
+      findsOneWidget,
     );
+    expect(
+      find.descendant(of: rail, matching: find.text('Upgrades')),
+      findsOneWidget,
+    );
+    expect(Directionality.of(tester.element(rail)), TextDirection.ltr);
+    expect(MaterialLocalizations.of(tester.element(rail)), isNotNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -431,13 +427,18 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.text('שוק'), findsOneWidget);
-    expect(find.text('שדרוגים'), findsOneWidget);
+    final rail = find.byType(NavigationRail);
+    expect(rail, findsOneWidget);
     expect(
-      MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
-      isNotNull,
+      find.descendant(of: rail, matching: find.text('שוק')),
+      findsOneWidget,
     );
+    expect(
+      find.descendant(of: rail, matching: find.text('שדרוגים')),
+      findsOneWidget,
+    );
+    expect(Directionality.of(tester.element(rail)), TextDirection.rtl);
+    expect(MaterialLocalizations.of(tester.element(rail)), isNotNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -471,13 +472,18 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.byType(NavigationRail), findsOneWidget);
-    expect(find.text('السوق'), findsOneWidget);
-    expect(find.text('التحديثات'), findsOneWidget);
+    final rail = find.byType(NavigationRail);
+    expect(rail, findsOneWidget);
     expect(
-      MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
-      isNotNull,
+      find.descendant(of: rail, matching: find.text('السوق')),
+      findsOneWidget,
     );
+    expect(
+      find.descendant(of: rail, matching: find.text('التحديثات')),
+      findsOneWidget,
+    );
+    expect(Directionality.of(tester.element(rail)), TextDirection.rtl);
+    expect(MaterialLocalizations.of(tester.element(rail)), isNotNull);
     expect(tester.takeException(), isNull);
   });
 }

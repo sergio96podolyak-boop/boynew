@@ -6,7 +6,6 @@ import '../../services/app_localizations.dart';
 import '../../services/app_settings.dart';
 import '../../services/sfx/sfx_manager.dart';
 import '../widgets/pressable_scale.dart';
-import '../widgets/touch_movement.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -173,20 +172,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _ControlModeChip(
                         label: loc.directTouch,
                         mode: ControlMode.directTouch,
-                        selected: settings.controlMode == ControlMode.directTouch,
-                        onTap: () => settings.setControlMode(ControlMode.directTouch),
+                        selected:
+                            settings.controlMode == ControlMode.directTouch,
+                        onTap: () =>
+                            settings.setControlMode(ControlMode.directTouch),
                       ),
                       _ControlModeChip(
                         label: loc.floatingJoystick,
                         mode: ControlMode.joystick,
                         selected: settings.controlMode == ControlMode.joystick,
-                        onTap: () => settings.setControlMode(ControlMode.joystick),
+                        onTap: () =>
+                            settings.setControlMode(ControlMode.joystick),
                       ),
                       _ControlModeChip(
                         label: loc.leftHandedJoystick,
                         mode: ControlMode.leftJoystick,
-                        selected: settings.controlMode == ControlMode.leftJoystick,
-                        onTap: () => settings.setControlMode(ControlMode.leftJoystick),
+                        selected:
+                            settings.controlMode == ControlMode.leftJoystick,
+                        onTap: () =>
+                            settings.setControlMode(ControlMode.leftJoystick),
                       ),
                     ],
                   ),

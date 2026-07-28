@@ -6,18 +6,22 @@ import 'package:flutter/scheduler.dart';
 import '../game/game_controller.dart';
 import '../game/game_models.dart';
 import '../game/meta_models.dart';
+import '../services/app_localizations.dart';
 import '../services/app_settings.dart';
 import '../services/monetization_service.dart';
 import '../services/sfx/sfx_manager.dart';
 import 'market_painter.dart';
 import 'widgets/celebration_overlay.dart';
-import 'widgets/meta_hub.dart';
 import 'widgets/onboarding_dialog.dart';
 import 'widgets/pressable_scale.dart';
 import 'widgets/touch_movement.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.controller, required this.settings});
+  const GameScreen({
+    super.key,
+    required this.controller,
+    required this.settings,
+  });
 
   final GameController controller;
   final AppSettings settings;
@@ -105,15 +109,6 @@ class _GameScreenState extends State<GameScreen>
     }
   }
 
-  void _replayOnboarding() {
-    game.replayOnboarding();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        unawaited(_showOnboarding());
-      }
-    });
-  }
-
   void _onGameChanged() {
     if (!mounted || _achievementToast != null) {
       return;
@@ -133,15 +128,6 @@ class _GameScreenState extends State<GameScreen>
       setState(() => _achievementToast = null);
       _onGameChanged();
     });
-  }
-
-  Future<void> _toggleMute() async {
-    final willMute = !game.muted;
-    if (willMute) {
-      unawaited(SfxManager.instance.click());
-    }
-    game.setMuted(willMute);
-    await SfxManager.instance.setMuted(willMute);
   }
 
   void _claimQuest() {
@@ -165,8 +151,6 @@ class _GameScreenState extends State<GameScreen>
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding =
-        MediaQuery.of(context).padding.bottom + kBottomNavigationBarHeight;
     return CelebrationOverlay(
       controller: _celebration,
       child: DecoratedBox(
@@ -178,19 +162,16 @@ class _GameScreenState extends State<GameScreen>
           ),
         ),
         child: SafeArea(
+          top: false,
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
-                          child: Stack(
+              child: Stack(
                 children: [
                   AnimatedBuilder(
                     animation: game,
                     builder: (context, _) => Column(
                       children: [
-                        _TopBar(
-                          game: game,
-                          onMute: () => unawaited(_toggleMute()),
-                        ),
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
@@ -228,12 +209,12 @@ class _GameScreenState extends State<GameScreen>
                         ),
                         _ControlDeck(
                           game: game,
+                          settings: settings,
                           onUpgrades: _showUpgrades,
                           onReward: _claimAdReward,
                           onShop: _showMoneyShop,
-                          onHub: _showMetaHub,
                         ),
-                        SizedBox(height: bottomPadding),
+                        const SizedBox(height: 4),
                       ],
                     ),
                   ),
@@ -367,28 +348,6 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
-  Future<void> _showMetaHub() {
-    unawaited(SfxManager.instance.click());
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _Panel(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _SheetHandle(),
-            MetaHub(
-              game: game,
-              onCelebrate: _celebration.celebrate,
-              onReplayTutorial: _replayOnboarding,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _showDailyBonus(DailyBonusResult bonus) async {
     _celebration.celebrate();
     unawaited(
@@ -505,172 +464,21 @@ class _GameScreenState extends State<GameScreen>
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.game, required this.onMute});
-
-  final GameController game;
-  final VoidCallback onMute;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFDF7EA),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0x1F315F4A)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A315F4A),
-              blurRadius: 14,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 45,
-                  height: 45,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF315F4A), Color(0xFF22553F)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x26315F4A),
-                        blurRadius: 12,
-                        offset: Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.storefront_rounded,
-                    color: Colors.white,
-                    size: 27,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Your mini market',
-                        style: TextStyle(
-                          color: Color(0xFF6B7D72),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                PressableScale(
-                  child: IconButton.filledTonal(
-                    tooltip: game.muted ? 'Unmute sound' : 'Mute sound',
-                    onPressed: onMute,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 48,
-                      height: 48,
-                    ),
-                    icon: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: Icon(
-                        game.muted
-                            ? Icons.volume_off_rounded
-                            : Icons.volume_up_rounded,
-                        key: ValueKey(game.muted),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 7),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF315F4A), Color(0xFF23523D)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'LEVEL ${game.storeLevel}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: LinearProgressIndicator(
-                      value: game.levelProgress,
-                      minHeight: 9,
-                      color: const Color(0xFF38B879),
-                      backgroundColor: const Color(0x40315F4A),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _CurrencyPill(
-                  icon: Icons.monetization_on_rounded,
-                  value: game.coins,
-                  color: const Color(0xFFF6A623),
-                  compact: true,
-                ),
-                const SizedBox(width: 6),
-                _CurrencyPill(
-                  icon: Icons.diamond_rounded,
-                  value: game.gems,
-                  color: const Color(0xFF8B66D8),
-                  compact: true,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _CurrencyPill extends StatelessWidget {
   const _CurrencyPill({
     required this.icon,
     required this.value,
     required this.color,
-    this.compact = false,
   });
 
   final IconData icon;
   final int value;
   final Color color;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(20),
@@ -777,17 +585,17 @@ class _QuestCard extends StatelessWidget {
 class _ControlDeck extends StatelessWidget {
   const _ControlDeck({
     required this.game,
+    required this.settings,
     required this.onUpgrades,
     required this.onReward,
     required this.onShop,
-    required this.onHub,
   });
 
   final GameController game;
+  final AppSettings settings;
   final VoidCallback onUpgrades;
   final VoidCallback onReward;
   final VoidCallback onShop;
-  final VoidCallback onHub;
 
   @override
   Widget build(BuildContext context) {
@@ -848,39 +656,67 @@ class _ControlDeck extends StatelessWidget {
           Expanded(
             child: GridView.count(
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 4,
+              crossAxisCount: 3,
               crossAxisSpacing: 6,
               mainAxisSpacing: 6,
               childAspectRatio: 1.4,
               children: [
                 _RoundAction(
-                  label: 'UPGRADES',
+                  label: AppLocalizations.of(context).upgrades,
                   icon: Icons.upgrade_rounded,
                   color: const Color(0xFF5B8DEF),
                   onTap: onUpgrades,
                 ),
                 _RoundAction(
-                  label: game.rewardInProgress ? 'LOADING…' : 'REWARD',
+                  label: game.rewardInProgress
+                      ? AppLocalizations.of(context).loading
+                      : AppLocalizations.of(context).reward,
                   icon: Icons.ondemand_video_rounded,
                   color: const Color(0xFFE85D75),
                   onTap: game.rewardInProgress ? null : onReward,
                 ),
                 _RoundAction(
-                  label: 'SHOP',
+                  label: AppLocalizations.of(context).shop,
                   icon: Icons.shopping_bag_rounded,
                   color: const Color(0xFFF6A623),
                   onTap: onShop,
                 ),
-                _RoundAction(
-                  label: 'HUB',
-                  icon: Icons.grid_view_rounded,
-                  color: const Color(0xFF38B879),
-                  onTap: onHub,
-                ),
               ],
             ),
           ),
+          const SizedBox(height: 4),
+          _ControlInstruction(settings: settings),
         ],
+      ),
+    );
+  }
+}
+
+class _ControlInstruction extends StatelessWidget {
+  const _ControlInstruction({required this.settings});
+
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final text = switch (settings.controlMode) {
+      ControlMode.directTouch => loc.directTouchInstruction,
+      ControlMode.joystick => loc.floatingJoystickInstruction,
+      ControlMode.leftJoystick => loc.leftHandedJoystickInstruction,
+    };
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      child: Text(
+        text,
+        key: ValueKey(settings.controlMode),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFF315F4A),
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -939,11 +775,10 @@ class _RoundAction extends StatelessWidget {
                     child: Text(
                       label,
                       maxLines: 1,
-                      overflow: TextOverflow.fade,
-                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 9,
+                        fontSize: 11,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -981,22 +816,15 @@ class _UpgradeSheet extends StatelessWidget {
             const _SheetHandle(),
             Row(
               children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Upgrade Your Business',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        'Invest to serve more customers',
-                        style: TextStyle(color: Color(0xFF717A74)),
-                      ),
-                    ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    AppLocalizations.of(context).upgrades,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF315F4A),
+                    ),
                   ),
                 ),
                 _CurrencyPill(
@@ -1004,33 +832,38 @@ class _UpgradeSheet extends StatelessWidget {
                   value: game.coins,
                   color: const Color(0xFFF6A623),
                 ),
+                const SizedBox(width: 16),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
             Flexible(
               child: ListView.separated(
                 shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 itemCount: game.upgrades.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 9),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
-                  final offer = game.upgrades[index];
-                  final affordable = game.coins >= offer.cost;
+                  final upgrade = game.upgrades[index];
+                  final canAfford = game.coins >= upgrade.cost;
+                  final isMaxed = upgrade.level >= 10;
                   return _UpgradeTile(
-                    offer: offer,
-                    affordable: affordable,
-                    onBuy: () {
-                      final purchased = game.buyUpgrade(offer.type);
-                      if (purchased) {
-                        onPurchased();
-                      } else {
-                        onInsufficientCoins();
-                      }
-                    },
+                    upgrade: upgrade,
+                    canAfford: canAfford,
+                    isMaxed: isMaxed,
+                    onTap: isMaxed
+                        ? null
+                        : () {
+                            if (!canAfford) {
+                              onInsufficientCoins();
+                              return;
+                            }
+                            game.buyUpgrade(upgrade.type);
+                            onPurchased();
+                          },
                   );
                 },
               ),
             ),
-            const SizedBox(height: 10),
           ],
         ),
       ),
@@ -1040,66 +873,173 @@ class _UpgradeSheet extends StatelessWidget {
 
 class _UpgradeTile extends StatelessWidget {
   const _UpgradeTile({
-    required this.offer,
-    required this.affordable,
-    required this.onBuy,
+    required this.upgrade,
+    required this.canAfford,
+    required this.isMaxed,
+    required this.onTap,
   });
 
-  final UpgradeOffer offer;
-  final bool affordable;
-  final VoidCallback onBuy;
+  final UpgradeOffer upgrade;
+  final bool canAfford;
+  final bool isMaxed;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(11),
-      decoration: BoxDecoration(
-        color: offer.color.withValues(alpha: 0.09),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: offer.color.withValues(alpha: 0.22)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
+    final loc = AppLocalizations.of(context);
+    return PressableScale(
+      enabled: onTap != null,
+      child: Material(
+        color: onTap == null
+            ? const Color(0xFFF5F0E8).withValues(alpha: 0.6)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        elevation: onTap == null ? 0 : 2,
+        shadowColor: const Color(0x33000000),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
-              color: offer.color,
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: onTap == null
+                    ? const Color(0x33315F4A)
+                    : const Color(0x1A315F4A),
+              ),
             ),
-            child: Icon(offer.icon, color: Colors.white),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  offer.title,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                Text(
-                  '${offer.subtitle} · Level ${offer.level}',
-                  style: const TextStyle(
-                    color: Color(0xFF6F766F),
-                    fontSize: 12,
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isMaxed
+                          ? [const Color(0xFF38B879), const Color(0xFF2E9B5F)]
+                          : canAfford
+                          ? [const Color(0xFF5B8DEF), const Color(0xFF4A7BD5)]
+                          : [const Color(0xFFE8E0D8), const Color(0xFFD8D0C8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: isMaxed || canAfford
+                        ? [
+                            BoxShadow(
+                              color:
+                                  (isMaxed
+                                          ? const Color(0xFF38B879)
+                                          : const Color(0xFF5B8DEF))
+                                      .withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    upgrade.icon,
+                    color: isMaxed || canAfford
+                        ? Colors.white
+                        : const Color(0xFF8B8078),
+                    size: 24,
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        upgrade.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          color: Color(0xFF315F4A),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        isMaxed
+                            ? 'Max Level'
+                            : '${loc.level} ${upgrade.level}/10',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isMaxed
+                              ? const Color(0xFF38B879)
+                              : const Color(0xFF6B746E),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (isMaxed)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38B879).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Max Level',
+                      style: const TextStyle(
+                        color: Color(0xFF38B879),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: canAfford
+                          ? const LinearGradient(
+                              colors: [Color(0xFF5B8DEF), Color(0xFF4A7BD5)],
+                            )
+                          : null,
+                      color: canAfford ? null : const Color(0xFFE8E0D8),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.monetization_on_rounded,
+                          size: 13,
+                          color: canAfford
+                              ? Colors.white
+                              : const Color(0xFF8B8078),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '${upgrade.cost}',
+                          style: TextStyle(
+                            color: canAfford
+                                ? Colors.white
+                                : const Color(0xFF8B8078),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
-          FilledButton.icon(
-            onPressed: onBuy,
-            style: FilledButton.styleFrom(
-              backgroundColor: affordable
-                  ? const Color(0xFF315F4A)
-                  : const Color(0xFF909791),
-              padding: const EdgeInsets.symmetric(horizontal: 11),
-            ),
-            icon: const Icon(Icons.monetization_on_rounded, size: 16),
-            label: Text('${offer.cost}'),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1114,7 +1054,7 @@ class _MoneyShopSheet extends StatelessWidget {
 
   final GameController game;
   final Future<void> Function() onReward;
-  final Future<void> Function(StoreProduct product) onPurchase;
+  final Future<void> Function(StoreProduct) onPurchase;
 
   @override
   Widget build(BuildContext context) {
@@ -1126,71 +1066,57 @@ class _MoneyShopSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _SheetHandle(),
-            const Text(
-              'Rewards & Shop',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+            Row(
+              children: [
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    AppLocalizations.of(context).shop,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF315F4A),
+                    ),
+                  ),
+                ),
+                _CurrencyPill(
+                  icon: Icons.monetization_on_rounded,
+                  value: game.coins,
+                  color: const Color(0xFFF6A623),
+                ),
+                const SizedBox(width: 8),
+                _CurrencyPill(
+                  icon: Icons.diamond_rounded,
+                  value: game.gems,
+                  color: const Color(0xFF8B66D8),
+                ),
+                const SizedBox(width: 16),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              game.storePurchasesAvailable
-                  ? 'Secure purchases through the App Store or Google Play.'
-                  : 'Preview build — store items activate after they are created in the developer accounts.',
-              style: const TextStyle(color: Color(0xFF717A74), fontSize: 12),
+            const SizedBox(height: 8),
+            if (game.instantAdReward > 0)
+              _ShopRewardTile(
+                label: AppLocalizations.of(context).reward,
+                subtitle: AppLocalizations.of(context).watchAndEarn,
+                icon: Icons.ondemand_video_rounded,
+                color: const Color(0xFFE85D75),
+                onTap: onReward,
+              ),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                itemCount: 3, // StoreProduct.values.length
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final product = StoreProduct.values[index];
+                  return _ShopProductTile(
+                    product: product,
+                    onTap: () => onPurchase(product),
+                  );
+                },
+              ),
             ),
-            const SizedBox(height: 14),
-            _StoreCard(
-              icon: Icons.ondemand_video_rounded,
-              color: const Color(0xFFE85D75),
-              title: 'Rewarded Bonus',
-              subtitle: 'Get ${game.instantAdReward} coins now',
-              buttonLabel: game.rewardInProgress ? 'LOADING…' : 'WATCH & EARN',
-              onTap: game.rewardInProgress ? null : onReward,
-            ),
-            const SizedBox(height: 9),
-            _StoreCard(
-              icon: Icons.block_rounded,
-              color: const Color(0xFF5B8DEF),
-              title: 'No Ads',
-              subtitle: game.adsRemoved
-                  ? 'Already purchased'
-                  : 'One-time purchase',
-              buttonLabel: game.adsRemoved
-                  ? 'OWNED'
-                  : game.storePrice(StoreProduct.noAds) ?? 'SETUP REQUIRED',
-              onTap:
-                  !game.storePurchasesAvailable ||
-                      game.adsRemoved ||
-                      game.storePurchaseInProgress
-                  ? null
-                  : () => onPurchase(StoreProduct.noAds),
-            ),
-            const SizedBox(height: 9),
-            _StoreCard(
-              icon: Icons.rocket_launch_rounded,
-              color: const Color(0xFFF6A623),
-              title: 'Starter Pack',
-              subtitle: '500 coins, 20 gems, and two upgrades',
-              buttonLabel:
-                  game.storePrice(StoreProduct.starterPack) ?? 'SETUP REQUIRED',
-              onTap:
-                  !game.storePurchasesAvailable || game.storePurchaseInProgress
-                  ? null
-                  : () => onPurchase(StoreProduct.starterPack),
-            ),
-            const SizedBox(height: 9),
-            _StoreCard(
-              icon: Icons.monetization_on_rounded,
-              color: const Color(0xFF38B879),
-              title: '1,000 Coin Pack',
-              subtitle: 'Grow your business faster',
-              buttonLabel:
-                  game.storePrice(StoreProduct.coinPack) ?? 'SETUP REQUIRED',
-              onTap:
-                  !game.storePurchasesAvailable || game.storePurchaseInProgress
-                  ? null
-                  : () => onPurchase(StoreProduct.coinPack),
-            ),
-            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -1198,62 +1124,209 @@ class _MoneyShopSheet extends StatelessWidget {
   }
 }
 
-class _StoreCard extends StatelessWidget {
-  const _StoreCard({
+class _ShopRewardTile extends StatelessWidget {
+  const _ShopRewardTile({
+    required this.label,
+    required this.subtitle,
     required this.icon,
     required this.color,
-    required this.title,
-    required this.subtitle,
-    required this.buttonLabel,
-    this.onTap,
+    required this.onTap,
   });
 
+  final String label;
+  final String subtitle;
   final IconData icon;
   final Color color;
-  final String title;
-  final String subtitle;
-  final String buttonLabel;
-  final Future<void> Function()? onTap;
+  final Future<void> Function() onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: color,
-            child: Icon(icon, color: Colors.white),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return PressableScale(
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        elevation: 2,
+        shadowColor: const Color(0x33000000),
+        child: InkWell(
+          onTap: () => onTap(),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0x1A315F4A)),
+            ),
+            child: Row(
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF6F766F),
-                    fontSize: 12,
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [color, color.withValues(alpha: 0.8)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
+                  child: Icon(icon, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          color: Color(0xFF315F4A),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF6B746E),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF8B8078),
                 ),
               ],
             ),
           ),
-          FilledButton(
-            onPressed: onTap == null ? null : () => unawaited(onTap!()),
-            child: Text(buttonLabel),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShopProductTile extends StatelessWidget {
+  const _ShopProductTile({required this.product, required this.onTap});
+
+  final StoreProduct product;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = switch (product) {
+      StoreProduct.noAds => 'No Ads',
+      StoreProduct.coinPack => '1,000 Coin Pack',
+      StoreProduct.starterPack => 'Starter Pack',
+    };
+    final description = switch (product) {
+      StoreProduct.noAds => 'Remove all ads forever',
+      StoreProduct.coinPack => 'Grow your business faster',
+      StoreProduct.starterPack => '500 coins, 20 gems, and two upgrades',
+    };
+    final price = switch (product) {
+      StoreProduct.noAds => 'US\$2.99',
+      StoreProduct.coinPack => 'US\$0.99',
+      StoreProduct.starterPack => 'US\$4.99',
+    };
+    final icon = switch (product) {
+      StoreProduct.noAds => Icons.block_rounded,
+      StoreProduct.coinPack => Icons.monetization_on_rounded,
+      StoreProduct.starterPack => Icons.card_giftcard_rounded,
+    };
+
+    return PressableScale(
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        elevation: 2,
+        shadowColor: const Color(0x33000000),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0x1A315F4A)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFFF6A623),
+                        const Color(0xFFE09A20),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFF6A623).withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          color: Color(0xFF315F4A),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        description,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF6B746E),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  price,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                    color: Color(0xFF315F4A),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF8B8078),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1268,61 +1341,92 @@ class _OfflineEarningsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _Panel(
-      child: AnimatedBuilder(
-        animation: game,
-        builder: (context, _) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.storefront_rounded,
-              size: 54,
-              color: Color(0xFF38B879),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Welcome Back!',
-              style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900),
-            ),
-            const Text('Your business kept earning while you were away.'),
-            const SizedBox(height: 16),
-            _CurrencyPill(
-              icon: Icons.monetization_on_rounded,
-              value: game.offlineEarnings,
-              color: const Color(0xFFF6A623),
-            ),
-            const SizedBox(height: 17),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: game.rewardInProgress
-                        ? null
-                        : () => unawaited(onCollect(false)),
-                    child: const Text('COLLECT'),
-                  ),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: game.rewardInProgress
-                        ? null
-                        : () => unawaited(onCollect(true)),
-                    icon: const Icon(Icons.ondemand_video_rounded),
-                    label: const Text('DOUBLE ×2'),
-                  ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const _SheetHandle(),
+          const SizedBox(height: 8),
+          Container(
+            width: 92,
+            height: 92,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
+              ),
+              shape: BoxShape.circle,
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x44F6A623),
+                  blurRadius: 22,
+                  offset: Offset(0, 10),
                 ),
               ],
             ),
-            if (game.isMonetizationPreview) ...[
-              const SizedBox(height: 8),
-              const Text(
-                'Preview mode grants the reward without a real ad.',
-                style: TextStyle(color: Color(0xFF777D79), fontSize: 11),
+            child: const Icon(
+              Icons.nightlight_round,
+              size: 53,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 15),
+          const Text(
+            'OFFLINE EARNINGS',
+            style: TextStyle(
+              color: Color(0xFFE08D19),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'While you were away...',
+            style: const TextStyle(color: Color(0xFF6F766F), fontSize: 14),
+          ),
+          const SizedBox(height: 17),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _BonusPill(
+                icon: Icons.monetization_on_rounded,
+                value: '+${game.offlineEarnings}',
+                color: const Color(0xFFF6A623),
               ),
             ],
-          ],
-        ),
+          ),
+          const SizedBox(height: 19),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => onCollect(false),
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: Text(AppLocalizations.of(context).collect),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    foregroundColor: const Color(0xFF315F4A),
+                    side: const BorderSide(color: Color(0xFF315F4A)),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => onCollect(true),
+                  icon: const Icon(Icons.flash_on_rounded, size: 18),
+                  label: Text(AppLocalizations.of(context).double),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    backgroundColor: const Color(0xFFF6A623),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+            ],
+          ).paddingSymmetric(horizontal: 16),
+          const SizedBox(height: 16),
+        ],
       ),
     );
   }
@@ -1335,63 +1439,86 @@ class _AchievementToast extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 390),
-        child: Material(
-          elevation: 12,
-          shadowColor: const Color(0x66315F4A),
-          color: const Color(0xFF234B38),
-          borderRadius: BorderRadius.circular(21),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(13, 10, 15, 10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 49,
-                  height: 49,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFD95A),
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Text(
-                    achievement.badge,
-                    style: const TextStyle(fontSize: 24),
-                  ),
-                ),
-                const SizedBox(width: 11),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'ACHIEVEMENT UNLOCKED',
-                        style: TextStyle(
-                          color: Color(0xFFFFD95A),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.9,
-                        ),
-                      ),
-                      Text(
-                        achievement.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFFCF6), Color(0xFFFFF8F0)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE8DCC8)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33315F4A),
+              blurRadius: 20,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x44F6A623),
+                    blurRadius: 14,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Text(
+                achievement.badge,
+                style: const TextStyle(fontSize: 25),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    AppLocalizations.of(context).achievementUnlocked,
+                    style: const TextStyle(
+                      color: Color(0xFFE08D19),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    achievement.title,
+                    style: const TextStyle(
+                      color: Color(0xFF315F4A),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    achievement.description,
+                    style: const TextStyle(
+                      color: Color(0xFF6B746E),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1412,21 +1539,24 @@ class _BonusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 48),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 6),
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 4),
           Text(
             value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -1441,19 +1571,20 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.82,
-        ),
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-        decoration: const BoxDecoration(
-          color: Color(0xFFFFFCF6),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: child,
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF6),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x44315F4A),
+            blurRadius: 28,
+            offset: Offset(0, 13),
+          ),
+        ],
       ),
+      child: child,
     );
   }
 }
@@ -1465,14 +1596,23 @@ class _SheetHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 44,
+        margin: const EdgeInsets.fromLTRB(0, 10, 0, 4),
+        width: 40,
         height: 5,
-        margin: const EdgeInsets.only(bottom: 13),
         decoration: BoxDecoration(
-          color: const Color(0xFFD6D2CA),
-          borderRadius: BorderRadius.circular(10),
+          color: const Color(0xFFD8D0C8),
+          borderRadius: BorderRadius.circular(3),
         ),
       ),
+    );
+  }
+}
+
+extension _PaddingExtension on Widget {
+  Widget paddingSymmetric({double horizontal = 0, double vertical = 0}) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontal, vertical: vertical),
+      child: this,
     );
   }
 }

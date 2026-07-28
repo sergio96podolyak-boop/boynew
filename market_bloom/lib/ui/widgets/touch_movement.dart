@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 import '../../game/game_controller.dart';
 import '../../services/app_settings.dart';
@@ -28,25 +27,20 @@ class _TouchMovementState extends State<TouchMovement> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.controlMode == ControlMode.joystick) {
+    if (widget.controlMode != ControlMode.directTouch) {
       return _JoystickArea(
-        game: widget.game,
         onChanged: widget.game.setMovement,
+        alignment: widget.controlMode == ControlMode.leftJoystick
+            ? Alignment.bottomLeft
+            : Alignment.bottomRight,
       );
     }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (details) {
-        if (_isUIWidget(details.localPosition)) {
-          return;
-        }
-        _dragStart = details.localPosition;
         _handleTap(details.localPosition);
       },
       onPanStart: (details) {
-        if (_isUIWidget(details.localPosition)) {
-          return;
-        }
         _dragStart = details.localPosition;
         _isDragging = true;
         _updateMovement(details.localPosition);
@@ -67,33 +61,8 @@ class _TouchMovementState extends State<TouchMovement> {
         _dragStart = null;
         widget.game.setMovement(Offset.zero);
       },
-      child: Container(
-        color: Colors.transparent,
-        child: const Center(
-          child: Text(
-            'Tap or drag to move',
-            style: TextStyle(
-              color: Color(0xFF315F4A),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
+      child: const SizedBox.expand(),
     );
-  }
-
-  bool _isUIWidget(Offset localPosition) {
-    final size = context.size;
-    if (size == null) {
-      return false;
-    }
-    final bottomNavHeight = kBottomNavigationBarHeight +
-        MediaQuery.of(context).padding.bottom;
-    if (localPosition.dy > size.height - bottomNavHeight - 60) {
-      return true;
-    }
-    return false;
   }
 
   void _handleTap(Offset localPosition) {
@@ -101,23 +70,15 @@ class _TouchMovementState extends State<TouchMovement> {
     if (size == null) {
       return;
     }
-    final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) {
-      return;
-    }
-    final local = renderBox.globalToLocal(localPosition);
+    final local = localPosition;
     final normalized = Offset(
       (local.dx / size.width).clamp(0.06, 0.94),
       (local.dy / size.height).clamp(0.09, 0.94),
     );
     final target = normalized - widget.game.playerPosition;
     if (target.distance > 0.02) {
-      widget.game.setMovement(target / target.distance);
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          widget.game.setMovement(Offset.zero);
-        }
-      });
+      widget.game.moveTo(normalized);
+      widget.onTap();
     }
   }
 
@@ -126,11 +87,7 @@ class _TouchMovementState extends State<TouchMovement> {
     if (size == null || _dragStart == null) {
       return;
     }
-    final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) {
-      return;
-    }
-    final local = renderBox.globalToLocal(localPosition);
+    final local = localPosition;
     final normalized = Offset(
       (local.dx / size.width).clamp(0.06, 0.94),
       (local.dy / size.height).clamp(0.09, 0.94),
@@ -145,13 +102,10 @@ class _TouchMovementState extends State<TouchMovement> {
 }
 
 class _JoystickArea extends StatefulWidget {
-  const _JoystickArea({
-    required this.game,
-    required this.onChanged,
-  });
+  const _JoystickArea({required this.onChanged, required this.alignment});
 
-  final GameController game;
   final ValueChanged<Offset> onChanged;
+  final Alignment alignment;
 
   @override
   State<_JoystickArea> createState() => _JoystickAreaState();
@@ -182,18 +136,19 @@ class _JoystickAreaState extends State<_JoystickArea> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanStart: (details) => _update(details.localPosition),
-      onPanUpdate: (details) => _update(details.localPosition),
-      onPanEnd: (_) => _release(),
-      onPanCancel: _release,
-      child: Container(
-        color: Colors.transparent,
-        child: Center(
-          child: CustomPaint(
-            size: Size.square(context.size?.shortestSide ?? 120),
-            painter: _JoystickPainter(knob: _knob),
+    return Align(
+      alignment: widget.alignment,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: SizedBox.square(
+          dimension: 132,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanStart: (details) => _update(details.localPosition),
+            onPanUpdate: (details) => _update(details.localPosition),
+            onPanEnd: (_) => _release(),
+            onPanCancel: _release,
+            child: CustomPaint(painter: _JoystickPainter(knob: _knob)),
           ),
         ),
       ),

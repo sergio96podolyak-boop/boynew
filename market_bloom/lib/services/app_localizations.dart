@@ -433,6 +433,13 @@ class AppLocalizations {
 
   String get controlMode => _t('controlMode');
 
+  String get directTouchInstruction => _t('directTouchInstruction');
+
+  String get floatingJoystickInstruction => _t('floatingJoystickInstruction');
+
+  String get leftHandedJoystickInstruction =>
+      _t('leftHandedJoystickInstruction');
+
   String get directTouch => _t('directTouch');
 
   String get floatingJoystick => _t('floatingJoystick');
@@ -656,6 +663,9 @@ class AppLocalizations {
     'gemsShort': 'GEMS',
     'lowStock': 'LOW STOCK',
     'controlMode': 'Control Mode',
+    'directTouchInstruction': 'Tap or drag to move',
+    'floatingJoystickInstruction': 'Drag the joystick to move',
+    'leftHandedJoystickInstruction': 'Drag the left joystick to move',
     'directTouch': 'Direct Touch',
     'floatingJoystick': 'Floating Joystick',
     'leftHandedJoystick': 'Left-handed Joystick',
@@ -860,6 +870,9 @@ class AppLocalizations {
     'gemsShort': 'אבנים',
     'lowStock': 'מלאי נמוך',
     'controlMode': 'מצב שליטה',
+    'directTouchInstruction': 'לחצו או גררו כדי לזוז',
+    'floatingJoystickInstruction': 'גררו את הג\'ויסטיק כדי לזוז',
+    'leftHandedJoystickInstruction': 'גררו את הג\'ויסטיק השמאלי כדי לזוז',
     'directTouch': 'מגע ישיר',
     'floatingJoystick': 'ג\'ויסטיק צף',
     'leftHandedJoystick': 'ג\'ויסטיק שמאלי',
@@ -1064,6 +1077,9 @@ class AppLocalizations {
     'gemsShort': 'جواهر',
     'lowStock': 'مخزون منخفض',
     'controlMode': 'وضع التحكم',
+    'directTouchInstruction': 'اضغط أو اسحب للتحرك',
+    'floatingJoystickInstruction': 'اسحب عصا التحكم للتحرك',
+    'leftHandedJoystickInstruction': 'اسحب عصا التحكم اليسرى للتحرك',
     'directTouch': 'لمس مباشر',
     'floatingJoystick': 'عصا تحكم عائمة',
     'leftHandedJoystick': 'عصا تحكم يسرى',

@@ -31,6 +31,7 @@ class GameController extends ChangeNotifier {
 
   Offset playerPosition = const Offset(0.5, 0.72);
   Offset movement = Offset.zero;
+  Offset? _movementTarget;
   final List<MarketCustomer> customers = [];
 
   int coins = 25;
@@ -228,7 +229,7 @@ class GameController extends ChangeNotifier {
     if (_near(playerPosition, checkoutZone, 0.13)) {
       return 'Customers pay here';
     }
-    return 'Use the joystick and keep the shelf stocked';
+    return '';
   }
 
   Future<void> initialize() async {
@@ -276,7 +277,20 @@ class GameController extends ChangeNotifier {
   }
 
   void setMovement(Offset value) {
+    _movementTarget = null;
     movement = value.distance > 1 ? value / value.distance : value;
+  }
+
+  void moveTo(Offset target) {
+    _movementTarget = Offset(
+      target.dx.clamp(0.06, 0.94),
+      target.dy.clamp(0.09, 0.94),
+    );
+  }
+
+  void clearMovementTarget() {
+    _movementTarget = null;
+    movement = Offset.zero;
   }
 
   void tick(double dt) {
@@ -318,6 +332,19 @@ class GameController extends ChangeNotifier {
   }
 
   void _updatePlayer(double dt) {
+    final target = _movementTarget;
+    if (target != null) {
+      final delta = target - playerPosition;
+      final maxStep = playerSpeed * dt;
+      if (delta.distance <= max(maxStep, 0.006)) {
+        playerPosition = target;
+        _movementTarget = null;
+        movement = Offset.zero;
+        return;
+      }
+      movement = delta / delta.distance;
+    }
+
     if (movement == Offset.zero) {
       return;
     }

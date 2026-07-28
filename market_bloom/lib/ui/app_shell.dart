@@ -75,43 +75,33 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context);
     final isWide = MediaQuery.sizeOf(context).width >= 600;
-    final reducedMotion =
-        widget.settings.reducedMotion ||
-        MediaQuery.disableAnimationsOf(context);
-
     return Scaffold(
-      body: Stack(
+      body: Column(
         children: [
-          Positioned.fill(
+          GlobalHud(game: widget.controller, settings: widget.settings),
+          Expanded(
             child: Row(
               children: [
-                if (isWide) _buildRail(localizations, reducedMotion),
+                if (isWide) _buildRail(localizations),
                 Expanded(
                   child: IndexedStack(
                     index: _selectedIndex,
                     children: [
-                      for (final dest in _allDestinations) _buildDestination(dest),
+                      for (final dest in _allDestinations)
+                        _buildDestination(dest),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: true,
-              child: GlobalHud(game: widget.controller, settings: widget.settings),
-            ),
-          ),
         ],
       ),
-      bottomNavigationBar: isWide
-          ? null
-          : _buildBottomNavBar(localizations, reducedMotion),
+      bottomNavigationBar: isWide ? null : _buildBottomNavBar(localizations),
     );
   }
 
-  Widget _buildRail(AppLocalizations loc, bool reducedMotion) {
+  Widget _buildRail(AppLocalizations loc) {
     return NavigationRail(
       selectedIndex: _selectedIndex,
       onDestinationSelected: _selectDestination,
@@ -130,7 +120,7 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildBottomNavBar(AppLocalizations loc, bool reducedMotion) {
+  Widget _buildBottomNavBar(AppLocalizations loc) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
@@ -142,13 +132,14 @@ class _AppShellState extends State<AppShell> {
         top: false,
         child: Row(
           children: [
-            for (int i = 0; i < _primaryDestinations.length; i++)
+            for (final destination in _primaryDestinations)
               Expanded(
                 child: _buildBottomNavItem(
-                  _primaryDestinations[i],
+                  destination,
                   loc,
-                  i == _selectedIndex,
-                  () => _selectDestination(i),
+                  _allDestinations[_selectedIndex] == destination,
+                  () =>
+                      _selectDestination(_allDestinations.indexOf(destination)),
                 ),
               ),
             Expanded(

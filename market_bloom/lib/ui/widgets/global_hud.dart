@@ -4,6 +4,10 @@ import '../../game/game_controller.dart';
 import '../../services/app_localizations.dart';
 import '../../services/app_settings.dart';
 
+/// The single app-wide status header.
+///
+/// It participates in normal layout instead of being painted over the whole
+/// screen, so it never creates a modal-looking dim layer or covers gameplay.
 class GlobalHud extends StatelessWidget {
   const GlobalHud({super.key, required this.game, required this.settings});
 
@@ -13,226 +17,213 @@ class GlobalHud extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
-    final reducedMotion = settings.reducedMotion || MediaQuery.disableAnimationsOf(context);
-    final width = MediaQuery.sizeOf(context).width;
-    final isCompact = width < 360;
-    
-    return AnimatedBuilder(
-      animation: game,
-      builder: (context, _) {
-        return Container(
-          padding: EdgeInsets.fromLTRB(
-            isCompact ? 4 : 8,
-            isCompact ? 4 : 6,
-            isCompact ? 4 : 8,
-            MediaQuery.of(context).padding.top + (isCompact ? 4 : 6),
-          ),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                const Color(0xFF063D2C).withValues(alpha: 0.95),
-                const Color(0xFF063D2C).withValues(alpha: 0.0),
-              ],
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            bottom: false,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Brand
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isCompact ? 6 : 8,
-                      vertical: isCompact ? 3 : 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.storefront_rounded,
-                          color: const Color(0xFF38B879),
-                          size: isCompact ? 14 : 16,
-                        ),
-                        if (width > 340) ...[
-                          const SizedBox(width: 3),
-                          Text(
-                            'POMARKET',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: isCompact ? 10 : 12,
-                              letterSpacing: 0.4,
+    final reducedMotion =
+        settings.reducedMotion || MediaQuery.disableAnimationsOf(context);
+
+    return Material(
+      color: const Color(0xFF063D2C),
+      elevation: 5,
+      shadowColor: const Color(0x55315F4A),
+      child: SafeArea(
+        bottom: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 360;
+            final showSubtitle = constraints.maxWidth >= 350;
+
+            return AnimatedBuilder(
+              animation: game,
+              builder: (context, _) {
+                return Semantics(
+                  container: true,
+                  label:
+                      'PoMarket, level ${game.storeLevel}, ${game.coins} ${loc.coinsShort}, ${game.gems} ${loc.gemsShort}',
+                  child: SizedBox(
+                    height: compact ? 58 : 66,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 8 : 12,
+                        vertical: compact ? 7 : 8,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: compact ? 34 : 40,
+                                  height: compact ? 34 : 40,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF38B879),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.storefront_rounded,
+                                    color: Colors.white,
+                                    size: compact ? 20 : 23,
+                                  ),
+                                ),
+                                if (!compact) ...[
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'POMARKET',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 0.5,
+                                            height: 1,
+                                          ),
+                                        ),
+                                        if (showSubtitle) ...[
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            loc.yourMiniMarket,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Color(0xFFC9E9D9),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              height: 1,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
+                          _HudPill(
+                            icon: Icons.trending_up_rounded,
+                            label: 'L${game.storeLevel}',
+                            value: '${(game.levelProgress * 100).round()}%',
+                            color: const Color(0xFF38B879),
+                            compact: compact,
+                            reducedMotion: reducedMotion,
+                          ),
+                          SizedBox(width: compact ? 4 : 6),
+                          _HudPill(
+                            icon: Icons.monetization_on_rounded,
+                            label: loc.coinsShort,
+                            value: '${game.coins}',
+                            color: const Color(0xFFF6A623),
+                            compact: compact,
+                            reducedMotion: reducedMotion,
+                          ),
+                          SizedBox(width: compact ? 4 : 6),
+                          _HudPill(
+                            icon: Icons.diamond_rounded,
+                            label: loc.gemsShort,
+                            value: '${game.gems}',
+                            color: const Color(0xFF9B7AE6),
+                            compact: compact,
+                            reducedMotion: reducedMotion,
+                          ),
+                          if (game.shelfStock < 3) ...[
+                            SizedBox(width: compact ? 3 : 5),
+                            Tooltip(
+                              message: loc.lowStock,
+                              child: const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Color(0xFFFF7C8F),
+                                size: 18,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                  SizedBox(width: isCompact ? 4 : (width > 320 ? 6 : 0)),
-                  
-                  // Level
-                  _HudPill(
-                    label: 'L${game.storeLevel}',
-                    value: '${(game.levelProgress * 100).toInt()}%',
-                    color: const Color(0xFF38B879),
-                    compact: isCompact,
-                    reducedMotion: reducedMotion,
-                  ),
-                  SizedBox(width: isCompact ? 4 : (width > 320 ? 6 : 0)),
-                  
-                  // Coins
-                  _HudPill(
-                    label: loc.coinsShort,
-                    value: game.coins.toString(),
-                    color: const Color(0xFFF6A623),
-                    icon: Icons.monetization_on_rounded,
-                    compact: isCompact,
-                    reducedMotion: reducedMotion,
-                  ),
-                  if (width > 340) const SizedBox(width: 3),
-                  
-                  // Gems
-                  if (width > 340)
-                    _HudPill(
-                      label: loc.gemsShort,
-                      value: game.gems.toString(),
-                      color: const Color(0xFF8B66D8),
-                      icon: Icons.diamond_rounded,
-                      compact: isCompact,
-                      reducedMotion: reducedMotion,
-                    ),
-                  
-                  // Alert badge for low stock
-                  if (game.shelfStock < 3 && game.shelfStock >= 0)
-                    _AlertBadge(
-                      icon: Icons.warning_amber_rounded,
-                      label: loc.lowStock,
-                      color: const Color(0xFFE85D75),
-                      compact: isCompact,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+                );
+              },
+            );
+          },
+        ),
+      ),
     );
   }
 }
 
 class _HudPill extends StatelessWidget {
   const _HudPill({
+    required this.icon,
     required this.label,
     required this.value,
     required this.color,
-    this.icon,
-    this.compact = false,
-    this.reducedMotion = false,
+    required this.compact,
+    required this.reducedMotion,
   });
 
+  final IconData icon;
   final String label;
   final String value;
   final Color color;
-  final IconData? icon;
   final bool compact;
   final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 6 : 8,
-        vertical: compact ? 3 : 4,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: compact ? 12 : 14, color: color),
-            const SizedBox(width: 3),
-          ],
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: compact ? 8 : 9,
-                  fontWeight: FontWeight.w600,
-                  height: 1.0,
-                ),
-              ),
-              Text(
-                value,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: compact ? 11 : 13,
-                  fontWeight: FontWeight.w900,
-                  height: 1.1,
-                ),
-              ),
-            ],
-          ),
-        ],
+    final valueText = Text(
+      value,
+      key: ValueKey(value),
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: compact ? 10 : 12,
+        fontWeight: FontWeight.w900,
+        height: 1,
       ),
     );
-  }
-}
 
-class _AlertBadge extends StatelessWidget {
-  const _AlertBadge({
-    required this.icon,
-    required this.label,
-    required this.color,
-    this.compact = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(minWidth: compact ? 42 : 48),
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 6 : 8,
-        vertical: compact ? 3 : 4,
+        horizontal: compact ? 5 : 7,
+        vertical: compact ? 4 : 5,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color, width: 1.2),
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: compact ? 12 : 14, color: color),
           const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: compact ? 10 : 11,
-              fontWeight: FontWeight.w800,
-            ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: const Color(0xFFC9E9D9),
+                  fontSize: compact ? 7 : 8,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              reducedMotion
+                  ? valueText
+                  : AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: valueText,
+                    ),
+            ],
           ),
         ],
       ),
