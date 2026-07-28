@@ -6,6 +6,7 @@ import '../../services/app_localizations.dart';
 import '../../services/app_settings.dart';
 import '../../services/sfx/sfx_manager.dart';
 import '../widgets/pressable_scale.dart';
+import '../widgets/touch_movement.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -154,6 +155,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          // Control mode
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    loc.controlMode,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      _ControlModeChip(
+                        label: loc.directTouch,
+                        mode: ControlMode.directTouch,
+                        selected: settings.controlMode == ControlMode.directTouch,
+                        onTap: () => settings.setControlMode(ControlMode.directTouch),
+                      ),
+                      _ControlModeChip(
+                        label: loc.floatingJoystick,
+                        mode: ControlMode.joystick,
+                        selected: settings.controlMode == ControlMode.joystick,
+                        onTap: () => settings.setControlMode(ControlMode.joystick),
+                      ),
+                      _ControlModeChip(
+                        label: loc.leftHandedJoystick,
+                        mode: ControlMode.leftJoystick,
+                        selected: settings.controlMode == ControlMode.leftJoystick,
+                        onTap: () => settings.setControlMode(ControlMode.leftJoystick),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           // Restore purchases
           Card(
             child: ListTile(
@@ -244,6 +285,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ControlModeChip extends StatelessWidget {
+  const _ControlModeChip({
+    required this.label,
+    required this.mode,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final ControlMode mode;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        backgroundColor: selected
+            ? Theme.of(context).colorScheme.primaryContainer
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
+        selectedColor: Theme.of(context).colorScheme.primaryContainer,
+        labelStyle: TextStyle(
+          color: selected
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+        ),
       ),
     );
   }

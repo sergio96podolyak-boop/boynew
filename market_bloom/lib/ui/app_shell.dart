@@ -12,6 +12,7 @@ import 'screens/settings_screen.dart';
 import 'screens/shop_screen.dart';
 import 'screens/staff_screen.dart';
 import 'screens/upgrades_screen.dart';
+import 'widgets/global_hud.dart';
 
 /// The nine top-level destinations in the PoMarket experience.
 enum AppDestination {
@@ -79,15 +80,27 @@ class _AppShellState extends State<AppShell> {
         MediaQuery.disableAnimationsOf(context);
 
     return Scaffold(
-      body: Row(
+      body: Stack(
         children: [
-          if (isWide) _buildRail(localizations, reducedMotion),
-          Expanded(
-            child: IndexedStack(
-              index: _selectedIndex,
+          Positioned.fill(
+            child: Row(
               children: [
-                for (final dest in _allDestinations) _buildDestination(dest),
+                if (isWide) _buildRail(localizations, reducedMotion),
+                Expanded(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: [
+                      for (final dest in _allDestinations) _buildDestination(dest),
+                    ],
+                  ),
+                ),
               ],
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: true,
+              child: GlobalHud(game: widget.controller, settings: widget.settings),
             ),
           ),
         ],
@@ -215,9 +228,10 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildDestination(AppDestination dest) {
     final game = widget.controller;
+    final settings = widget.settings;
     switch (dest) {
       case AppDestination.market:
-        return GameScreen(controller: game);
+        return GameScreen(controller: game, settings: settings);
       case AppDestination.upgrades:
         return UpgradesScreen(controller: game);
       case AppDestination.staff:
@@ -233,7 +247,7 @@ class _AppShellState extends State<AppShell> {
       case AppDestination.shop:
         return ShopScreen(controller: game);
       case AppDestination.settings:
-        return SettingsScreen(controller: game, settings: widget.settings);
+        return SettingsScreen(controller: game, settings: settings);
     }
   }
 

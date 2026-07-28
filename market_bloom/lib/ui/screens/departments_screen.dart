@@ -50,10 +50,8 @@ class _DepartmentCard extends StatelessWidget {
       orElse: () => DepartmentState(type: definition.type),
     );
     final unlocked = state.unlocked;
-    final canUnlock =
-        !unlocked &&
-        controller.storeLevel >= definition.unlockLevel &&
-        controller.coins >= definition.unlockCost;
+    final meetsLevel = controller.storeLevel >= definition.unlockLevel;
+    final canUnlock = !unlocked && meetsLevel && controller.coins >= definition.unlockCost;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),

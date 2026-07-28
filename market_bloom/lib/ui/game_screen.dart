@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import '../game/game_controller.dart';
 import '../game/game_models.dart';
 import '../game/meta_models.dart';
+import '../services/app_settings.dart';
 import '../services/monetization_service.dart';
 import '../services/sfx/sfx_manager.dart';
 import 'market_painter.dart';
@@ -13,12 +14,13 @@ import 'widgets/celebration_overlay.dart';
 import 'widgets/meta_hub.dart';
 import 'widgets/onboarding_dialog.dart';
 import 'widgets/pressable_scale.dart';
-import 'widgets/virtual_joystick.dart';
+import 'widgets/touch_movement.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.controller});
+  const GameScreen({super.key, required this.controller, required this.settings});
 
   final GameController controller;
+  final AppSettings settings;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -36,6 +38,7 @@ class _GameScreenState extends State<GameScreen>
   final CelebrationController _celebration = CelebrationController();
 
   GameController get game => widget.controller;
+  AppSettings get settings => widget.settings;
 
   @override
   void initState() {
@@ -178,7 +181,7 @@ class _GameScreenState extends State<GameScreen>
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
-              child: Stack(
+                          child: Stack(
                 children: [
                   AnimatedBuilder(
                     animation: game,
@@ -201,6 +204,13 @@ class _GameScreenState extends State<GameScreen>
                                         animationTime: _animationTime,
                                       ),
                                     ),
+                                  ),
+                                ),
+                                Positioned.fill(
+                                  child: TouchMovement(
+                                    game: game,
+                                    onTap: () {},
+                                    controlMode: settings.controlMode,
                                   ),
                                 ),
                                 Positioned(
@@ -553,16 +563,6 @@ class _TopBar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'POMARKET',
-                        textDirection: TextDirection.ltr,
-                        style: TextStyle(
-                          color: Color(0xFF214B39),
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.8,
-                          fontSize: 17,
-                        ),
-                      ),
-                      Text(
                         'Your mini market',
                         style: TextStyle(
                           color: Color(0xFF6B7D72),
@@ -792,7 +792,7 @@ class _ControlDeck extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 142,
+      height: 120,
       margin: const EdgeInsets.fromLTRB(10, 2, 10, 8),
       padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
       decoration: BoxDecoration(
@@ -801,7 +801,7 @@ class _ControlDeck extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0x22315F4A)),
         boxShadow: const [
           BoxShadow(
@@ -822,15 +822,15 @@ class _ControlDeck extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFF315F4A),
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               const Icon(
                 Icons.inventory_2_rounded,
-                size: 16,
+                size: 14,
                 color: Color(0xFFE09A20),
               ),
               const SizedBox(width: 3),
@@ -838,52 +838,44 @@ class _ControlDeck extends StatelessWidget {
                 '${game.carried}/${game.bagCapacity}',
                 style: const TextStyle(
                   color: Color(0xFF315F4A),
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: FontWeight.w900,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Expanded(
-            child: Row(
+            child: GridView.count(
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 4,
+              crossAxisSpacing: 6,
+              mainAxisSpacing: 6,
+              childAspectRatio: 1.4,
               children: [
-                VirtualJoystick(onChanged: game.setMovement, size: 104),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: GridView.count(
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 7,
-                    mainAxisSpacing: 7,
-                    childAspectRatio: 1.55,
-                    children: [
-                      _RoundAction(
-                        label: 'UPGRADES',
-                        icon: Icons.upgrade_rounded,
-                        color: const Color(0xFF5B8DEF),
-                        onTap: onUpgrades,
-                      ),
-                      _RoundAction(
-                        label: game.rewardInProgress ? 'LOADING…' : 'REWARD',
-                        icon: Icons.ondemand_video_rounded,
-                        color: const Color(0xFFE85D75),
-                        onTap: game.rewardInProgress ? null : onReward,
-                      ),
-                      _RoundAction(
-                        label: 'SHOP',
-                        icon: Icons.shopping_bag_rounded,
-                        color: const Color(0xFFF6A623),
-                        onTap: onShop,
-                      ),
-                      _RoundAction(
-                        label: 'HUB',
-                        icon: Icons.grid_view_rounded,
-                        color: const Color(0xFF38B879),
-                        onTap: onHub,
-                      ),
-                    ],
-                  ),
+                _RoundAction(
+                  label: 'UPGRADES',
+                  icon: Icons.upgrade_rounded,
+                  color: const Color(0xFF5B8DEF),
+                  onTap: onUpgrades,
+                ),
+                _RoundAction(
+                  label: game.rewardInProgress ? 'LOADING…' : 'REWARD',
+                  icon: Icons.ondemand_video_rounded,
+                  color: const Color(0xFFE85D75),
+                  onTap: game.rewardInProgress ? null : onReward,
+                ),
+                _RoundAction(
+                  label: 'SHOP',
+                  icon: Icons.shopping_bag_rounded,
+                  color: const Color(0xFFF6A623),
+                  onTap: onShop,
+                ),
+                _RoundAction(
+                  label: 'HUB',
+                  icon: Icons.grid_view_rounded,
+                  color: const Color(0xFF38B879),
+                  onTap: onHub,
                 ),
               ],
             ),

@@ -108,6 +108,25 @@ class TradingConfig:
     momentum_min_price_change_pct: float = field(
         default_factory=lambda: _env_float("MOMENTUM_MIN_PRICE_CHANGE_PCT", "5")
     )
+    # Broad-market prefilter: cheaply scores all tradable USDT-M futures from
+    # the 24h ticker, then sends only the hottest movers into the expensive
+    # OHLCV/model scan. This widens coverage without training on 500+ symbols
+    # every loop.
+    broad_market_scan_enabled: bool = field(
+        default_factory=lambda: _env_bool("BROAD_MARKET_SCAN_ENABLED", "true")
+    )
+    broad_market_top_n: int = field(
+        default_factory=lambda: _env_int("BROAD_MARKET_TOP_N", "120")
+    )
+    broad_market_min_quote_volume_usdt: float = field(
+        default_factory=lambda: _env_float("BROAD_MARKET_MIN_QUOTE_VOLUME_USDT", "1000000")
+    )
+    broad_market_min_range_pct: float = field(
+        default_factory=lambda: _env_float("BROAD_MARKET_MIN_RANGE_PCT", "0.015")
+    )
+    broad_market_min_abs_change_pct: float = field(
+        default_factory=lambda: _env_float("BROAD_MARKET_MIN_ABS_CHANGE_PCT", "1.0")
+    )
     # Fee guard: commissions were the #1 account bleed (69% of losses over
     # 48h). Budget entries per hour and cool down re-entries per symbol.
     max_entries_per_hour: int = field(
@@ -269,6 +288,22 @@ class TradingConfig:
     profit_edge_buffer_pct: float = field(
         default_factory=lambda: _env_float("PROFIT_EDGE_BUFFER_PCT", "0.0005")
     )
+    # Entry fee edge: before opening, require the planned TP to clear estimated
+    # round-trip costs by enough USDT and net reward/risk. If possible, sizing
+    # may lift notional inside the existing risk/margin caps to meet the dollar
+    # target; otherwise the trade is rejected.
+    fee_aware_sizing_enabled: bool = field(
+        default_factory=lambda: _env_bool("FEE_AWARE_SIZING_ENABLED", "true")
+    )
+    min_expected_net_profit_usdt: float = field(
+        default_factory=lambda: _env_float("MIN_EXPECTED_NET_PROFIT_USDT", "0.25")
+    )
+    min_net_reward_risk: float = field(
+        default_factory=lambda: _env_float("MIN_NET_REWARD_RISK", "1.15")
+    )
+    min_profit_cost_ratio: float = field(
+        default_factory=lambda: _env_float("MIN_PROFIT_COST_RATIO", "3.0")
+    )
 
     # Minimum ATR as fraction of price to allow entry (e.g. 0.001 = 0.1%).
     # Prevents entering trades in low-volatility / no-movement markets.
@@ -404,6 +439,15 @@ class TradingConfig:
     )
     block_when_model_unhealthy: bool = field(
         default_factory=lambda: _env_bool("BLOCK_WHEN_MODEL_UNHEALTHY", "true")
+    )
+    # When the ML model is unhealthy, ML entries stay blocked. Optionally allow
+    # protected non-ML signals (technical confluence / TradingView) only when
+    # they are very strong and still pass committee, risk and fee gates.
+    model_unhealthy_allow_protected_fallback: bool = field(
+        default_factory=lambda: _env_bool("MODEL_UNHEALTHY_ALLOW_PROTECTED_FALLBACK", "false")
+    )
+    model_unhealthy_fallback_min_score: float = field(
+        default_factory=lambda: _env_float("MODEL_UNHEALTHY_FALLBACK_MIN_SCORE", "92")
     )
     health_check_enabled: bool = field(
         default_factory=lambda: _env_bool("HEALTH_CHECK_ENABLED", "true")
@@ -650,6 +694,14 @@ class TradingConfig:
             raise ValueError("momentum_min_quote_volume_usdt must be >= 0")
         if self.momentum_min_price_change_pct < 0:
             raise ValueError("momentum_min_price_change_pct must be >= 0")
+        if self.broad_market_top_n < 0:
+            raise ValueError("broad_market_top_n must be >= 0")
+        if self.broad_market_min_quote_volume_usdt < 0:
+            raise ValueError("broad_market_min_quote_volume_usdt must be >= 0")
+        if self.broad_market_min_range_pct < 0:
+            raise ValueError("broad_market_min_range_pct must be >= 0")
+        if self.broad_market_min_abs_change_pct < 0:
+            raise ValueError("broad_market_min_abs_change_pct must be >= 0")
         if self.dex_hot_top_n < 0:
             raise ValueError("dex_hot_top_n must be >= 0")
         if self.max_entries_per_hour < 0:
@@ -701,6 +753,9 @@ class TradingConfig:
             ("profit_take_pct", self.profit_take_pct),
             ("estimated_taker_fee_pct", self.estimated_taker_fee_pct),
             ("profit_edge_buffer_pct", self.profit_edge_buffer_pct),
+            ("min_expected_net_profit_usdt", self.min_expected_net_profit_usdt),
+            ("min_net_reward_risk", self.min_net_reward_risk),
+            ("min_profit_cost_ratio", self.min_profit_cost_ratio),
         ):
             if v < 0:
                 raise ValueError(f"{name} must be >= 0")
@@ -710,6 +765,8 @@ class TradingConfig:
             raise ValueError("decision_min_consensus must be in (0,1]")
         if not 0 < self.decision_live_min_consensus <= 1:
             raise ValueError("decision_live_min_consensus must be in (0,1]")
+        if self.model_unhealthy_fallback_min_score < 0:
+            raise ValueError("model_unhealthy_fallback_min_score must be >= 0")
         if self.health_check_seconds < 0:
             raise ValueError("health_check_seconds must be >= 0")
         if self.catalyst_refresh_seconds < 0:

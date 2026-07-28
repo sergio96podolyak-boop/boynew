@@ -1,0 +1,18 @@
+{
+  "updated_at": 1783088591.018469,
+  "symbol": "WLFIUSDT",
+  "direction": "SHORT",
+  "approved": true,
+  "vote": true,
+  "score_adjustment": -0.5,
+  "size_multiplier": 0.9,
+  "hard_block": false,
+  "reason": "strong taker sell pressure; open interest falling",
+  "metrics": {
+    "oi_change_pct": -0.018956790588687163,
+    "open_interest_first": 98236487.7582513,
+    "open_interest_last": 96374239.23165,
+    "taker_buy_sell_ratio": 0.3786,
+    "global_long_short_ratio": 0.6642
+  }
+}

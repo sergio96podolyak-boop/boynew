@@ -1,0 +1,218 @@
+{
+  "updated_at": 1783087441.1825018,
+  "lookback_hours": 48,
+  "readiness_score": 56,
+  "live_edge": false,
+  "overall": {
+    "total_trades": 267,
+    "wins": 108,
+    "losses": 159,
+    "total_pnl": -11.424686,
+    "avg_pnl": -0.042789,
+    "avg_pnl_pct": -0.0016,
+    "gross_profit": 54.261796,
+    "gross_loss": -65.686482,
+    "win_rate": 0.4045
+  },
+  "profit_capture_pnl": 53.129771,
+  "stop_pnl": -63.303191,
+  "no_move_pnl": -1.180336,
+  "modules": [
+    {
+      "key": "smart_trade",
+      "name": "Smart Trade",
+      "state": "LIVE",
+      "status": "פעיל",
+      "detail": "SL/TP נשלחים לבורסה לכל כניסה חיה.",
+      "score": 95
+    },
+    {
+      "key": "hft_ml",
+      "name": "HFT + ML",
+      "state": "LIVE",
+      "status": "פעיל",
+      "detail": "267 עסקאות ב-48 שעות | PnL -11.42 USDT.",
+      "score": 46
+    },
+    {
+      "key": "freqai_like",
+      "name": "FreqAI-style health",
+      "state": "LIVE",
+      "status": "בריאות ML",
+      "detail": "16/104 מודלים עם יתרון אמינות.",
+      "score": 78
+    },
+    {
+      "key": "order_flow",
+      "name": "Order Flow",
+      "state": "LIVE",
+      "status": "פעיל",
+      "detail": "Open interest, taker ratio ו-crowding לפני כניסה.",
+      "score": 78
+    },
+    {
+      "key": "capital_runner",
+      "name": "Capital + Runner",
+      "state": "LIVE",
+      "status": "פעיל",
+      "detail": "מגדיל רק בקונצנזוס גבוה ונותן לעסקאות חזקות לרוץ.",
+      "score": 82
+    },
+    {
+      "key": "grid",
+      "name": "Grid",
+      "state": "INDIRECT",
+      "status": "עקיף פעיל",
+      "detail": "מזהה שוק מדשדש וקצוות Bollinger, ומשפיע על ועדת ההחלטה.",
+      "score": 58
+    },
+    {
+      "key": "dca",
+      "name": "DCA/Martingale",
+      "state": "INDIRECT",
+      "status": "עקיף/הפוך פעיל",
+      "detail": "DCA משמש רק ככניסה מדורגת אחרי pullback; Martingale הפוך מקטין סיכון.",
+      "score": 52
+    },
+    {
+      "key": "arbitrage",
+      "name": "Arbitrage",
+      "state": "INDIRECT",
+      "status": "עקיף פעיל",
+      "detail": "בודק funding/spread כיתרון החלטה; לא פותח עסקאות בין בורסות.",
+      "score": 45
+    },
+    {
+      "key": "copy_trading",
+      "name": "Copy Trading",
+      "state": "OFF",
+      "status": "לא מחובר",
+      "detail": "אין תלות בסוחרים חיצוניים; החלטות נשארות מקומיות.",
+      "score": 0
+    }
+  ],
+  "recommendations": [
+    {
+      "level": "risk",
+      "title": "להקשיח כניסות לפני הגדלת סיכון נוספת",
+      "detail": "החלון האחרון שלילי: PnL -11.42, ממוצע -0.043 לעסקה."
+    },
+    {
+      "level": "ready",
+      "title": "מנגנון לקיחת רווח עובד",
+      "detail": "Profit lock / TP תרמו +53.13 USDT בחלון המחקר."
+    },
+    {
+      "level": "research",
+      "title": "לבדוק יציאות ללא תנועה",
+      "detail": "יציאות no-move תרמו -1.18; כדאי למדוד זמן אחזקה אופטימלי."
+    },
+    {
+      "level": "ready",
+      "title": "בראקט ציון עדיף: 80-85",
+      "detail": "3 עסקאות | PnL +0.99 | win 100%."
+    },
+    {
+      "level": "research",
+      "title": "לבדוק מטבע חלש: RIFUSDT",
+      "detail": "13 עסקאות | PnL -3.03."
+    }
+  ],
+  "score_brackets": [
+    {
+      "score_bracket": "72-80",
+      "trades": 1,
+      "win_rate": 1.0,
+      "total_pnl": 1.02413,
+      "avg_pnl": 1.02413
+    },
+    {
+      "score_bracket": "80-85",
+      "trades": 3,
+      "win_rate": 1.0,
+      "total_pnl": 0.99082,
+      "avg_pnl": 0.330273
+    },
+    {
+      "score_bracket": "85-92",
+      "trades": 14,
+      "win_rate": 0.5,
+      "total_pnl": -2.435385,
+      "avg_pnl": -0.173956
+    },
+    {
+      "score_bracket": "92+",
+      "trades": 249,
+      "win_rate": 0.3896,
+      "total_pnl": -11.004251,
+      "avg_pnl": -0.044194
+    }
+  ],
+  "worst_symbols": [
+    {
+      "symbol": "RIFUSDT",
+      "trades": 13,
+      "wins": 6,
+      "losses": 7,
+      "win_rate": 0.4615,
+      "total_pnl": -3.02804,
+      "avg_pnl": -0.232926,
+      "avg_pnl_pct": -0.0053
+    },
+    {
+      "symbol": "REUSDT",
+      "trades": 32,
+      "wins": 13,
+      "losses": 19,
+      "win_rate": 0.4063,
+      "total_pnl": -1.8803,
+      "avg_pnl": -0.058759,
+      "avg_pnl_pct": -0.0008
+    },
+    {
+      "symbol": "AAVEUSDT",
+      "trades": 6,
+      "wins": 0,
+      "losses": 6,
+      "win_rate": 0.0,
+      "total_pnl": -1.627,
+      "avg_pnl": -0.271167,
+      "avg_pnl_pct": -0.026
+    },
+    {
+      "symbol": "ENAUSDT",
+      "trades": 5,
+      "wins": 1,
+      "losses": 4,
+      "win_rate": 0.2,
+      "total_pnl": -1.38993,
+      "avg_pnl": -0.277986,
+      "avg_pnl_pct": -0.018
+    },
+    {
+      "symbol": "ALLOUSDT",
+      "trades": 7,
+      "wins": 2,
+      "losses": 5,
+      "win_rate": 0.2857,
+      "total_pnl": -1.316622,
+      "avg_pnl": -0.188089,
+      "avg_pnl_pct": -0.024
+    },
+    {
+      "symbol": "JUPUSDT",
+      "trades": 8,
+      "wins": 3,
+      "losses": 5,
+      "win_rate": 0.375,
+      "total_pnl": -1.2434,
+      "avg_pnl": -0.155425,
+      "avg_pnl_pct": -0.0096
+    }
+  ],
+  "model_aggregate": {
+    "trained_symbols": 104,
+    "healthy_symbols": 16,
+    "avg_reliability": 0.04050061595891285
+  }
+}

@@ -707,7 +707,8 @@ class TradingSystem:
             "min_notional=%.2f USDT | session_dd_kill=%.0f%% | daily_dd_kill=%.0f%% | stale_exit=%s | "
             "profit_take=%.2f%% | profit_lock=%s | flow_agent=%s | capital_allocator=%s | runner=%s | "
             "indirect=%s | strategy_lab=%s | fallback_strong=%s | "
-            "min_price=%.2f USDT | score_entry=%.0f | live_guard=%s | decision_consensus=%.0f%%",
+            "min_price=%.2f USDT | score_entry=%.0f | fee_edge=%s/%.2f USDT | "
+            "live_guard=%s | decision_consensus=%.0f%%",
             c.paper_trading,
             c.aggressive_hft,
             c.leverage,
@@ -727,6 +728,8 @@ class TradingSystem:
             f"on/{c.technical_fallback_strong_min_score:.0f}" if c.technical_fallback_strong_mode else "off",
             c.min_symbol_price_usdt,
             c.score_entry,
+            "on" if c.fee_aware_sizing_enabled else "off",
+            c.min_expected_net_profit_usdt,
             "paper" if c.paper_trading else "armed",
             (c.decision_min_consensus if c.paper_trading else c.decision_live_min_consensus) * 100,
         )

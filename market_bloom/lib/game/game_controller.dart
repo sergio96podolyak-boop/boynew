@@ -505,16 +505,32 @@ class GameController extends ChangeNotifier {
     switch (type) {
       case UpgradeType.bag:
         bagLevel++;
+        break;
       case UpgradeType.shelf:
         shelfLevel++;
+        break;
       case UpgradeType.price:
         priceLevel++;
+        break;
       case UpgradeType.speed:
         speedLevel++;
+        break;
       case UpgradeType.checkout:
-        _ensureStaff(StaffRole.cashier).level++;
+        final cashier = _ensureStaff(StaffRole.cashier);
+        if (!cashier.hired) {
+          cashier.hired = true;
+          cashier.level = max(1, cashier.level);
+        }
+        cashier.level++;
+        break;
       case UpgradeType.restock:
-        _ensureStaff(StaffRole.stocker).level++;
+        final stocker = _ensureStaff(StaffRole.stocker);
+        if (!stocker.hired) {
+          stocker.hired = true;
+          stocker.level = max(1, stocker.level);
+        }
+        stocker.level++;
+        break;
     }
     upgradesBought++;
     totalActions++;
@@ -640,6 +656,7 @@ class GameController extends ChangeNotifier {
         ),
       );
     }
+    _reconcileAfterLoad();
   }
 
   bool hireStaff(StaffRole role) {
@@ -1135,6 +1152,33 @@ class GameController extends ChangeNotifier {
       restoredX.clamp(0.06, 0.94),
       restoredY.clamp(0.09, 0.94),
     );
+    _reconcileAfterLoad();
+  }
+
+  void _reconcileAfterLoad() {
+    final level = storeLevel;
+    for (final department in _departments) {
+      final definition = DepartmentCatalog.find(department.type);
+      if (definition != null &&
+          !department.unlocked &&
+          level >= definition.unlockLevel) {
+        department.unlocked = true;
+      }
+    }
+
+    for (final entry in _staff.entries) {
+      if (entry.value.hired && entry.value.level < 1) {
+        entry.value.level = 1;
+      }
+    }
+
+    final seen = <int>{};
+    for (final customer in customers) {
+      if (!seen.add(customer.id)) {
+        customer.id = _customerId++;
+      }
+    }
+
     carried = carried.clamp(0, bagCapacity);
     shelfStock = shelfStock.clamp(0, shelfCapacity);
   }

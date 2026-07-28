@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum ControlMode { directTouch, joystick, leftJoystick }
+
 /// Persisted user settings for PoMarket.
 ///
 /// Uses the same SharedPreferencesAsync backend as [GameStorage] so settings
@@ -19,10 +21,12 @@ class AppSettings extends ChangeNotifier {
   static const _languageKey = 'pomarket.settings.language';
   static const _soundKey = 'pomarket.settings.sound';
   static const _reducedMotionKey = 'pomarket.settings.reducedMotion';
+  static const _controlModeKey = 'pomarket.settings.controlMode';
 
   Locale? _language;
   bool? _soundEnabled;
   bool? _reducedMotion;
+  String? _controlMode;
 
   bool _loaded = false;
 
@@ -35,6 +39,15 @@ class AppSettings extends ChangeNotifier {
   /// Whether reduced motion is requested (defaults to false).
   bool get reducedMotion => _reducedMotion ?? false;
 
+  /// The preferred control mode (defaults to directTouch on mobile).
+  ControlMode get controlMode {
+    final mode = _controlMode ?? 'directTouch';
+    return ControlMode.values.firstWhere(
+      (e) => e.name == mode,
+      orElse: () => ControlMode.directTouch,
+    );
+  }
+
   bool get isLoaded => _loaded;
 
   /// Loads all settings from persistent storage.
@@ -45,6 +58,7 @@ class AppSettings extends ChangeNotifier {
         : null;
     _soundEnabled = await _prefs.getBool(_soundKey) ?? true;
     _reducedMotion = await _prefs.getBool(_reducedMotionKey) ?? false;
+    _controlMode = await _prefs.getString(_controlModeKey);
     _loaded = true;
     notifyListeners();
   }
@@ -69,6 +83,12 @@ class AppSettings extends ChangeNotifier {
   Future<void> setReducedMotion(bool value) async {
     await _prefs.setBool(_reducedMotionKey, value);
     _reducedMotion = value;
+    notifyListeners();
+  }
+
+  Future<void> setControlMode(ControlMode mode) async {
+    await _prefs.setString(_controlModeKey, mode.name);
+    _controlMode = mode.name;
     notifyListeners();
   }
 

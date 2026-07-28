@@ -556,27 +556,32 @@ class RiskManagerAgent:
         # Risk parity: constant dollar risk per trade regardless of stop width.
         # Volatile symbols get wide stops with smaller size (room to breathe);
         # calm symbols get tight stops with bigger size (real dollars per win).
+        risk_notional_cap = max_notional
         risk_budget_pct = float(getattr(self.config, "max_risk_pct", 0.0) or 0.0)
         if risk_budget_pct > 0 and sl_pct > 0:
-            notional = min(notional, (current_balance * risk_budget_pct) / sl_pct)
+            risk_notional_cap = min(
+                risk_notional_cap,
+                (current_balance * risk_budget_pct) / sl_pct,
+            )
+            notional = min(notional, risk_notional_cap)
+
+        affordable_notional_cap = max(0.0, min(max_notional, risk_notional_cap))
 
         # Minimum notional (USDT position size) avoids tiny trades, but it must
         # not freeze a small live account after drawdown or transfer-out events.
         min_n = float(self.config.hft_min_notional_usdt or 0.0)
-        if min_n > 0 and max_notional > 0:
-            if max_notional < min_n - 1e-9:
+        if min_n > 0 and affordable_notional_cap > 0:
+            if affordable_notional_cap < min_n - 1e-9:
                 logger.warning(
                     "%s: recovery sizing: affordable max notional %.2f is below "
                     "configured HFT_MIN_NOTIONAL_USDT %.2f; using affordable cap",
                     symbol,
-                    max_notional,
+                    affordable_notional_cap,
                     min_n,
                 )
-                min_n = max_notional
+                min_n = affordable_notional_cap
             notional = max(notional, min_n)
-        notional = min(notional, max_notional)
-
-        qty = notional / entry_price if entry_price > 0 else 0.0
+        notional = min(notional, affordable_notional_cap)
 
         runner_mode = (
             bool(getattr(self.config, "trend_runner_enabled", False))
@@ -587,6 +592,83 @@ class RiskManagerAgent:
             runner_mult = float(getattr(self.config, "trend_runner_tp_multiplier", 1.0) or 1.0)
             tp_pct = min(max(self.config.tp_max_pct, runner_tp_max), max(tp_pct * runner_mult, tp_pct))
 
+        est_cost_pct = self.estimated_roundtrip_cost_pct()
+        est_cost_usdt = 0.0
+        net_tp_usdt = 0.0
+        net_rr = 0.0
+        if bool(getattr(self.config, "fee_aware_sizing_enabled", True)):
+            min_net_usdt = float(
+                getattr(self.config, "min_expected_net_profit_usdt", 0.0) or 0.0
+            )
+            min_net_rr = float(
+                getattr(self.config, "min_net_reward_risk", 0.0) or 0.0
+            )
+            min_cost_ratio = float(
+                getattr(self.config, "min_profit_cost_ratio", 0.0) or 0.0
+            )
+
+            if tp_pct <= est_cost_pct:
+                return RiskDecision(
+                    False,
+                    0.0,
+                    0.0,
+                    0.0,
+                    (
+                        f"TP edge {tp_pct * 100:.2f}% <= estimated "
+                        f"round-trip cost {est_cost_pct * 100:.2f}%"
+                    ),
+                )
+
+            if min_net_usdt > 0:
+                required_notional = min_net_usdt / max(tp_pct - est_cost_pct, 1e-9)
+                if required_notional > notional:
+                    if required_notional <= affordable_notional_cap + 1e-9:
+                        notional = required_notional
+                    else:
+                        return RiskDecision(
+                            False,
+                            0.0,
+                            0.0,
+                            0.0,
+                            (
+                                f"Net TP too small after fees: needs "
+                                f"{min_net_usdt:.2f} USDT, cap allows "
+                                f"{affordable_notional_cap * (tp_pct - est_cost_pct):.2f} USDT"
+                            ),
+                        )
+
+            gross_tp_usdt = notional * tp_pct
+            gross_sl_usdt = notional * sl_pct
+            est_cost_usdt = notional * est_cost_pct
+            net_tp_usdt = gross_tp_usdt - est_cost_usdt
+            net_loss_usdt = gross_sl_usdt + est_cost_usdt
+            net_rr = net_tp_usdt / net_loss_usdt if net_loss_usdt > 0 else 0.0
+
+            if min_cost_ratio > 0 and gross_tp_usdt < est_cost_usdt * min_cost_ratio:
+                return RiskDecision(
+                    False,
+                    0.0,
+                    0.0,
+                    0.0,
+                    (
+                        f"Profit/fee ratio too low "
+                        f"({gross_tp_usdt / max(est_cost_usdt, 1e-9):.1f}x < "
+                        f"{min_cost_ratio:.1f}x)"
+                    ),
+                )
+            if min_net_rr > 0 and net_rr < min_net_rr:
+                return RiskDecision(
+                    False,
+                    0.0,
+                    0.0,
+                    0.0,
+                    f"Net R:R {net_rr:.2f} < {min_net_rr:.2f} after fees",
+                )
+
+        qty = notional / entry_price if entry_price > 0 else 0.0
+        if qty <= 0:
+            return RiskDecision(False, 0.0, 0.0, 0.0, "Quantity is zero after caps")
+
         if direction == "LONG":
             sl_price = entry_price * (1 - sl_pct)
             tp_price = entry_price * (1 + tp_pct)
@@ -595,7 +677,7 @@ class RiskManagerAgent:
             tp_price = entry_price * (1 - tp_pct)
 
         logger.info(
-            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f size_mult=%.2f%s",
+            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f netTP≈%.2f fee≈%.2f netRR=%.2f size_mult=%.2f%s",
             symbol,
             direction,
             score,
@@ -605,11 +687,24 @@ class RiskManagerAgent:
             notional / self.config.leverage if self.config.leverage else 0.0,
             sl_pct * 100,
             tp_pct * 100,
+            net_tp_usdt,
+            est_cost_usdt,
+            net_rr,
             size_multiplier,
             " runner=on" if runner_mode else "",
         )
         runner_note = " runner" if runner_mode else ""
-        return RiskDecision(True, qty, sl_price, tp_price, f"{tier}{runner_note} score={score:.1f} size={size_multiplier:.2f}")
+        return RiskDecision(
+            True,
+            qty,
+            sl_price,
+            tp_price,
+            (
+                f"{tier}{runner_note} score={score:.1f} "
+                f"netTP={net_tp_usdt:.2f} fee={est_cost_usdt:.2f} "
+                f"size={size_multiplier:.2f}"
+            ),
+        )
 
     def check_exits(
         self,

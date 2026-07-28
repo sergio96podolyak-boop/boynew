@@ -425,6 +425,20 @@ class AppLocalizations {
 
   String get storeLevel => _t('storeLevel');
 
+  String get coinsShort => _t('coinsShort');
+
+  String get gemsShort => _t('gemsShort');
+
+  String get lowStock => _t('lowStock');
+
+  String get controlMode => _t('controlMode');
+
+  String get directTouch => _t('directTouch');
+
+  String get floatingJoystick => _t('floatingJoystick');
+
+  String get leftHandedJoystick => _t('leftHandedJoystick');
+
   String get yourMarketAwaits => _t('yourMarketAwaits');
 
   String get openingYourStore => _t('openingYourStore');
@@ -638,6 +652,13 @@ class AppLocalizations {
     'achievementUnlocked': 'ACHIEVEMENT UNLOCKED',
     'levelLabel': 'LEVEL',
     'storeLevel': 'STORE LEVEL',
+    'coinsShort': 'COINS',
+    'gemsShort': 'GEMS',
+    'lowStock': 'LOW STOCK',
+    'controlMode': 'Control Mode',
+    'directTouch': 'Direct Touch',
+    'floatingJoystick': 'Floating Joystick',
+    'leftHandedJoystick': 'Left-handed Joystick',
     'yourMarketAwaits': 'YOUR MARKET AWAITS',
     'openingYourStore': 'OPENING YOUR STORE',
     'pocketSizedEmpire': 'A POCKET-SIZED BUSINESS EMPIRE',
@@ -835,6 +856,13 @@ class AppLocalizations {
     'achievementUnlocked': 'הישג נפתח',
     'levelLabel': 'רמה',
     'storeLevel': 'רמת חנות',
+    'coinsShort': 'מטבעות',
+    'gemsShort': 'אבנים',
+    'lowStock': 'מלאי נמוך',
+    'controlMode': 'מצב שליטה',
+    'directTouch': 'מגע ישיר',
+    'floatingJoystick': 'ג\'ויסטיק צף',
+    'leftHandedJoystick': 'ג\'ויסטיק שמאלי',
     'yourMarketAwaits': 'החנות שלך מחכה לך',
     'openingYourStore': 'פותח את החנות שלך',
     'pocketSizedEmpire': 'אימפריה עסקית בגודל כיס',
@@ -1032,6 +1060,13 @@ class AppLocalizations {
     'achievementUnlocked': 'إنجاز مفتوح',
     'levelLabel': 'المستوى',
     'storeLevel': 'مستوى المتجر',
+    'coinsShort': 'عملات',
+    'gemsShort': 'جواهر',
+    'lowStock': 'مخزون منخفض',
+    'controlMode': 'وضع التحكم',
+    'directTouch': 'لمس مباشر',
+    'floatingJoystick': 'عصا تحكم عائمة',
+    'leftHandedJoystick': 'عصا تحكم يسرى',
     'yourMarketAwaits': 'متجرك ينتظرك',
     'openingYourStore': 'فتح متجرك',
     'pocketSizedEmpire': 'إمبراطورية تجارية بحجم الكيس',

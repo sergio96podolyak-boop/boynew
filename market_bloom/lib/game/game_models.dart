@@ -15,7 +15,7 @@ class MarketCustomer {
     this.emotion = 'neutral',
   });
 
-  final int id;
+  int id;
   Offset position;
   final Color color;
   CustomerPhase phase = CustomerPhase.entering;

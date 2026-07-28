@@ -365,7 +365,8 @@ class MarketPainter extends CustomPainter {
 
   void _drawExpansion(Canvas canvas, Rect market) {
     final center = _point(market, const Offset(0.78, 0.76));
-    final unlocked = game.storeLevel >= 3;
+    final bakery = DepartmentCatalog.find(DepartmentType.bakery);
+    final unlocked = bakery != null && game.storeLevel >= bakery.unlockLevel;
     final zone = RRect.fromRectAndRadius(
       Rect.fromCenter(center: center, width: 105, height: 91),
       const Radius.circular(18),
