@@ -8,6 +8,15 @@ import 'package:pomarket/services/game_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pomarket/services/app_settings.dart';
 import 'package:pomarket/services/monetization_service.dart';
+import 'package:pomarket/ui/game_screen.dart';
+import 'package:pomarket/ui/screens/achievements_screen.dart';
+import 'package:pomarket/ui/screens/departments_screen.dart';
+import 'package:pomarket/ui/screens/inventory_screen.dart';
+import 'package:pomarket/ui/screens/quests_screen.dart';
+import 'package:pomarket/ui/screens/settings_screen.dart';
+import 'package:pomarket/ui/screens/shop_screen.dart';
+import 'package:pomarket/ui/screens/staff_screen.dart';
+import 'package:pomarket/ui/screens/upgrades_screen.dart';
 import 'package:pomarket/ui/splash_screen.dart';
 import 'package:pomarket/ui/widgets/global_hud.dart';
 
@@ -257,6 +266,162 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'tutorial can be skipped, persisted, and replayed from Settings',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final storage = MemoryGameStorage();
+      final controller = GameController(
+        storage: storage,
+        monetization: PreviewMonetizationService(),
+      );
+      await controller.initialize();
+      controller.acknowledgeDailyBonus();
+
+      await tester.pumpWidget(
+        PoMarketApp(
+          controller: controller,
+          settings: _testSettings(),
+          showSplash: false,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      await tester.tap(find.text('SKIP'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(controller.onboardingComplete, isTrue);
+      await controller.save();
+
+      final restored = GameController(
+        storage: storage,
+        monetization: PreviewMonetizationService(),
+      );
+      await restored.initialize();
+      expect(restored.onboardingComplete, isTrue);
+
+      await tester.tap(
+        find.widgetWithIcon(IconButton, Icons.settings_rounded).last,
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      await tester.drag(
+        find.descendant(
+          of: find.byType(SettingsScreen),
+          matching: find.byType(ListView),
+        ),
+        const Offset(0, -600),
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.ensureVisible(find.text('REPLAY'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('REPLAY'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(find.text('WELCOME TO POMARKET'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Arabic Direct Touch tutorial is RTL and fits a compact phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final settings = AppSettings(preferences: _MockSharedPrefs());
+    await settings.load();
+    await settings.setLanguage(const Locale('ar'));
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: settings,
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    final tutorialTitle = find.text('تحرك واجمع');
+    expect(tutorialTitle, findsOneWidget);
+    expect(Directionality.of(tester.element(tutorialTitle)), TextDirection.rtl);
+    expect(find.text('تخطي'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Shop and secondary destinations fit at 320 without purchases', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+    final startingCoins = controller.coins;
+    final startingGems = controller.gems;
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: _testSettings(),
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    await tester.tap(find.text('Shop').last);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('Preview mode'), findsOneWidget);
+    final shopButtons = tester.widgetList<FilledButton>(
+      find.descendant(
+        of: find.byType(ShopScreen),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(shopButtons, isNotEmpty);
+    expect(shopButtons.every((button) => button.onPressed == null), isTrue);
+    expect(controller.coins, startingCoins);
+    expect(controller.gems, startingGems);
+
+    await tester.tap(find.byTooltip('More'));
+    await tester.pump(const Duration(milliseconds: 500));
+    final moreSheet = find.byType(BottomSheet);
+    expect(moreSheet, findsOneWidget);
+    final staffDestination = find.descendant(
+      of: moreSheet,
+      matching: find.text('Staff'),
+    );
+    expect(staffDestination, findsOneWidget);
+    await tester.ensureVisible(staffDestination);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(staffDestination);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.byType(StaffScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('daily bonus fits a compact phone', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
@@ -484,6 +649,152 @@ void main() {
     );
     expect(Directionality.of(tester.element(rail)), TextDirection.rtl);
     expect(MaterialLocalizations.of(tester.element(rail)), isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'every destination shares one controller and keeps the persistent HUD',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = GameController(
+        storage: MemoryGameStorage(),
+        monetization: PreviewMonetizationService(),
+      );
+      await controller.initialize();
+      controller.completeOnboarding();
+      controller.acknowledgeDailyBonus();
+      controller.coins = 432;
+      controller.gems = 9;
+
+      await tester.pumpWidget(
+        PoMarketApp(
+          controller: controller,
+          settings: _testSettings(),
+          showSplash: false,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      final rail = find.byType(NavigationRail);
+      expect(find.byType(GlobalHud), findsOneWidget);
+      expect(
+        tester.widget<GameScreen>(find.byType(GameScreen)).controller,
+        same(controller),
+      );
+
+      Future<void> open(String label) async {
+        await tester.tap(find.descendant(of: rail, matching: find.text(label)));
+        await tester.pump(const Duration(milliseconds: 120));
+        expect(find.byType(GlobalHud), findsOneWidget);
+        expect(find.text('432'), findsOneWidget);
+        expect(find.text('9'), findsOneWidget);
+      }
+
+      await open('Upgrades');
+      expect(
+        tester.widget<UpgradesScreen>(find.byType(UpgradesScreen)).controller,
+        same(controller),
+      );
+      await open('Staff');
+      expect(
+        tester.widget<StaffScreen>(find.byType(StaffScreen)).controller,
+        same(controller),
+      );
+      await open('Departments');
+      expect(
+        tester
+            .widget<DepartmentsScreen>(find.byType(DepartmentsScreen))
+            .controller,
+        same(controller),
+      );
+      await open('Inventory');
+      expect(
+        tester.widget<InventoryScreen>(find.byType(InventoryScreen)).controller,
+        same(controller),
+      );
+      await open('Quests');
+      expect(
+        tester.widget<QuestsScreen>(find.byType(QuestsScreen)).controller,
+        same(controller),
+      );
+      await open('Achievements');
+      expect(
+        tester
+            .widget<AchievementsScreen>(find.byType(AchievementsScreen))
+            .controller,
+        same(controller),
+      );
+      await open('Shop');
+      expect(
+        tester.widget<ShopScreen>(find.byType(ShopScreen)).controller,
+        same(controller),
+      );
+      await open('Settings');
+      expect(
+        tester.widget<SettingsScreen>(find.byType(SettingsScreen)).controller,
+        same(controller),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Bakery unlock is reflected immediately across navigation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+    controller.debugSetProgress(sales: 8);
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: _testSettings(),
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final rail = find.byType(NavigationRail);
+    await tester.tap(
+      find.descendant(of: rail, matching: find.text('Departments')),
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(controller.bakeryUnlocked, isFalse);
+    expect(find.text('Unlocks at level 3'), findsOneWidget);
+
+    controller.debugSetProgress(sales: 16);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(controller.bakeryUnlocked, isTrue);
+    final bakeryCard = find.ancestor(
+      of: find.text('Bakery'),
+      matching: find.byType(Card),
+    );
+    expect(
+      find.descendant(
+        of: bakeryCard,
+        matching: find.text('Unlocked · Level 1'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Bakery unlocked!'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

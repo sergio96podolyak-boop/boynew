@@ -62,7 +62,10 @@ class QuestsScreen extends StatelessWidget {
                                   ),
                                 ),
                                 Text(
-                                  quest.title,
+                                  loc.questTitle(
+                                    controller.questStage,
+                                    quest.target,
+                                  ),
                                   style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w900,

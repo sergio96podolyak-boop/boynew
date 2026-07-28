@@ -48,6 +48,8 @@ class GameController extends ChangeNotifier {
   int shelfLevel = 1;
   int priceLevel = 1;
   int speedLevel = 1;
+  int checkoutLevel = 1;
+  int restockLevel = 1;
   int offlineEarnings = 0;
   int totalActions = 0;
   int highestBalance = 25;
@@ -56,11 +58,13 @@ class GameController extends ChangeNotifier {
   bool adsRemoved = false;
   bool muted = false;
   bool onboardingComplete = false;
+  bool _tutorialReplayRequested = false;
 
   bool initialized = false;
   bool paused = false;
   bool rewardInProgress = false;
   bool storePurchaseInProgress = false;
+  PurchaseState? lastPurchaseState;
 
   double _customerSpawnTimer = 0.8;
   double _stockActionTimer = 0;
@@ -81,23 +85,67 @@ class GameController extends ChangeNotifier {
   List<LeaderboardEntry> _leaderboard = const <LeaderboardEntry>[];
   final Queue<AchievementDefinition> _achievementUnlocks =
       Queue<AchievementDefinition>();
+  final Queue<DepartmentType> _departmentUnlocks = Queue<DepartmentType>();
   final Map<StaffRole, StaffMember> _staff = <StaffRole, StaffMember>{};
   final List<DepartmentState> _departments = <DepartmentState>[];
   final List<InventoryDelivery> _pendingDeliveries = <InventoryDelivery>[];
   final Map<String, int> _inventoryByCategory = <String, int>{};
   double _staffTimer = 0;
   double _deliveryTimer = 0;
+  DateTime? _lastEmergencyStockAt;
+  int _lastObservedStoreLevel = 1;
+  bool _restoredInventoryPresent = false;
+  final Map<RewardPlacement, DateTime> _rewardLastClaimed =
+      <RewardPlacement, DateTime>{};
+  DateTime? _rewardClaimDay;
+  int _rewardClaimsToday = 0;
+  DateTime? _lastRewardedAt;
+  DateTime? _lastInterstitialAt;
+  DateTime? _interstitialDay;
+  int _interstitialsToday = 0;
+  final Set<String> _deliveredTransactionIds = <String>{};
 
   int get bagCapacity => 3 + bagLevel;
   int get shelfCapacity => 4 + shelfLevel * 2;
+  int get storageCapacity => 20 + shelfLevel * 4;
   int get itemPrice => 4 + priceLevel * 2;
   double get playerSpeed => 0.22 + speedLevel * 0.018;
-  int get storeLevel => 1 + totalSales ~/ 8 + upgradesBought ~/ 4;
-  int get salesIntoLevel => totalSales % 8;
-  double get levelProgress => salesIntoLevel / 8;
+  int get storeLevel =>
+      1 +
+      totalSales ~/ GameBalance.salesPerStoreLevel +
+      upgradesBought ~/ GameBalance.upgradesPerStoreLevel;
+  int get salesIntoLevel => totalSales % GameBalance.salesPerStoreLevel;
+  double get levelProgress => salesIntoLevel / GameBalance.salesPerStoreLevel;
+  Offset? get movementTarget => _movementTarget;
+  bool get bakeryUnlocked => isDepartmentUnlocked(DepartmentType.bakery);
+  double get cashierCheckoutSeconds {
+    final staffBonus = max(0, staffLevel(StaffRole.cashier) - 1) * 0.07;
+    final upgradeBonus = max(0, checkoutLevel - 1) * 0.09;
+    return max(
+      GameBalance.minimumCheckoutSeconds,
+      GameBalance.baseCheckoutSeconds - staffBonus - upgradeBonus,
+    );
+  }
+
+  int get totalStoredInventory =>
+      _inventoryByCategory.values.fold<int>(0, (sum, value) => sum + value);
+  bool get canClaimEmergencyStock {
+    if (coins >= 20 ||
+        carried > 0 ||
+        shelfStock > 0 ||
+        totalStoredInventory > 0 ||
+        _pendingDeliveries.isNotEmpty) {
+      return false;
+    }
+    final lastClaim = _lastEmergencyStockAt;
+    return lastClaim == null ||
+        _now().difference(lastClaim) >= GameBalance.emergencyStockCooldown;
+  }
+
   int get instantAdReward => max(40, itemPrice * 8);
   bool get isMonetizationPreview => monetization.isPreview;
   bool get storePurchasesAvailable => monetization.storeAvailable;
+  bool get rewardedAdsAvailable => monetization.rewardedAdsAvailable;
   int get businessScore =>
       totalCoinsEarned +
       totalSales * 25 +
@@ -193,10 +241,10 @@ class GameController extends ChangeNotifier {
     ),
     UpgradeOffer(
       type: UpgradeType.checkout,
-      title: 'Checkout Boost',
-      subtitle: 'Serve customers faster',
-      level: staffLevel(StaffRole.cashier),
-      cost: _upgradeCost(80, staffLevel(StaffRole.cashier)),
+      title: 'Checkout Speed',
+      subtitle: '${cashierCheckoutSeconds.toStringAsFixed(2)}s per customer',
+      level: checkoutLevel,
+      cost: _upgradeCost(80, checkoutLevel),
       icon: Icons.payments_rounded,
       color: const Color(0xFF8B66D8),
     ),
@@ -204,8 +252,8 @@ class GameController extends ChangeNotifier {
       type: UpgradeType.restock,
       title: 'Restock Flow',
       subtitle: 'Keep shelves filled smoothly',
-      level: staffLevel(StaffRole.stocker),
-      cost: _upgradeCost(75, staffLevel(StaffRole.stocker)),
+      level: restockLevel,
+      cost: _upgradeCost(75, restockLevel),
       icon: Icons.local_shipping_rounded,
       color: const Color(0xFF1FA8A8),
     ),
@@ -213,6 +261,9 @@ class GameController extends ChangeNotifier {
 
   String get interactionHint {
     if (_near(playerPosition, stockZone, 0.13)) {
+      if (inventoryFor('General') <= 0) {
+        return 'Storage is empty — order more stock';
+      }
       return carried >= bagCapacity
           ? 'Bag full — head to the shelf'
           : 'Collecting products from storage';
@@ -238,7 +289,8 @@ class GameController extends ChangeNotifier {
       final saved = await storage.load();
       if (saved != null) {
         _restore(saved);
-        final lastSaved = DateTime.tryParse(saved['savedAt'] as String? ?? '');
+        final savedAt = saved['savedAt'];
+        final lastSaved = DateTime.tryParse(savedAt is String ? savedAt : '');
         if (lastSaved != null) {
           final seconds = _now().difference(lastSaved).inSeconds;
           if (seconds >= 45) {
@@ -254,6 +306,7 @@ class GameController extends ChangeNotifier {
         }
       }
       _bootstrapSystems();
+      _lastObservedStoreLevel = storeLevel;
       shouldPersist = _applyDailyBonus();
       _recordPerformanceSample(force: _performanceHistory.isEmpty);
       _updateHighs();
@@ -356,10 +409,14 @@ class GameController extends ChangeNotifier {
   }
 
   void _updateStations(double dt) {
-    if (_near(playerPosition, stockZone, 0.13) && carried < bagCapacity) {
+    if (_near(playerPosition, stockZone, 0.13) &&
+        carried < bagCapacity &&
+        inventoryFor('General') > 0) {
       _stockActionTimer += dt;
-      if (_stockActionTimer >= 0.42 - staffLevel(StaffRole.stocker) * 0.04) {
+      if (_stockActionTimer >=
+          max(0.18, 0.42 - max(0, restockLevel - 1) * 0.025)) {
         _stockActionTimer = 0;
+        _inventoryByCategory['General'] = inventoryFor('General') - 1;
         carried++;
         totalActions++;
       }
@@ -371,7 +428,8 @@ class GameController extends ChangeNotifier {
         carried > 0 &&
         shelfStock < shelfCapacity) {
       _shelfActionTimer += dt;
-      if (_shelfActionTimer >= 0.28 - staffLevel(StaffRole.stocker) * 0.03) {
+      if (_shelfActionTimer >=
+          max(0.12, 0.28 - max(0, restockLevel - 1) * 0.02)) {
         _shelfActionTimer = 0;
         carried--;
         shelfStock++;
@@ -400,6 +458,7 @@ class GameController extends ChangeNotifier {
   void _updateCustomers(double dt) {
     final removed = <MarketCustomer>[];
     final playerAtCheckout = _near(playerPosition, checkoutZone, 0.13);
+    final cashierAvailable = isStaffHired(StaffRole.cashier);
 
     _checkoutQueue.removeWhere(
       (c) =>
@@ -441,7 +500,18 @@ class GameController extends ChangeNotifier {
         case CustomerPhase.checkout:
           break;
         case CustomerPhase.paying:
-          if (queueIndex == 0 && playerAtCheckout) {
+          customer.checkoutOperator ??= playerAtCheckout
+              ? CheckoutOperator.player
+              : cashierAvailable
+              ? CheckoutOperator.cashier
+              : null;
+          final operatorAvailable =
+              customer.checkoutOperator == CheckoutOperator.player
+              ? playerAtCheckout
+              : customer.checkoutOperator == CheckoutOperator.cashier
+              ? cashierAvailable
+              : false;
+          if (queueIndex == 0 && operatorAvailable) {
             customer.phaseTime += dt;
           }
       }
@@ -464,19 +534,27 @@ class GameController extends ChangeNotifier {
           _moveCustomer(customer, queueTarget, dt);
 
           if (queueIndex == 0 &&
-              playerAtCheckout &&
+              (playerAtCheckout || cashierAvailable) &&
               _near(customer.position, queueTarget, 0.04)) {
             customer.phase = CustomerPhase.paying;
             customer.phaseTime = 0;
+            customer.checkoutOperator = playerAtCheckout
+                ? CheckoutOperator.player
+                : CheckoutOperator.cashier;
           }
         case CustomerPhase.paying:
-          if (customer.phaseTime >= max(0.45, 1.05 - storeLevel * 0.04)) {
+          final checkoutSeconds =
+              customer.checkoutOperator == CheckoutOperator.cashier
+              ? cashierCheckoutSeconds
+              : max(0.45, GameBalance.baseCheckoutSeconds - storeLevel * 0.04);
+          if (customer.phaseTime >= checkoutSeconds) {
             coins += itemPrice;
             totalCoinsEarned += itemPrice;
             totalSales++;
             totalActions++;
             customer.phase = CustomerPhase.leaving;
             customer.phaseTime = 0;
+            customer.checkoutOperator = null;
             _checkoutQueue.remove(customer);
           }
         case CustomerPhase.leaving:
@@ -525,7 +603,7 @@ class GameController extends ChangeNotifier {
 
   bool buyUpgrade(UpgradeType type) {
     final offer = upgrades.firstWhere((item) => item.type == type);
-    if (coins < offer.cost) {
+    if (!canBuyUpgrade(type)) {
       return false;
     }
     coins -= offer.cost;
@@ -543,20 +621,10 @@ class GameController extends ChangeNotifier {
         speedLevel++;
         break;
       case UpgradeType.checkout:
-        final cashier = _ensureStaff(StaffRole.cashier);
-        if (!cashier.hired) {
-          cashier.hired = true;
-          cashier.level = max(1, cashier.level);
-        }
-        cashier.level++;
+        checkoutLevel++;
         break;
       case UpgradeType.restock:
-        final stocker = _ensureStaff(StaffRole.stocker);
-        if (!stocker.hired) {
-          stocker.hired = true;
-          stocker.level = max(1, stocker.level);
-        }
-        stocker.level++;
+        restockLevel++;
         break;
     }
     upgradesBought++;
@@ -564,6 +632,14 @@ class GameController extends ChangeNotifier {
     _afterProgressChanged();
     notifyListeners();
     return true;
+  }
+
+  bool canBuyUpgrade(UpgradeType type) {
+    final offer = upgrades.firstWhere((item) => item.type == type);
+    return coins >= offer.cost &&
+        offer.level < 10 &&
+        (type != UpgradeType.checkout || isStaffHired(StaffRole.cashier)) &&
+        (type != UpgradeType.restock || isStaffHired(StaffRole.stocker));
   }
 
   void claimQuest() {
@@ -585,15 +661,15 @@ class GameController extends ChangeNotifier {
   }
 
   Future<bool> claimInstantAdReward() async {
-    if (rewardInProgress) {
+    const placement = RewardPlacement.instantCoins;
+    if (rewardInProgress || !canClaimReward(placement)) {
       return false;
     }
     rewardInProgress = true;
     notifyListeners();
-    final completed = await monetization.showRewardedAd(
-      RewardPlacement.instantCoins,
-    );
+    final completed = await monetization.showRewardedAd(placement);
     if (completed) {
+      _recordRewardClaim(placement);
       coins += instantAdReward;
       totalCoinsEarned += instantAdReward;
       totalActions++;
@@ -611,16 +687,19 @@ class GameController extends ChangeNotifier {
     }
     var multiplier = 1;
     if (doubled) {
+      const placement = RewardPlacement.doubleOfflineEarnings;
+      if (!canClaimReward(placement)) {
+        return false;
+      }
       rewardInProgress = true;
       notifyListeners();
-      final completed = await monetization.showRewardedAd(
-        RewardPlacement.doubleOfflineEarnings,
-      );
+      final completed = await monetization.showRewardedAd(placement);
       rewardInProgress = false;
       if (!completed) {
         notifyListeners();
         return false;
       }
+      _recordRewardClaim(placement);
       multiplier = 2;
     }
     final reward = offlineEarnings * multiplier;
@@ -634,8 +713,54 @@ class GameController extends ChangeNotifier {
     return true;
   }
 
-  Future<bool> purchase(StoreProduct product) {
-    return monetization.purchase(product);
+  bool canClaimReward(RewardPlacement placement) {
+    _resetDailyMonetizationCountersIfNeeded();
+    if (!rewardedAdsAvailable ||
+        rewardInProgress ||
+        _rewardClaimsToday >= MonetizationPolicy.rewardedDailyLimit) {
+      return false;
+    }
+    final lastClaimed = _rewardLastClaimed[placement];
+    return lastClaimed == null ||
+        _now().difference(lastClaimed) >= MonetizationPolicy.rewardedCooldown;
+  }
+
+  Duration rewardCooldownRemaining(RewardPlacement placement) {
+    final lastClaimed = _rewardLastClaimed[placement];
+    if (lastClaimed == null) {
+      return Duration.zero;
+    }
+    final elapsed = _now().difference(lastClaimed);
+    if (elapsed >= MonetizationPolicy.rewardedCooldown) {
+      return Duration.zero;
+    }
+    return MonetizationPolicy.rewardedCooldown - elapsed;
+  }
+
+  Future<bool> maybeShowInterstitial(InterstitialPlacement placement) async {
+    _resetDailyMonetizationCountersIfNeeded();
+    final now = _now();
+    if (adsRemoved ||
+        paused ||
+        !monetization.interstitialAdsAvailable ||
+        totalPlayTime < MonetizationPolicy.minimumInterstitialPlayTime ||
+        _interstitialsToday >= MonetizationPolicy.interstitialDailyLimit ||
+        (_lastInterstitialAt != null &&
+            now.difference(_lastInterstitialAt!) <
+                MonetizationPolicy.interstitialSessionCooldown) ||
+        (_lastRewardedAt != null &&
+            now.difference(_lastRewardedAt!) <
+                MonetizationPolicy.interstitialAfterRewardCooldown)) {
+      return false;
+    }
+    final shown = await monetization.showInterstitial(placement);
+    if (!shown) {
+      return false;
+    }
+    _lastInterstitialAt = now;
+    _interstitialsToday++;
+    _markDirty(immediate: true);
+    return true;
   }
 
   Future<bool> purchaseStoreProduct(StoreProduct product) async {
@@ -645,50 +770,124 @@ class GameController extends ChangeNotifier {
       return false;
     }
     storePurchaseInProgress = true;
+    lastPurchaseState = PurchaseState.pending;
     notifyListeners();
-    final purchased = await monetization.purchase(product);
-    if (purchased) {
-      switch (product) {
-        case StoreProduct.noAds:
-          adsRemoved = true;
-        case StoreProduct.coinPack:
-          coins += 1000;
-        case StoreProduct.starterPack:
-          coins += 500;
-          gems += 20;
-          bagLevel++;
-          shelfLevel++;
-      }
-      totalActions++;
-      _afterProgressChanged(immediate: true);
-    }
+    final result = await monetization.purchase(product);
+    final purchased = _deliverVerifiedPurchase(result);
+    lastPurchaseState = purchased
+        ? result.state
+        : result.state == PurchaseState.cancelled
+        ? PurchaseState.cancelled
+        : PurchaseState.failed;
     storePurchaseInProgress = false;
     await save();
     notifyListeners();
     return purchased;
   }
 
+  Future<bool> restoreStorePurchases() async {
+    if (storePurchaseInProgress || !storePurchasesAvailable) {
+      return false;
+    }
+    storePurchaseInProgress = true;
+    lastPurchaseState = PurchaseState.pending;
+    notifyListeners();
+    final restored = await monetization.restorePurchases();
+    var delivered = false;
+    for (final result in restored) {
+      delivered = _deliverVerifiedPurchase(result) || delivered;
+    }
+    lastPurchaseState = delivered
+        ? PurchaseState.restored
+        : PurchaseState.failed;
+    storePurchaseInProgress = false;
+    await save();
+    notifyListeners();
+    return delivered;
+  }
+
+  bool _deliverVerifiedPurchase(StorePurchaseResult result) {
+    final transactionId = result.transactionId;
+    if (!result.canDeliver ||
+        (result.state == PurchaseState.restored &&
+            result.product != StoreProduct.noAds &&
+            result.product != StoreProduct.starterPack) ||
+        transactionId == null ||
+        _deliveredTransactionIds.contains(transactionId)) {
+      return false;
+    }
+    _deliveredTransactionIds.add(transactionId);
+    switch (result.product) {
+      case StoreProduct.noAds:
+        adsRemoved = true;
+      case StoreProduct.coinPack:
+        coins += 1000;
+        totalCoinsEarned += 1000;
+      case StoreProduct.gemPack:
+        gems += 40;
+      case StoreProduct.emergencySupply:
+        final available = max(0, storageCapacity - totalStoredInventory);
+        _inventoryByCategory['General'] =
+            inventoryFor('General') + min(12, available);
+      case StoreProduct.starterPack:
+        coins += 500;
+        gems += 20;
+        totalCoinsEarned += 500;
+        bagLevel++;
+        shelfLevel++;
+    }
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    return true;
+  }
+
+  void _recordRewardClaim(RewardPlacement placement) {
+    final now = _now();
+    _resetDailyMonetizationCountersIfNeeded();
+    _rewardLastClaimed[placement] = now;
+    _lastRewardedAt = now;
+    _rewardClaimsToday++;
+    _markDirty(immediate: true);
+  }
+
   void _bootstrapSystems() {
     for (final role in StaffRole.values) {
       _ensureStaff(role);
     }
-    if (_departments.isEmpty) {
-      _departments.addAll(
+    final departmentByType = <DepartmentType, DepartmentState>{};
+    for (final department in _departments) {
+      final previous = departmentByType[department.type];
+      if (previous == null) {
+        departmentByType[department.type] = department;
+      } else {
+        previous.level = max(previous.level, department.level);
+        previous.unlocked = previous.unlocked || department.unlocked;
+      }
+    }
+    _departments
+      ..clear()
+      ..addAll(
         DepartmentType.values.map(
-          (type) => DepartmentState(
-            type: type,
-            level: 0,
-            unlocked: type == DepartmentType.generalGoods,
-          ),
+          (type) =>
+              departmentByType[type] ??
+              DepartmentState(
+                type: type,
+                level: type == DepartmentType.generalGoods ? 1 : 0,
+                unlocked: type == DepartmentType.generalGoods,
+              ),
         ),
       );
+    if (!_restoredInventoryPresent) {
+      _inventoryByCategory['General'] = GameBalance.starterStorageStock;
     }
     _reconcileAfterLoad();
   }
 
   bool hireStaff(StaffRole role) {
     final member = _ensureStaff(role);
-    if (member.hired || coins < member.hireCost) {
+    if (storeLevel < GameBalance.staffUnlockLevel ||
+        member.hired ||
+        coins < member.hireCost) {
       return false;
     }
     coins -= member.hireCost;
@@ -717,7 +916,34 @@ class GameController extends ChangeNotifier {
 
   bool isStaffHired(StaffRole role) => _ensureStaff(role).hired;
 
-  List<StaffMember> get staffMembers => _staff.values.toList(growable: false);
+  List<StaffMember> get staffMembers =>
+      StaffRole.values.map(_ensureStaff).toList(growable: false);
+
+  StaffStatus staffStatus(StaffRole role) {
+    final member = _ensureStaff(role);
+    if (!member.hired) {
+      return StaffStatus.notHired;
+    }
+    return switch (role) {
+      StaffRole.cashier =>
+        customers.any(
+              (customer) =>
+                  customer.phase == CustomerPhase.paying &&
+                  customer.checkoutOperator == CheckoutOperator.cashier,
+            )
+            ? StaffStatus.serving
+            : StaffStatus.idle,
+      StaffRole.stocker =>
+        shelfStock < shelfCapacity && inventoryFor('General') > 0
+            ? StaffStatus.stocking
+            : StaffStatus.idle,
+      StaffRole.cleaner =>
+        customers.any((customer) => customer.satisfaction < 1)
+            ? StaffStatus.cleaning
+            : StaffStatus.idle,
+      StaffRole.manager => StaffStatus.managing,
+    };
+  }
 
   StaffMember _ensureStaff(StaffRole role) {
     return _staff.putIfAbsent(role, () => StaffMember(role: role));
@@ -726,21 +952,36 @@ class GameController extends ChangeNotifier {
   int inventoryFor(String category) =>
       max(0, _inventoryByCategory[category] ?? 0);
 
+  List<InventoryDelivery> get pendingDeliveries =>
+      List<InventoryDelivery>.unmodifiable(_pendingDeliveries);
+
+  bool isDeliveryReady(InventoryDelivery delivery) {
+    return !_now().isBefore(delivery.readyAt);
+  }
+
   InventoryDelivery? placeInventoryOrder(
     String category,
     int quantity, {
     int cost = 20,
   }) {
-    if (quantity <= 0 || coins < cost) {
+    final pendingQuantity = _pendingDeliveries.fold<int>(
+      0,
+      (sum, delivery) => sum + delivery.quantity,
+    );
+    if (category.trim().isEmpty ||
+        quantity <= 0 ||
+        cost < 0 ||
+        coins < cost ||
+        totalStoredInventory + pendingQuantity + quantity > storageCapacity) {
       return null;
     }
     coins -= cost;
     final delivery = InventoryDelivery(
-      id: 'delivery-${DateTime.now().millisecondsSinceEpoch}-${_random.nextInt(1000)}',
-      category: category,
+      id: 'delivery-${_now().microsecondsSinceEpoch}-${_random.nextInt(1000)}',
+      category: category.trim(),
       quantity: quantity,
       cost: cost,
-      readyAt: _now().add(const Duration(seconds: 6)),
+      readyAt: _now().add(GameBalance.inventoryOrderDelay),
     );
     _pendingDeliveries.add(delivery);
     totalActions++;
@@ -760,7 +1001,9 @@ class GameController extends ChangeNotifier {
         readyAt: _now(),
       ),
     );
-    if (delivery.id.isEmpty || delivery.completed) {
+    if (delivery.id.isEmpty ||
+        delivery.completed ||
+        _now().isBefore(delivery.readyAt)) {
       return false;
     }
     delivery.completed = true;
@@ -773,33 +1016,75 @@ class GameController extends ChangeNotifier {
     return true;
   }
 
+  bool claimEmergencyStock() {
+    if (!canClaimEmergencyStock) {
+      return false;
+    }
+    _inventoryByCategory['General'] =
+        inventoryFor('General') + GameBalance.emergencyStockQuantity;
+    _lastEmergencyStockAt = _now();
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    notifyListeners();
+    return true;
+  }
+
+  bool isDepartmentUnlocked(DepartmentType type) {
+    return _departmentFor(type)?.unlocked ?? false;
+  }
+
+  bool unlockDepartment(DepartmentType type) {
+    final definition = DepartmentCatalog.find(type);
+    final state = _departmentFor(type);
+    if (definition == null ||
+        state == null ||
+        state.unlocked ||
+        storeLevel < definition.unlockLevel ||
+        coins < definition.unlockCost) {
+      return false;
+    }
+    coins -= definition.unlockCost;
+    state
+      ..unlocked = true
+      ..level = max(1, state.level);
+    _departmentUnlocks.add(type);
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    notifyListeners();
+    return true;
+  }
+
+  DepartmentType? takeDepartmentUnlock() {
+    return _departmentUnlocks.isEmpty ? null : _departmentUnlocks.removeFirst();
+  }
+
+  DepartmentState? _departmentFor(DepartmentType type) {
+    for (final department in _departments) {
+      if (department.type == type) {
+        return department;
+      }
+    }
+    return null;
+  }
+
   void _applyStaffAutomation(double dt) {
-    final cashierLevel = staffLevel(StaffRole.cashier);
     final stockerLevel = staffLevel(StaffRole.stocker);
     final cleanerLevel = staffLevel(StaffRole.cleaner);
     final managerLevel = staffLevel(StaffRole.manager);
 
-    if (cashierLevel > 0 && customers.isNotEmpty && shelfStock > 0) {
-      final efficiency = 0.12 + cashierLevel * 0.02;
-      for (final customer in customers) {
-        if (customer.phase == CustomerPhase.checkout &&
-            customer.position.distance < 0.45) {
-          customer.phaseTime += efficiency * dt;
-          if (customer.phaseTime > 0.85) {
-            customer.phaseTime = 0.85;
-          }
-          break;
-        }
-      }
-    }
-
-    if (stockerLevel > 0 && carried > 0 && shelfStock < shelfCapacity) {
-      carried = max(0, carried - 1);
+    if (isStaffHired(StaffRole.stocker) &&
+        stockerLevel > 0 &&
+        inventoryFor('General') > 0 &&
+        shelfStock < shelfCapacity) {
+      _inventoryByCategory['General'] = inventoryFor('General') - 1;
       shelfStock = min(shelfCapacity, shelfStock + 1);
       stockedTotal++;
+      totalActions++;
     }
 
-    if (cleanerLevel > 0 && customers.isNotEmpty) {
+    if (isStaffHired(StaffRole.cleaner) &&
+        cleanerLevel > 0 &&
+        customers.isNotEmpty) {
       for (final customer in customers) {
         if (customer.satisfaction < 1.0) {
           customer.satisfaction = min(1.0, customer.satisfaction + 0.03);
@@ -808,7 +1093,9 @@ class GameController extends ChangeNotifier {
       }
     }
 
-    if (managerLevel > 0 && totalActions > 0) {
+    if (isStaffHired(StaffRole.manager) &&
+        managerLevel > 0 &&
+        totalActions > 0) {
       final bonus = managerLevel * 2;
       if (bonus > 0) {
         coins = max(0, coins + bonus);
@@ -873,7 +1160,7 @@ class GameController extends ChangeNotifier {
 
   Map<String, dynamic> _saveSnapshot() {
     return <String, dynamic>{
-      'version': 2,
+      'version': 3,
       'savedAt': _now().toIso8601String(),
       'coins': coins,
       'gems': gems,
@@ -889,6 +1176,8 @@ class GameController extends ChangeNotifier {
       'shelfLevel': shelfLevel,
       'priceLevel': priceLevel,
       'speedLevel': speedLevel,
+      'checkoutLevel': checkoutLevel,
+      'restockLevel': restockLevel,
       'adsRemoved': adsRemoved,
       'totalActions': totalActions,
       'highestBalance': highestBalance,
@@ -896,6 +1185,18 @@ class GameController extends ChangeNotifier {
       'totalPlaySeconds': totalPlaySeconds,
       'muted': muted,
       'onboardingComplete': onboardingComplete,
+      'lastEmergencyStockAt': _lastEmergencyStockAt?.toIso8601String(),
+      'rewardLastClaimed': _rewardLastClaimed.map(
+        (placement, claimedAt) =>
+            MapEntry(placement.name, claimedAt.toIso8601String()),
+      ),
+      'rewardClaimDay': _rewardClaimDay?.toIso8601String(),
+      'rewardClaimsToday': _rewardClaimsToday,
+      'lastRewardedAt': _lastRewardedAt?.toIso8601String(),
+      'lastInterstitialAt': _lastInterstitialAt?.toIso8601String(),
+      'interstitialDay': _interstitialDay?.toIso8601String(),
+      'interstitialsToday': _interstitialsToday,
+      'deliveredTransactions': _deliveredTransactionIds.toList(growable: false),
       'playerX': playerPosition.dx,
       'playerY': playerPosition.dy,
       'dailyBonus': dailyBonus.toJson(),
@@ -911,9 +1212,11 @@ class GameController extends ChangeNotifier {
       'staff': _staff.entries
           .map(
             (entry) => <String, Object>{
+              'id': entry.value.id,
               'role': entry.key.name,
               'level': entry.value.level,
               'hired': entry.value.hired,
+              'assignment': entry.value.assignment.name,
             },
           )
           .toList(growable: false),
@@ -961,7 +1264,10 @@ class GameController extends ChangeNotifier {
     shelfLevel = 1;
     priceLevel = 1;
     speedLevel = 1;
+    checkoutLevel = 1;
+    restockLevel = 1;
     adsRemoved = false;
+    lastPurchaseState = null;
     offlineEarnings = 0;
     totalActions = 0;
     highestBalance = 25;
@@ -975,8 +1281,28 @@ class GameController extends ChangeNotifier {
     _performanceHistory = const <PerformanceSample>[];
     _leaderboard = const <LeaderboardEntry>[];
     _achievementUnlocks.clear();
+    _departmentUnlocks.clear();
+    _staff.clear();
+    _departments.clear();
+    _inventoryByCategory.clear();
+    _pendingDeliveries.clear();
+    _checkoutQueue.clear();
+    _restoredInventoryPresent = false;
+    _lastEmergencyStockAt = null;
+    _rewardLastClaimed.clear();
+    _rewardClaimDay = null;
+    _rewardClaimsToday = 0;
+    _lastRewardedAt = null;
+    _lastInterstitialAt = null;
+    _interstitialDay = null;
+    _interstitialsToday = 0;
+    _deliveredTransactionIds.clear();
     customers.clear();
     playerPosition = const Offset(0.5, 0.72);
+    movement = Offset.zero;
+    _movementTarget = null;
+    _bootstrapSystems();
+    _lastObservedStoreLevel = storeLevel;
     _applyDailyBonus();
     _recordPerformanceSample(force: true);
     _updateHighs();
@@ -1004,8 +1330,18 @@ class GameController extends ChangeNotifier {
   }
 
   void replayOnboarding() {
+    _tutorialReplayRequested = true;
     onboardingComplete = false;
+    _markDirty(immediate: true);
     notifyListeners();
+  }
+
+  bool takeTutorialReplayRequest() {
+    if (!_tutorialReplayRequested) {
+      return false;
+    }
+    _tutorialReplayRequested = false;
+    return true;
   }
 
   void acknowledgeDailyBonus() {
@@ -1053,7 +1389,27 @@ class GameController extends ChangeNotifier {
 
   @visibleForTesting
   void debugSetPlayerPosition(Offset position) {
-    playerPosition = position;
+    playerPosition = Offset(
+      position.dx.clamp(0.06, 0.94),
+      position.dy.clamp(0.09, 0.94),
+    );
+  }
+
+  @visibleForTesting
+  void debugSetProgress({int? sales, int? purchasedUpgrades}) {
+    if (sales != null) {
+      totalSales = max(0, sales);
+    }
+    if (purchasedUpgrades != null) {
+      upgradesBought = max(0, purchasedUpgrades);
+    }
+    _afterProgressChanged(immediate: true);
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugReconcileState() {
+    _reconcileAfterLoad();
   }
 
   @override
@@ -1064,31 +1420,96 @@ class GameController extends ChangeNotifier {
   }
 
   void _restore(Map<String, dynamic> saved) {
-    coins = _readInt(saved, 'coins', 25);
-    gems = _readInt(saved, 'gems', 3);
-    carried = _readInt(saved, 'carried', 0);
-    shelfStock = _readInt(saved, 'shelfStock', 0);
-    totalSales = _readInt(saved, 'totalSales', 0);
-    totalCoinsEarned = _readInt(saved, 'totalCoinsEarned', 0);
-    stockedTotal = _readInt(saved, 'stockedTotal', 0);
-    upgradesBought = _readInt(saved, 'upgradesBought', 0);
-    questStage = _readInt(saved, 'questStage', 0);
-    questBaseline = _readInt(saved, 'questBaseline', 0);
-    bagLevel = _readInt(saved, 'bagLevel', 1);
-    shelfLevel = _readInt(saved, 'shelfLevel', 1);
-    priceLevel = _readInt(saved, 'priceLevel', 1);
-    speedLevel = _readInt(saved, 'speedLevel', 1);
-    totalActions = _readInt(saved, 'totalActions', 0);
-    highestBalance = _readInt(saved, 'highestBalance', coins);
-    highestScore = _readInt(saved, 'highestScore', 0);
-    totalPlaySeconds = _readDouble(saved, 'totalPlaySeconds', 0);
-    adsRemoved = saved['adsRemoved'] is bool
-        ? saved['adsRemoved'] as bool
-        : false;
-    muted = saved['muted'] is bool ? saved['muted'] as bool : false;
-    onboardingComplete = saved['onboardingComplete'] is bool
-        ? saved['onboardingComplete'] as bool
-        : false;
+    coins = _readIntAny(saved, const ['coins', 'balance'], 25);
+    gems = _readIntAny(saved, const ['gems', 'premiumCurrency'], 3);
+    carried = _readIntAny(saved, const ['carried', 'bagStock'], 0);
+    shelfStock = _readIntAny(saved, const ['shelfStock', 'stock'], 0);
+    totalSales = _readIntAny(saved, const ['totalSales', 'sales'], 0);
+    totalCoinsEarned = _readIntAny(saved, const [
+      'totalCoinsEarned',
+      'coinsEarned',
+    ], 0);
+    stockedTotal = _readIntAny(saved, const [
+      'stockedTotal',
+      'itemsStocked',
+    ], 0);
+    upgradesBought = _readIntAny(saved, const [
+      'upgradesBought',
+      'upgradesPurchased',
+    ], 0);
+    questStage = _readIntAny(saved, const ['questStage'], 0);
+    questBaseline = _readIntAny(saved, const ['questBaseline'], 0);
+    bagLevel = _readIntAny(saved, const ['bagLevel'], 1, minimum: 1);
+    shelfLevel = _readIntAny(saved, const ['shelfLevel'], 1, minimum: 1);
+    priceLevel = _readIntAny(saved, const ['priceLevel'], 1, minimum: 1);
+    speedLevel = _readIntAny(saved, const ['speedLevel'], 1, minimum: 1);
+    checkoutLevel = _readIntAny(
+      saved,
+      const ['checkoutLevel', 'checkoutSpeedLevel'],
+      1,
+      minimum: 1,
+      maximum: 10,
+    );
+    restockLevel = _readIntAny(
+      saved,
+      const ['restockLevel', 'restockFlowLevel'],
+      1,
+      minimum: 1,
+      maximum: 10,
+    );
+    totalActions = _readIntAny(saved, const ['totalActions', 'actions'], 0);
+    highestBalance = _readIntAny(saved, const ['highestBalance'], coins);
+    highestScore = _readIntAny(saved, const ['highestScore'], 0);
+    totalPlaySeconds = _readDoubleAny(saved, const [
+      'totalPlaySeconds',
+      'playSeconds',
+    ], 0);
+    adsRemoved = _readBoolAny(saved, const ['adsRemoved', 'removeAds'], false);
+    muted = _readBoolAny(saved, const ['muted'], false);
+    onboardingComplete = _readBoolAny(saved, const [
+      'onboardingComplete',
+      'tutorialComplete',
+    ], false);
+    _lastEmergencyStockAt = _readDateAny(saved, const ['lastEmergencyStockAt']);
+    _rewardLastClaimed.clear();
+    final restoredRewardClaims = saved['rewardLastClaimed'];
+    if (restoredRewardClaims is Map) {
+      for (final entry in restoredRewardClaims.entries) {
+        final placement = _enumByName(RewardPlacement.values, entry.key);
+        final claimedAt = entry.value is String
+            ? DateTime.tryParse(entry.value as String)
+            : null;
+        if (placement != null && claimedAt != null) {
+          _rewardLastClaimed[placement] = claimedAt;
+        }
+      }
+    }
+    _rewardClaimDay = _readDateAny(saved, const ['rewardClaimDay']);
+    _rewardClaimsToday = _readIntAny(
+      saved,
+      const ['rewardClaimsToday'],
+      0,
+      maximum: MonetizationPolicy.rewardedDailyLimit,
+    );
+    _lastRewardedAt = _readDateAny(saved, const ['lastRewardedAt']);
+    _lastInterstitialAt = _readDateAny(saved, const ['lastInterstitialAt']);
+    _interstitialDay = _readDateAny(saved, const ['interstitialDay']);
+    _interstitialsToday = _readIntAny(
+      saved,
+      const ['interstitialsToday'],
+      0,
+      maximum: MonetizationPolicy.interstitialDailyLimit,
+    );
+    _deliveredTransactionIds
+      ..clear()
+      ..addAll(
+        saved['deliveredTransactions'] is List
+            ? (saved['deliveredTransactions'] as List)
+                  .whereType<String>()
+                  .where((id) => id.trim().isNotEmpty)
+                  .take(500)
+            : const <String>[],
+      );
     dailyBonus = DailyBonusState.fromJson(saved['dailyBonus']);
     _achievementProgress = AchievementCatalog.restoreProgress(
       saved['achievements'],
@@ -1097,84 +1518,132 @@ class GameController extends ChangeNotifier {
       saved['performanceHistory'],
     );
     _leaderboard = LeaderboardEntry.top(saved['leaderboard']);
-    final restoredStaff = saved['staff'] is List
-        ? saved['staff'] as List
-        : null;
-    if (restoredStaff != null) {
+    _staff.clear();
+    final restoredStaff = saved['staff'];
+    if (restoredStaff is List) {
       for (final item in restoredStaff) {
-        if (item is! Map<String, dynamic>) {
+        final itemMap = _asStringMap(item);
+        if (itemMap == null) {
           continue;
         }
-        final role = StaffRole.values.firstWhere(
-          (candidate) => candidate.name == item['role'],
-          orElse: () => StaffRole.cashier,
-        );
+        final role = _enumByName(StaffRole.values, itemMap['role']);
+        if (role == null) {
+          continue;
+        }
         final member = _ensureStaff(role);
-        member.level = _readInt(item, 'level', 0);
-        member.hired = item['hired'] is bool ? item['hired'] as bool : false;
+        member.level = max(
+          member.level,
+          _readIntAny(itemMap, const ['level'], 0),
+        );
+        member.hired =
+            member.hired ||
+            _readBoolAny(itemMap, const ['hired', 'isHired'], false);
+        member.assignment =
+            _enumByName(StaffAssignment.values, itemMap['assignment']) ??
+            StaffMember.defaultAssignmentFor(role);
       }
     }
-    final restoredDepartments = saved['departments'] is List
-        ? saved['departments'] as List
-        : null;
-    if (restoredDepartments != null) {
-      _departments.clear();
+    final legacyCashierHired = _readBoolAny(saved, const [
+      'cashierHired',
+      'hasCashier',
+    ], false);
+    if (legacyCashierHired) {
+      final cashier = _ensureStaff(StaffRole.cashier);
+      cashier
+        ..hired = true
+        ..level = max(
+          cashier.level,
+          _readIntAny(saved, const ['cashierLevel'], 1, minimum: 1),
+        );
+    }
+
+    _departments.clear();
+    final restoredDepartments = saved['departments'];
+    if (restoredDepartments is List) {
+      final departmentByType = <DepartmentType, DepartmentState>{};
       for (final item in restoredDepartments) {
-        if (item is! Map<String, dynamic>) {
+        final itemMap = _asStringMap(item);
+        if (itemMap == null) {
           continue;
         }
-        final type = DepartmentType.values.firstWhere(
-          (candidate) => candidate.name == item['type'],
-          orElse: () => DepartmentType.generalGoods,
+        final type = _enumByName(DepartmentType.values, itemMap['type']);
+        if (type == null) {
+          continue;
+        }
+        final restored = DepartmentState(
+          type: type,
+          level: _readIntAny(itemMap, const ['level'], 0),
+          unlocked: _readBoolAny(itemMap, const [
+            'unlocked',
+            'isUnlocked',
+          ], false),
         );
-        _departments.add(
-          DepartmentState(
-            type: type,
-            level: _readInt(item, 'level', 0),
-            unlocked: item['unlocked'] is bool
-                ? item['unlocked'] as bool
-                : false,
-          ),
-        );
+        final previous = departmentByType[type];
+        if (previous == null) {
+          departmentByType[type] = restored;
+        } else {
+          previous.level = max(previous.level, restored.level);
+          previous.unlocked = previous.unlocked || restored.unlocked;
+        }
       }
+      _departments.addAll(departmentByType.values);
     }
-    final restoredInventory = saved['inventory'] is Map
-        ? saved['inventory'] as Map
-        : null;
-    if (restoredInventory != null) {
-      _inventoryByCategory.clear();
+
+    _inventoryByCategory.clear();
+    _restoredInventoryPresent =
+        saved.containsKey('inventory') || saved.containsKey('storageInventory');
+    final restoredInventory = saved['inventory'] ?? saved['storageInventory'];
+    if (restoredInventory is Map) {
       for (final entry in restoredInventory.entries) {
         if (entry.key is String && entry.value is num) {
-          _inventoryByCategory[entry.key as String] = entry.value.toInt();
+          _inventoryByCategory[entry.key as String] = max(
+            0,
+            (entry.value as num).toInt(),
+          );
         }
       }
     }
-    final restoredDeliveries = saved['deliveries'] is List
-        ? saved['deliveries'] as List
-        : null;
-    if (restoredDeliveries != null) {
-      _pendingDeliveries.clear();
+
+    _pendingDeliveries.clear();
+    final restoredDeliveries = saved['deliveries'];
+    if (restoredDeliveries is List) {
+      final seenDeliveryIds = <String>{};
       for (final item in restoredDeliveries) {
-        if (item is! Map<String, dynamic>) {
+        final itemMap = _asStringMap(item);
+        if (itemMap == null) {
           continue;
         }
-        final readyAt = DateTime.tryParse(item['readyAt'] as String? ?? '');
+        final id = itemMap['id'] is String ? itemMap['id'] as String : '';
+        final category = itemMap['category'] is String
+            ? (itemMap['category'] as String).trim()
+            : '';
+        final readyAt = _readDateAny(itemMap, const ['readyAt']);
+        if (id.isEmpty ||
+            category.isEmpty ||
+            readyAt == null ||
+            !seenDeliveryIds.add(id)) {
+          continue;
+        }
         _pendingDeliveries.add(
           InventoryDelivery(
-            id: item['id']?.toString() ?? '',
-            category: item['category']?.toString() ?? 'General',
-            quantity: _readInt(item, 'quantity', 0),
-            cost: _readInt(item, 'cost', 0),
-            readyAt: readyAt ?? _now(),
-            completed: item['completed'] is bool
-                ? item['completed'] as bool
-                : false,
+            id: id,
+            category: category,
+            quantity: _readIntAny(itemMap, const ['quantity'], 0),
+            cost: _readIntAny(itemMap, const ['cost'], 0),
+            readyAt: readyAt,
+            completed: _readBoolAny(itemMap, const ['completed'], false),
           ),
         );
       }
     }
-    final restoredX = _readDouble(saved, 'playerX', 0.5);
-    final restoredY = _readDouble(saved, 'playerY', 0.72);
+    final restoredX = _readDoubleAny(saved, const [
+      'playerX',
+      'playerPositionX',
+    ], 0.5);
+    final restoredY = _readDoubleAny(saved, const [
+      'playerY',
+      'playerPositionY',
+    ], 0.72);
     playerPosition = Offset(
       restoredX.clamp(0.06, 0.94),
       restoredY.clamp(0.09, 0.94),
@@ -1183,41 +1652,158 @@ class GameController extends ChangeNotifier {
   }
 
   void _reconcileAfterLoad() {
-    final level = storeLevel;
-    for (final department in _departments) {
-      final definition = DepartmentCatalog.find(department.type);
-      if (definition != null &&
-          !department.unlocked &&
-          level >= definition.unlockLevel) {
-        department.unlocked = true;
-      }
-    }
+    _reconcileProgression(announce: false);
 
     for (final entry in _staff.entries) {
       if (entry.value.hired && entry.value.level < 1) {
         entry.value.level = 1;
       }
+      if (!entry.value.hired) {
+        entry.value.level = max(0, entry.value.level);
+      }
     }
 
     final seen = <int>{};
     for (final customer in customers) {
-      if (!seen.add(customer.id)) {
-        customer.id = _customerId++;
+      if (customer.id < 0 || !seen.add(customer.id)) {
+        while (seen.contains(_customerId)) {
+          _customerId++;
+        }
+        customer.id = _customerId;
+        seen.add(_customerId);
+        _customerId++;
+      } else {
+        _customerId = max(_customerId, customer.id + 1);
       }
+      customer.position = Offset(
+        customer.position.dx.clamp(-0.08, 1.08),
+        customer.position.dy.clamp(-0.12, 1.0),
+      );
     }
 
     carried = carried.clamp(0, bagCapacity);
     shelfStock = shelfStock.clamp(0, shelfCapacity);
+    checkoutLevel = checkoutLevel.clamp(1, 10);
+    restockLevel = restockLevel.clamp(1, 10);
+
+    var remainingCapacity = storageCapacity;
+    for (final key in _inventoryByCategory.keys.toList()..sort()) {
+      final value = inventoryFor(key).clamp(0, remainingCapacity);
+      _inventoryByCategory[key] = value;
+      remainingCapacity -= value;
+    }
+    _pendingDeliveries.removeWhere(
+      (delivery) =>
+          delivery.id.isEmpty ||
+          delivery.category.trim().isEmpty ||
+          delivery.quantity <= 0 ||
+          delivery.cost < 0,
+    );
   }
 
-  int _readInt(Map<String, dynamic> data, String key, int fallback) {
-    final value = data[key];
-    return value is num ? value.toInt() : fallback;
+  void _reconcileProgression({required bool announce}) {
+    final level = storeLevel;
+    for (final department in _departments) {
+      final definition = DepartmentCatalog.find(department.type);
+      if (definition == null) {
+        continue;
+      }
+      if (department.type == DepartmentType.generalGoods) {
+        department
+          ..unlocked = true
+          ..level = max(1, department.level);
+        continue;
+      }
+      if (!department.unlocked &&
+          definition.autoUnlock &&
+          level >= definition.unlockLevel) {
+        department
+          ..unlocked = true
+          ..level = max(1, department.level);
+        if (announce) {
+          _departmentUnlocks.add(department.type);
+        }
+      }
+    }
   }
 
-  double _readDouble(Map<String, dynamic> data, String key, double fallback) {
-    final value = data[key];
-    return value is num && value.isFinite ? value.toDouble() : fallback;
+  int _readIntAny(
+    Map<String, dynamic> data,
+    List<String> keys,
+    int fallback, {
+    int minimum = 0,
+    int maximum = 1000000000,
+  }) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value is num && value.isFinite) {
+        return value.toInt().clamp(minimum, maximum);
+      }
+    }
+    return fallback.clamp(minimum, maximum);
+  }
+
+  double _readDoubleAny(
+    Map<String, dynamic> data,
+    List<String> keys,
+    double fallback,
+  ) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value is num && value.isFinite) {
+        return max(0, value.toDouble());
+      }
+    }
+    return max(0, fallback);
+  }
+
+  bool _readBoolAny(
+    Map<String, dynamic> data,
+    List<String> keys,
+    bool fallback,
+  ) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value is bool) {
+        return value;
+      }
+    }
+    return fallback;
+  }
+
+  DateTime? _readDateAny(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value is String) {
+        final parsed = DateTime.tryParse(value);
+        if (parsed != null) {
+          return parsed;
+        }
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _asStringMap(Object? value) {
+    if (value is! Map) {
+      return null;
+    }
+    return <String, dynamic>{
+      for (final entry in value.entries)
+        if (entry.key is String) entry.key as String: entry.value,
+    };
+  }
+
+  T? _enumByName<T extends Enum>(List<T> values, Object? rawName) {
+    if (rawName is! String) {
+      return null;
+    }
+    for (final value in values) {
+      if (value.name == rawName) {
+        return value;
+      }
+    }
+    return null;
   }
 
   bool _applyDailyBonus() {
@@ -1235,6 +1821,9 @@ class GameController extends ChangeNotifier {
   }
 
   void _afterProgressChanged({bool immediate = false}) {
+    final currentLevel = storeLevel;
+    _reconcileProgression(announce: currentLevel > _lastObservedStoreLevel);
+    _lastObservedStoreLevel = currentLevel;
     _updateHighs();
     _evaluateAchievements();
     _markDirty(immediate: immediate);
@@ -1316,6 +1905,25 @@ class GameController extends ChangeNotifier {
           : const Duration(milliseconds: 550),
       () => unawaited(save()),
     );
+  }
+
+  void _resetDailyMonetizationCountersIfNeeded() {
+    final today = _now();
+    if (_rewardClaimDay == null || !_sameCalendarDay(_rewardClaimDay!, today)) {
+      _rewardClaimDay = DateTime(today.year, today.month, today.day);
+      _rewardClaimsToday = 0;
+    }
+    if (_interstitialDay == null ||
+        !_sameCalendarDay(_interstitialDay!, today)) {
+      _interstitialDay = DateTime(today.year, today.month, today.day);
+      _interstitialsToday = 0;
+    }
+  }
+
+  bool _sameCalendarDay(DateTime first, DateTime second) {
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
   }
 
   int _upgradeCost(int base, int level) {

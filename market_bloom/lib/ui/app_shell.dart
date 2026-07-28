@@ -106,6 +106,8 @@ class _AppShellState extends State<AppShell> {
       selectedIndex: _selectedIndex,
       onDestinationSelected: _selectDestination,
       extended: false,
+      labelType: NavigationRailLabelType.all,
+      groupAlignment: -1,
       destinations: [
         for (final dest in _allDestinations)
           NavigationRailDestination(
@@ -186,32 +188,45 @@ class _AppShellState extends State<AppShell> {
   void _showMoreSheet(AppLocalizations loc) {
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 5,
-              margin: const EdgeInsets.only(bottom: 13),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outline,
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            for (final dest in _allDestinations)
-              if (!_primaryDestinations.contains(dest))
-                ListTile(
-                  leading: CircleCaddy(icon: _iconFor(dest)),
-                  title: Text(_labelFor(dest, loc)),
-                  onTap: () {
-                    final index = _allDestinations.indexOf(dest);
-                    Navigator.of(sheetContext).pop();
-                    _selectDestination(index);
-                  },
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.75,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                margin: const EdgeInsets.only(top: 10, bottom: 8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outline,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-          ],
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final dest in _allDestinations)
+                      if (!_primaryDestinations.contains(dest))
+                        ListTile(
+                          leading: CircleCaddy(icon: _iconFor(dest)),
+                          title: Text(_labelFor(dest, loc)),
+                          onTap: () {
+                            final index = _allDestinations.indexOf(dest);
+                            Navigator.of(sheetContext).pop();
+                            _selectDestination(index);
+                          },
+                        ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

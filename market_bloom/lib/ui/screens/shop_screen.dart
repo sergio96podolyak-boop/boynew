@@ -19,6 +19,9 @@ class ShopScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
+    final rewardCooldown = controller.rewardCooldownRemaining(
+      RewardPlacement.instantCoins,
+    );
     return Scaffold(
       appBar: AppBar(title: Text(loc.shopTitle)),
       body: AnimatedBuilder(
@@ -30,7 +33,7 @@ class ShopScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               controller.storePurchasesAvailable
-                  ? 'Secure purchases through the App Store or Google Play.'
+                  ? loc.secureStorePurchases
                   : loc.previewModeDesc,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -43,11 +46,20 @@ class ShopScreen extends StatelessWidget {
               color: const Color(0xFFE85D75),
               title: loc.rewardedBonus,
               subtitle:
-                  '${loc.watchAndEarn} — ${controller.instantAdReward} coins',
+                  '${loc.watchAndEarn} — ${loc.coinsEarned.replaceFirst('{value}', '${controller.instantAdReward}')}',
               buttonLabel: controller.rewardInProgress
                   ? loc.loading
+                  : !controller.rewardedAdsAvailable
+                  ? loc.unavailable
+                  : rewardCooldown > Duration.zero
+                  ? loc.retryIn.replaceFirst(
+                      '{seconds}',
+                      '${rewardCooldown.inSeconds + 1}',
+                    )
                   : loc.watchAndEarn,
-              onTap: controller.rewardInProgress
+              onTap:
+                  controller.rewardInProgress ||
+                      !controller.canClaimReward(RewardPlacement.instantCoins)
                   ? null
                   : () async {
                       final reward = controller.instantAdReward;
@@ -115,6 +127,36 @@ class ShopScreen extends StatelessWidget {
                   ? null
                   : () => _purchase(context, StoreProduct.coinPack),
             ),
+            const SizedBox(height: 12),
+            _StoreCard(
+              icon: Icons.diamond_rounded,
+              color: const Color(0xFF8B66D8),
+              title: loc.gemPack,
+              subtitle: loc.gemPackDesc,
+              buttonLabel:
+                  controller.storePrice(StoreProduct.gemPack) ??
+                  loc.previewPrice,
+              onTap:
+                  !controller.storePurchasesAvailable ||
+                      controller.storePurchaseInProgress
+                  ? null
+                  : () => _purchase(context, StoreProduct.gemPack),
+            ),
+            const SizedBox(height: 12),
+            _StoreCard(
+              icon: Icons.inventory_2_rounded,
+              color: const Color(0xFF5B8DEF),
+              title: loc.emergencySupplyPack,
+              subtitle: loc.emergencySupplyPackDesc,
+              buttonLabel:
+                  controller.storePrice(StoreProduct.emergencySupply) ??
+                  loc.previewPrice2,
+              onTap:
+                  !controller.storePurchasesAvailable ||
+                      controller.storePurchaseInProgress
+                  ? null
+                  : () => _purchase(context, StoreProduct.emergencySupply),
+            ),
           ],
         ),
       ),
@@ -128,7 +170,11 @@ class ShopScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          purchased ? loc.purchaseComplete : loc.productNotConfigured,
+          purchased
+              ? loc.purchaseComplete
+              : controller.lastPurchaseState == PurchaseState.cancelled
+              ? loc.purchaseCancelled
+              : loc.purchaseFailed,
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -190,39 +236,62 @@ class _StoreCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: color,
-              child: Icon(icon, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final details = Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: color,
+                  child: Icon(icon, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            PressableScale(
+                ),
+              ],
+            );
+            final action = PressableScale(
               child: FilledButton(
                 onPressed: onTap == null ? null : () => onTap!(),
-                child: Text(buttonLabel),
+                child: Text(
+                  buttonLabel,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+            );
+
+            if (constraints.maxWidth < 310) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [details, const SizedBox(height: 10), action],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: details),
+                const SizedBox(width: 10),
+                action,
+              ],
+            );
+          },
         ),
       ),
     );

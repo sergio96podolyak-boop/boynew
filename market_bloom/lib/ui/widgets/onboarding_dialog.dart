@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/app_localizations.dart';
 import '../../services/sfx/sfx_manager.dart';
 
 class PoMarketOnboardingDialog extends StatefulWidget {
@@ -13,32 +14,7 @@ class PoMarketOnboardingDialog extends StatefulWidget {
 }
 
 class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
-  static const _steps = <_TutorialStep>[
-    _TutorialStep(
-      icon: Icons.sports_esports_rounded,
-      eyebrow: 'STEP 1 OF 3',
-      title: 'Move & Collect',
-      description:
-          'Drag the joystick with your thumb. Walk to STORAGE and products will load into your bag automatically.',
-      color: Color(0xFF5B8DEF),
-    ),
-    _TutorialStep(
-      icon: Icons.shelves,
-      eyebrow: 'STEP 2 OF 3',
-      title: 'Keep Shelves Full',
-      description:
-          'Carry products to the SHELF. Customers can only shop while products are available.',
-      color: Color(0xFFF6A623),
-    ),
-    _TutorialStep(
-      icon: Icons.trending_up_rounded,
-      eyebrow: 'STEP 3 OF 3',
-      title: 'Sell, Earn & Grow',
-      description:
-          'Customers pay at CHECKOUT. Use your coins for upgrades, climb the leaderboard, and build your store empire.',
-      color: Color(0xFF38B879),
-    ),
-  ];
+  static const _stepCount = 3;
 
   final PageController _pages = PageController();
   int _index = 0;
@@ -51,7 +27,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
 
   void _next() {
     unawaited(SfxManager.instance.click());
-    if (_index == _steps.length - 1) {
+    if (_index == _stepCount - 1) {
       Navigator.of(context).pop(true);
       return;
     }
@@ -61,8 +37,43 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
     );
   }
 
+  void _skip() {
+    unawaited(SfxManager.instance.click());
+    Navigator.of(context).pop(true);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final steps = <_TutorialStep>[
+      _TutorialStep(
+        icon: Icons.touch_app_rounded,
+        eyebrow: loc.tutorialStep
+            .replaceFirst('{current}', '1')
+            .replaceFirst('{total}', '$_stepCount'),
+        title: loc.moveAndCollect,
+        description: loc.moveAndCollectDesc,
+        color: const Color(0xFF5B8DEF),
+      ),
+      _TutorialStep(
+        icon: Icons.shelves,
+        eyebrow: loc.tutorialStep
+            .replaceFirst('{current}', '2')
+            .replaceFirst('{total}', '$_stepCount'),
+        title: loc.keepShelvesFull,
+        description: loc.keepShelvesFullDesc,
+        color: const Color(0xFFF6A623),
+      ),
+      _TutorialStep(
+        icon: Icons.trending_up_rounded,
+        eyebrow: loc.tutorialStep
+            .replaceFirst('{current}', '3')
+            .replaceFirst('{total}', '$_stepCount'),
+        title: loc.sellEarnGrow,
+        description: loc.sellEarnGrowDesc,
+        color: const Color(0xFF38B879),
+      ),
+    ];
     final size = MediaQuery.sizeOf(context);
     final compact = size.height < 700 || size.width < 430;
     return PopScope(
@@ -103,13 +114,13 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'WELCOME TO POMARKET',
-                            style: TextStyle(
+                            loc.welcomeToPoMarket,
+                            style: const TextStyle(
                               color: Color(0xFF315F4A),
                               fontSize: 13,
                               fontWeight: FontWeight.w900,
@@ -117,8 +128,8 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                             ),
                           ),
                           Text(
-                            'Your store opens in three quick steps',
-                            style: TextStyle(
+                            loc.tutorialSubtitle,
+                            style: const TextStyle(
                               color: Color(0xFF747A75),
                               fontSize: 11,
                             ),
@@ -134,17 +145,17 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                   child: PageView.builder(
                     controller: _pages,
                     physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _steps.length,
+                    itemCount: steps.length,
                     onPageChanged: (value) => setState(() => _index = value),
                     itemBuilder: (context, index) =>
-                        _TutorialPage(step: _steps[index], compact: compact),
+                        _TutorialPage(step: steps[index], compact: compact),
                   ),
                 ),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(
-                    _steps.length,
+                    steps.length,
                     (index) => AnimatedContainer(
                       duration: const Duration(milliseconds: 220),
                       width: index == _index ? 24 : 8,
@@ -152,7 +163,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                       margin: const EdgeInsets.symmetric(horizontal: 3),
                       decoration: BoxDecoration(
                         color: index == _index
-                            ? _steps[_index].color
+                            ? steps[_index].color
                             : const Color(0xFFD7D5CE),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -160,22 +171,36 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                   ),
                 ),
                 const SizedBox(height: 15),
-                FilledButton.icon(
-                  onPressed: _next,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    backgroundColor: _steps[_index].color,
-                  ),
-                  icon: Icon(
-                    _index == _steps.length - 1
-                        ? Icons.play_arrow_rounded
-                        : Icons.arrow_forward_rounded,
-                  ),
-                  label: Text(
-                    _index == _steps.length - 1
-                        ? 'START PLAYING'
-                        : 'GOT IT — NEXT',
-                  ),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: _skip,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(64, 54),
+                      ),
+                      child: Text(loc.skip),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _next,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(54),
+                          backgroundColor: steps[_index].color,
+                        ),
+                        icon: Icon(
+                          _index == steps.length - 1
+                              ? Icons.play_arrow_rounded
+                              : Icons.arrow_forward_rounded,
+                        ),
+                        label: Text(
+                          _index == steps.length - 1
+                              ? loc.startPlaying
+                              : loc.gotItNext,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -51,7 +51,8 @@ class _DepartmentCard extends StatelessWidget {
     );
     final unlocked = state.unlocked;
     final meetsLevel = controller.storeLevel >= definition.unlockLevel;
-    final canUnlock = !unlocked && meetsLevel && controller.coins >= definition.unlockCost;
+    final canUnlock =
+        !unlocked && meetsLevel && controller.coins >= definition.unlockCost;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -89,7 +90,7 @@ class _DepartmentCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    definition.description,
+                    _descriptionFor(definition.type, loc),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
@@ -117,11 +118,16 @@ class _DepartmentCard extends StatelessWidget {
             if (!unlocked && canUnlock)
               FilledButton(
                 onPressed: () {
-                  // Department unlock is a future feature; show locked state.
+                  final didUnlock = controller.unlockDepartment(
+                    definition.type,
+                  );
+                  if (!didUnlock) {
+                    return;
+                  }
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        '${loc.unlockCost.replaceFirst("{cost}", definition.unlockCost.toString())} — ${loc.locked}',
+                        '${_nameFor(definition.type, loc)} — ${loc.unlocked}',
                       ),
                       behavior: SnackBarBehavior.floating,
                     ),
@@ -148,6 +154,17 @@ class _DepartmentCard extends StatelessWidget {
       DepartmentType.refrigerated => loc.departmentRefrigerated,
       DepartmentType.beauty => loc.departmentBeauty,
       DepartmentType.electronics => loc.departmentElectronics,
+    };
+  }
+
+  String _descriptionFor(DepartmentType type, AppLocalizations loc) {
+    return switch (type) {
+      DepartmentType.generalGoods => loc.departmentGeneralGoodsDesc,
+      DepartmentType.bakery => loc.departmentBakeryDesc,
+      DepartmentType.produce => loc.departmentProduceDesc,
+      DepartmentType.refrigerated => loc.departmentRefrigeratedDesc,
+      DepartmentType.beauty => loc.departmentBeautyDesc,
+      DepartmentType.electronics => loc.departmentElectronicsDesc,
     };
   }
 }

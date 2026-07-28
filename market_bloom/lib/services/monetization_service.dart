@@ -2,14 +2,61 @@ import 'monetization_factory_stub.dart'
     if (dart.library.io) 'monetization_factory_io.dart'
     as platform_factory;
 
-enum RewardPlacement { instantCoins, doubleOfflineEarnings }
+enum RewardPlacement {
+  instantCoins,
+  emergencyStock,
+  doubleOfflineEarnings,
+  smallGemReward,
+  deliveryBoost,
+  cashierBoost,
+}
 
-enum StoreProduct { noAds, coinPack, starterPack }
+enum InterstitialPlacement { shiftBreak, majorLevelBreak }
+
+enum StoreProduct { noAds, coinPack, gemPack, emergencySupply, starterPack }
+
+enum PurchaseState { purchased, restored, pending, failed, cancelled }
+
+class StorePurchaseResult {
+  const StorePurchaseResult({
+    required this.product,
+    required this.state,
+    this.transactionId,
+    this.verified = false,
+  });
+
+  const StorePurchaseResult.failed(StoreProduct product)
+    : this(product: product, state: PurchaseState.failed);
+
+  final StoreProduct product;
+  final PurchaseState state;
+  final String? transactionId;
+  final bool verified;
+
+  bool get canDeliver =>
+      verified &&
+      transactionId != null &&
+      transactionId!.isNotEmpty &&
+      (state == PurchaseState.purchased || state == PurchaseState.restored);
+}
+
+abstract final class MonetizationPolicy {
+  static const rewardedCooldown = Duration(minutes: 3);
+  static const rewardedDailyLimit = 8;
+  static const minimumInterstitialPlayTime = Duration(minutes: 8);
+  static const interstitialSessionCooldown = Duration(minutes: 12);
+  static const interstitialAfterRewardCooldown = Duration(minutes: 5);
+  static const interstitialDailyLimit = 3;
+}
 
 abstract interface class MonetizationService {
   bool get isPreview;
 
   bool get storeAvailable;
+
+  bool get rewardedAdsAvailable;
+
+  bool get interstitialAdsAvailable;
 
   String? priceFor(StoreProduct product);
 
@@ -17,14 +64,15 @@ abstract interface class MonetizationService {
 
   Future<bool> showRewardedAd(RewardPlacement placement);
 
-  Future<bool> purchase(StoreProduct product);
+  Future<bool> showInterstitial(InterstitialPlacement placement);
+
+  Future<StorePurchaseResult> purchase(StoreProduct product);
 
   /// Attempts to restore previously purchased products.
   ///
-  /// Returns `true` if any purchases were restored, `false` otherwise.
-  /// Preview builds that do not connect to a real store should return
-  /// `false` without performing any side effects.
-  Future<bool> restorePurchases();
+  /// Preview builds that do not connect to a real store return an empty list
+  /// without performing any side effects.
+  Future<List<StorePurchaseResult>> restorePurchases();
 
   void dispose();
 }
@@ -33,11 +81,9 @@ MonetizationService createMonetizationService() {
   return platform_factory.createPlatformMonetizationService();
 }
 
-/// The game loop is fully playable before store credentials exist.
+/// Safe no-op adapter used when mobile ads and stores are unavailable.
 ///
-/// In preview builds this service grants rewarded-ad bonuses after a short
-/// simulated break. Production builds replace it with an AdMob/IAP-backed
-/// implementation after app IDs and store products are created.
+/// It never simulates an earned ad reward or a successful purchase.
 class PreviewMonetizationService implements MonetizationService {
   @override
   void dispose() {}
@@ -52,17 +98,27 @@ class PreviewMonetizationService implements MonetizationService {
   bool get storeAvailable => false;
 
   @override
+  bool get rewardedAdsAvailable => false;
+
+  @override
+  bool get interstitialAdsAvailable => false;
+
+  @override
   String? priceFor(StoreProduct product) => null;
 
   @override
-  Future<bool> purchase(StoreProduct product) async => false;
-
-  @override
-  Future<bool> restorePurchases() async => false;
-
-  @override
-  Future<bool> showRewardedAd(RewardPlacement placement) async {
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    return true;
+  Future<StorePurchaseResult> purchase(StoreProduct product) async {
+    return StorePurchaseResult.failed(product);
   }
+
+  @override
+  Future<List<StorePurchaseResult>> restorePurchases() async {
+    return const <StorePurchaseResult>[];
+  }
+
+  @override
+  Future<bool> showRewardedAd(RewardPlacement placement) async => false;
+
+  @override
+  Future<bool> showInterstitial(InterstitialPlacement placement) async => false;
 }

@@ -199,6 +199,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                child: Icon(
+                  Icons.school_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              title: Text(
+                loc.quickTutorial,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              subtitle: Text(
+                loc.replayTutorial,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+              trailing: FilledButton(
+                onPressed: game.replayOnboarding,
+                child: Text(loc.replay),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           // Restore purchases
           Card(
             child: ListTile(
@@ -219,7 +246,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               subtitle: Text(
                 game.storePurchasesAvailable
-                    ? 'Restore previous purchases'
+                    ? loc.restorePurchasesDesc
                     : loc.restorePurchasesUnavailable,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -237,8 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     onPressed: game.storePurchasesAvailable
                         ? () async {
-                            final restored = await game.monetization
-                                .restorePurchases();
+                            final restored = await game.restoreStorePurchases();
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(

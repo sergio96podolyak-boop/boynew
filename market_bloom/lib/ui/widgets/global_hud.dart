@@ -37,7 +37,7 @@ class GlobalHud extends StatelessWidget {
                 return Semantics(
                   container: true,
                   label:
-                      'PoMarket, level ${game.storeLevel}, ${game.coins} ${loc.coinsShort}, ${game.gems} ${loc.gemsShort}',
+                      'PoMarket, ${loc.levelLabel} ${game.storeLevel}, ${game.coins} ${loc.coinsShort}, ${game.gems} ${loc.gemsShort}',
                   child: SizedBox(
                     height: compact ? 58 : 66,
                     child: Padding(
@@ -217,12 +217,15 @@ class _HudPill extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              reducedMotion
-                  ? valueText
-                  : AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: valueText,
-                    ),
+              Directionality(
+                textDirection: TextDirection.ltr,
+                child: reducedMotion
+                    ? valueText
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: valueText,
+                      ),
+              ),
             ],
           ),
         ],

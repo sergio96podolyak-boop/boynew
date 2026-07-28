@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../game/game_controller.dart';
+import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
 
 class InventoryScreen extends StatelessWidget {
@@ -16,12 +17,9 @@ class InventoryScreen extends StatelessWidget {
       body: AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
-          final totalInventory =
-              controller.inventoryFor('General') +
-              controller.inventoryFor('Produce') +
-              controller.inventoryFor('Bakery');
-          final capacity = controller.shelfCapacity + controller.bagCapacity;
-          final deliveries = controller.pendingDeliveryCount;
+          final totalInventory = controller.totalStoredInventory;
+          final capacity = controller.storageCapacity;
+          final deliveries = controller.pendingDeliveries;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -59,7 +57,7 @@ class InventoryScreen extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 8),
-              if (deliveries == 0)
+              if (deliveries.isEmpty)
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -72,20 +70,100 @@ class InventoryScreen extends StatelessWidget {
                   ),
                 )
               else
+                for (final delivery in deliveries)
+                  _DeliveryCard(
+                    delivery: delivery,
+                    loc: loc,
+                    ready: controller.isDeliveryReady(delivery),
+                    onFulfill: () =>
+                        controller.fulfillPendingDelivery(delivery.id),
+                  ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed:
+                    controller.coins >= 20 &&
+                        controller.pendingDeliveryCount == 0 &&
+                        totalInventory + 6 <= capacity
+                    ? () =>
+                          controller.placeInventoryOrder('General', 6, cost: 20)
+                    : null,
+                icon: const Icon(Icons.local_shipping_rounded),
+                label: Text('${loc.orderGeneralStock} · 20'),
+              ),
+              if (controller.canClaimEmergencyStock) ...[
+                const SizedBox(height: 12),
                 Card(
+                  color: const Color(0xFFFFF3E0),
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      '$deliveries ${loc.pendingDeliveries.toLowerCase()}',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          loc.emergencyStock,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          loc.emergencyStockDesc,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: controller.claimEmergencyStock,
+                          icon: const Icon(Icons.inventory_2_rounded),
+                          label: Text(
+                            '${loc.collect} +${GameBalance.emergencyStockQuantity}',
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
+              ],
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _DeliveryCard extends StatelessWidget {
+  const _DeliveryCard({
+    required this.delivery,
+    required this.loc,
+    required this.ready,
+    required this.onFulfill,
+  });
+
+  final InventoryDelivery delivery;
+  final AppLocalizations loc;
+  final bool ready;
+  final VoidCallback onFulfill;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.local_shipping_rounded),
+        title: Text('${delivery.category} · ${delivery.quantity}'),
+        subtitle: Text(
+          ready
+              ? loc.deliveryReady
+              : MaterialLocalizations.of(
+                  context,
+                ).formatTimeOfDay(TimeOfDay.fromDateTime(delivery.readyAt)),
+        ),
+        trailing: FilledButton(
+          onPressed: ready ? onFulfill : null,
+          child: Text(loc.fulfill),
+        ),
       ),
     );
   }

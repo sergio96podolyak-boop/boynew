@@ -10,9 +10,8 @@
 		<string>PoMarket</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
-		<!-- Google sample App ID. Replace with the PoMarket AdMob App ID before release. -->
 		<key>GADApplicationIdentifier</key>
-		<string>ca-app-pub-3940256099942544~1458002511</string>
+		<string>$(GAD_APPLICATION_IDENTIFIER)</string>
 		<key>CFBundleIdentifier</key>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		<key>CFBundleInfoDictionaryVersion</key>

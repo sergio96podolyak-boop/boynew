@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 enum CustomerPhase { entering, shopping, checkout, paying, leaving }
 
+enum CheckoutOperator { player, cashier }
+
 class MarketCustomer {
   MarketCustomer({
     required this.id,
@@ -27,6 +29,7 @@ class MarketCustomer {
   int tipValue;
   int basketCount;
   String emotion;
+  CheckoutOperator? checkoutOperator;
 }
 
 enum UpgradeType { bag, shelf, price, speed, checkout, restock }
@@ -70,12 +73,34 @@ class Quest {
 
 enum StaffRole { cashier, stocker, cleaner, manager }
 
-class StaffMember {
-  StaffMember({required this.role, this.level = 0, this.hired = false});
+enum StaffAssignment { checkout, shelves, floor, office }
 
+enum StaffStatus { notHired, idle, serving, stocking, cleaning, managing }
+
+class StaffMember {
+  StaffMember({
+    required this.role,
+    String? id,
+    this.level = 0,
+    this.hired = false,
+    StaffAssignment? assignment,
+  }) : id = id ?? 'staff-${role.name}',
+       assignment = assignment ?? defaultAssignmentFor(role);
+
+  final String id;
   final StaffRole role;
   int level;
   bool hired;
+  StaffAssignment assignment;
+
+  static StaffAssignment defaultAssignmentFor(StaffRole role) {
+    return switch (role) {
+      StaffRole.cashier => StaffAssignment.checkout,
+      StaffRole.stocker => StaffAssignment.shelves,
+      StaffRole.cleaner => StaffAssignment.floor,
+      StaffRole.manager => StaffAssignment.office,
+    };
+  }
 
   String get name {
     return switch (role) {
@@ -118,6 +143,7 @@ class DepartmentDefinition {
     required this.unlockCost,
     required this.icon,
     required this.color,
+    this.autoUnlock = false,
   });
 
   final DepartmentType type;
@@ -127,6 +153,7 @@ class DepartmentDefinition {
   final int unlockCost;
   final IconData icon;
   final Color color;
+  final bool autoUnlock;
 }
 
 class DepartmentState {
@@ -155,11 +182,21 @@ class InventoryDelivery {
   bool completed;
 }
 
-/// Static catalog of department definitions with unlock requirements.
-///
-/// The unlock levels mirror the existing store-level gating used in
-/// [MarketPainter._drawExpansion] (bakery at level 3) and extend it to
-/// all departments represented by [DepartmentType].
+/// Central progression and economy rules shared by the controller and UI.
+abstract final class GameBalance {
+  static const salesPerStoreLevel = 8;
+  static const upgradesPerStoreLevel = 4;
+  static const staffUnlockLevel = 3;
+  static const bakeryUnlockLevel = 3;
+  static const starterStorageStock = 12;
+  static const emergencyStockQuantity = 4;
+  static const emergencyStockCooldown = Duration(minutes: 10);
+  static const baseCheckoutSeconds = 1.05;
+  static const minimumCheckoutSeconds = 0.38;
+  static const inventoryOrderDelay = Duration(seconds: 6);
+}
+
+/// Static catalog of department definitions with centralized unlock rules.
 abstract final class DepartmentCatalog {
   static const List<DepartmentDefinition> all = <DepartmentDefinition>[
     DepartmentDefinition(
@@ -170,15 +207,17 @@ abstract final class DepartmentCatalog {
       unlockCost: 0,
       icon: Icons.storefront_rounded,
       color: Color(0xFF5B8DEF),
+      autoUnlock: true,
     ),
     DepartmentDefinition(
       type: DepartmentType.bakery,
       name: 'Bakery',
       description: 'Fresh bread and pastries.',
-      unlockLevel: 3,
-      unlockCost: 200,
+      unlockLevel: GameBalance.bakeryUnlockLevel,
+      unlockCost: 0,
       icon: Icons.bakery_dining_rounded,
       color: Color(0xFFF6A623),
+      autoUnlock: true,
     ),
     DepartmentDefinition(
       type: DepartmentType.produce,

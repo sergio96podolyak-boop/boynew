@@ -6,10 +6,25 @@ import '../game/game_controller.dart';
 import '../game/game_models.dart';
 
 class MarketPainter extends CustomPainter {
-  const MarketPainter({required this.game, required this.animationTime});
+  const MarketPainter({
+    required this.game,
+    required this.animationTime,
+    required this.storageLabel,
+    required this.shelfLabel,
+    required this.checkoutLabel,
+    required this.bakeryLabel,
+    required this.bakeryLockedLabel,
+    required this.textDirection,
+  });
 
   final GameController game;
   final double animationTime;
+  final String storageLabel;
+  final String shelfLabel;
+  final String checkoutLabel;
+  final String bakeryLabel;
+  final String bakeryLockedLabel;
+  final TextDirection textDirection;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -20,7 +35,11 @@ class MarketPainter extends CustomPainter {
     _drawShelf(canvas, market);
     _drawCheckout(canvas, market);
     _drawExpansion(canvas, market);
+    _drawMovementTarget(canvas, market);
 
+    if (game.isStaffHired(StaffRole.cashier)) {
+      _drawCashier(canvas, market);
+    }
     for (final customer in game.customers) {
       _drawCustomer(canvas, _point(market, customer.position), customer);
     }
@@ -156,7 +175,7 @@ class MarketPainter extends CustomPainter {
         ..color = const Color(0x669B6230)
         ..strokeWidth = 3,
     );
-    _stationLabel(canvas, center + const Offset(0, 39), 'STORAGE');
+    _stationLabel(canvas, center + const Offset(0, 39), storageLabel);
   }
 
   void _drawShelf(Canvas canvas, Rect market) {
@@ -216,7 +235,7 @@ class MarketPainter extends CustomPainter {
     _stationLabel(
       canvas,
       center + const Offset(0, 55),
-      'SHELF ${game.shelfStock}/${game.shelfCapacity}',
+      '$shelfLabel ${game.shelfStock}/${game.shelfCapacity}',
     );
   }
 
@@ -253,7 +272,7 @@ class MarketPainter extends CustomPainter {
       Paint()..color = const Color(0xFFFFD166),
     );
     _drawQueueGuide(canvas, market);
-    _stationLabel(canvas, center + const Offset(0, 39), 'CHECKOUT');
+    _stationLabel(canvas, center + const Offset(0, 39), checkoutLabel);
   }
 
   void _drawQueueGuide(Canvas canvas, Rect market) {
@@ -365,8 +384,7 @@ class MarketPainter extends CustomPainter {
 
   void _drawExpansion(Canvas canvas, Rect market) {
     final center = _point(market, const Offset(0.78, 0.76));
-    final bakery = DepartmentCatalog.find(DepartmentType.bakery);
-    final unlocked = bakery != null && game.storeLevel >= bakery.unlockLevel;
+    final unlocked = game.bakeryUnlocked;
     final zone = RRect.fromRectAndRadius(
       Rect.fromCenter(center: center, width: 105, height: 91),
       const Radius.circular(18),
@@ -410,12 +428,90 @@ class MarketPainter extends CustomPainter {
     );
     _text(
       canvas,
-      unlocked ? 'BAKERY\nSOON' : 'UNLOCKS\nAT LEVEL 3',
+      unlocked ? bakeryLabel : bakeryLockedLabel,
       center + const Offset(0, 20),
       color: const Color(0xFF645E55),
       fontSize: 11,
       weight: FontWeight.w800,
     );
+  }
+
+  void _drawMovementTarget(Canvas canvas, Rect market) {
+    final target = game.movementTarget;
+    if (target == null) {
+      return;
+    }
+    final center = _point(market, target);
+    final pulse = 10 + sin(animationTime * 6) * 2;
+    canvas.drawCircle(
+      center,
+      pulse,
+      Paint()
+        ..color = const Color(0x6638B879)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    canvas.drawCircle(center, 3.5, Paint()..color = const Color(0xFF38B879));
+  }
+
+  void _drawCashier(Canvas canvas, Rect market) {
+    final center = _point(
+      market,
+      GameController.checkoutZone + const Offset(0.075, 0.035),
+    );
+    final serving = game.staffStatus(StaffRole.cashier) == StaffStatus.serving;
+    final bounce = serving ? sin(animationTime * 12) * 1.2 : 0.0;
+    final bodyCenter = center + Offset(0, bounce);
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center + const Offset(0, 16),
+        width: 30,
+        height: 10,
+      ),
+      Paint()..color = const Color(0x22000000),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: bodyCenter, width: 27, height: 34),
+        const Radius.circular(10),
+      ),
+      Paint()..color = const Color(0xFF315F8F),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: bodyCenter + const Offset(0, 5),
+          width: 19,
+          height: 17,
+        ),
+        const Radius.circular(5),
+      ),
+      Paint()..color = const Color(0xFFF6A623),
+    );
+    canvas.drawCircle(
+      bodyCenter - const Offset(0, 21),
+      10,
+      Paint()..color = const Color(0xFFFFD3B6),
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: bodyCenter - const Offset(0, 23), radius: 11),
+      pi,
+      pi,
+      true,
+      Paint()..color = const Color(0xFF473126),
+    );
+    if (serving) {
+      final scannerAlpha = (150 + (sin(animationTime * 15) + 1) * 50)
+          .round()
+          .clamp(0, 255);
+      canvas.drawCircle(
+        _point(market, GameController.checkoutZone) + const Offset(-24, -7),
+        12,
+        Paint()..color = Color.fromARGB(scannerAlpha, 255, 224, 102),
+      );
+      _bubble(canvas, bodyCenter - const Offset(16, 39), '💳');
+    }
   }
 
   void _drawPlayer(Canvas canvas, Offset center) {
@@ -693,7 +789,7 @@ class MarketPainter extends CustomPainter {
           height: 1.05,
         ),
       ),
-      textDirection: TextDirection.ltr,
+      textDirection: textDirection,
       textAlign: TextAlign.center,
     )..layout();
   }

@@ -37,6 +37,7 @@ class _GameScreenState extends State<GameScreen>
   double _animationTime = 0;
   bool _offlineSheetShown = false;
   bool _startupFlowStarted = false;
+  bool _onboardingDialogOpen = false;
   AchievementDefinition? _achievementToast;
   Timer? _achievementToastTimer;
   final CelebrationController _celebration = CelebrationController();
@@ -69,6 +70,7 @@ class _GameScreenState extends State<GameScreen>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
+      game.clearMovementTarget();
       unawaited(game.save());
     }
   }
@@ -98,11 +100,16 @@ class _GameScreenState extends State<GameScreen>
   }
 
   Future<void> _showOnboarding() async {
+    if (_onboardingDialogOpen || !mounted) {
+      return;
+    }
+    _onboardingDialogOpen = true;
     final completed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (_) => const PoMarketOnboardingDialog(),
     );
+    _onboardingDialogOpen = false;
     if (completed == true) {
       game.completeOnboarding();
       unawaited(SfxManager.instance.success());
@@ -110,7 +117,42 @@ class _GameScreenState extends State<GameScreen>
   }
 
   void _onGameChanged() {
-    if (!mounted || _achievementToast != null) {
+    if (!mounted) {
+      return;
+    }
+    if (game.takeTutorialReplayRequest()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(_showOnboarding());
+        }
+      });
+    }
+    final department = game.takeDepartmentUnlock();
+    if (department != null) {
+      if (!settings.reducedMotion && !MediaQuery.disableAnimationsOf(context)) {
+        _celebration.celebrate();
+      }
+      unawaited(SfxManager.instance.milestone());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        final loc = AppLocalizations.of(context);
+        final title = department == DepartmentType.bakery
+            ? loc.bakeryUnlocked
+            : loc.unlocked;
+        final message = department == DepartmentType.bakery
+            ? loc.bakeryUnlockedMessage
+            : loc.departmentsTitle;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$title $message'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      });
+    }
+    if (_achievementToast != null) {
       return;
     }
     final achievement = game.takeAchievementUnlock();
@@ -183,6 +225,28 @@ class _GameScreenState extends State<GameScreen>
                                       painter: MarketPainter(
                                         game: game,
                                         animationTime: _animationTime,
+                                        storageLabel: AppLocalizations.of(
+                                          context,
+                                        ).storage.toUpperCase(),
+                                        shelfLabel: AppLocalizations.of(
+                                          context,
+                                        ).shelfStock.toUpperCase(),
+                                        checkoutLabel: AppLocalizations.of(
+                                          context,
+                                        ).assignmentCheckout.toUpperCase(),
+                                        bakeryLabel: AppLocalizations.of(
+                                          context,
+                                        ).departmentBakery.toUpperCase(),
+                                        bakeryLockedLabel:
+                                            AppLocalizations.of(
+                                              context,
+                                            ).unlockAtLevel.replaceFirst(
+                                              '{level}',
+                                              '${GameBalance.bakeryUnlockLevel}',
+                                            ),
+                                        textDirection: Directionality.of(
+                                          context,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -200,6 +264,11 @@ class _GameScreenState extends State<GameScreen>
                                   left: 15,
                                   child: _QuestCard(
                                     quest: game.quest,
+                                    title: AppLocalizations.of(context)
+                                        .questTitle(
+                                          game.questStage,
+                                          game.quest.target,
+                                        ),
                                     onClaim: _claimQuest,
                                   ),
                                 ),
@@ -262,10 +331,10 @@ class _GameScreenState extends State<GameScreen>
       return;
     }
     unawaited(SfxManager.instance.success());
-    final suffix = game.isMonetizationPreview ? ' · preview mode' : '';
+    final loc = AppLocalizations.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('You received $reward coins$suffix'),
+        content: Text(loc.coinsEarned.replaceFirst('{value}', '$reward')),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -282,8 +351,8 @@ class _GameScreenState extends State<GameScreen>
         onInsufficientCoins: () {
           unawaited(SfxManager.instance.error());
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('You need more coins for this upgrade'),
+            SnackBar(
+              content: Text(AppLocalizations.of(context).notEnoughCoins),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -318,8 +387,10 @@ class _GameScreenState extends State<GameScreen>
             SnackBar(
               content: Text(
                 purchased
-                    ? 'Purchase complete — items added to your game'
-                    : 'This product has not been configured in the store yet',
+                    ? AppLocalizations.of(context).purchaseComplete
+                    : game.lastPurchaseState == PurchaseState.cancelled
+                    ? AppLocalizations.of(context).purchaseCancelled
+                    : AppLocalizations.of(context).purchaseFailed,
               ),
               behavior: SnackBarBehavior.floating,
             ),
@@ -349,6 +420,7 @@ class _GameScreenState extends State<GameScreen>
   }
 
   Future<void> _showDailyBonus(DailyBonusResult bonus) async {
+    final loc = AppLocalizations.of(context);
     _celebration.celebrate();
     unawaited(
       bonus.isMilestone
@@ -402,9 +474,9 @@ class _GameScreenState extends State<GameScreen>
                   ),
                 ),
                 const SizedBox(height: 15),
-                const Text(
-                  'DAILY BONUS',
-                  style: TextStyle(
+                Text(
+                  loc.dailyBonus,
+                  style: const TextStyle(
                     color: Color(0xFFE08D19),
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
@@ -412,7 +484,7 @@ class _GameScreenState extends State<GameScreen>
                   ),
                 ),
                 Text(
-                  '${bonus.streak} DAY STREAK!',
+                  loc.dayStreak.replaceFirst('{streak}', '${bonus.streak}'),
                   style: const TextStyle(
                     color: Color(0xFF315F4A),
                     fontSize: 27,
@@ -420,10 +492,10 @@ class _GameScreenState extends State<GameScreen>
                   ),
                 ),
                 const SizedBox(height: 5),
-                const Text(
-                  'Come back tomorrow to grow your reward.',
+                Text(
+                  loc.comeBackTomorrow,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF6F766F)),
+                  style: const TextStyle(color: Color(0xFF6F766F)),
                 ),
                 const SizedBox(height: 17),
                 Row(
@@ -452,7 +524,7 @@ class _GameScreenState extends State<GameScreen>
                     backgroundColor: const Color(0xFF38B879),
                   ),
                   icon: const Icon(Icons.card_giftcard_rounded),
-                  label: const Text('COLLECT REWARD'),
+                  label: Text(loc.collectReward),
                 ),
               ],
             ),
@@ -497,9 +569,14 @@ class _CurrencyPill extends StatelessWidget {
 }
 
 class _QuestCard extends StatelessWidget {
-  const _QuestCard({required this.quest, required this.onClaim});
+  const _QuestCard({
+    required this.quest,
+    required this.title,
+    required this.onClaim,
+  });
 
   final Quest quest;
+  final String title;
   final VoidCallback onClaim;
 
   @override
@@ -538,7 +615,7 @@ class _QuestCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      quest.title,
+                      title,
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 13,
@@ -564,7 +641,9 @@ class _QuestCard extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
-                  child: Text('CLAIM ${quest.reward}'),
+                  child: Text(
+                    '${AppLocalizations.of(context).claimReward} ${quest.reward}',
+                  ),
                 )
               else
                 Text(
@@ -844,7 +923,7 @@ class _UpgradeSheet extends StatelessWidget {
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final upgrade = game.upgrades[index];
-                  final canAfford = game.coins >= upgrade.cost;
+                  final canAfford = game.canBuyUpgrade(upgrade.type);
                   final isMaxed = upgrade.level >= 10;
                   return _UpgradeTile(
                     upgrade: upgrade,
@@ -954,7 +1033,7 @@ class _UpgradeTile extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        upgrade.title,
+                        loc.upgradeTitle(upgrade.type),
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
@@ -964,7 +1043,7 @@ class _UpgradeTile extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         isMaxed
-                            ? 'Max Level'
+                            ? loc.maxLevel
                             : '${loc.level} ${upgrade.level}/10',
                         style: TextStyle(
                           fontSize: 11,
@@ -989,7 +1068,7 @@ class _UpgradeTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Max Level',
+                      loc.maxLevel,
                       style: const TextStyle(
                         color: Color(0xFF38B879),
                         fontSize: 11,
@@ -1094,10 +1173,13 @@ class _MoneyShopSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            if (game.instantAdReward > 0)
+            if (game.rewardedAdsAvailable)
               _ShopRewardTile(
                 label: AppLocalizations.of(context).reward,
-                subtitle: AppLocalizations.of(context).watchAndEarn,
+                subtitle: AppLocalizations.of(context).coinsEarned.replaceFirst(
+                  '{value}',
+                  '${game.instantAdReward}',
+                ),
                 icon: Icons.ondemand_video_rounded,
                 color: const Color(0xFFE85D75),
                 onTap: onReward,
@@ -1106,13 +1188,18 @@ class _MoneyShopSheet extends StatelessWidget {
               child: ListView.separated(
                 shrinkWrap: true,
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                itemCount: 3, // StoreProduct.values.length
+                itemCount: StoreProduct.values.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final product = StoreProduct.values[index];
                   return _ShopProductTile(
+                    game: game,
                     product: product,
-                    onTap: () => onPurchase(product),
+                    onTap:
+                        game.storePurchasesAvailable &&
+                            !game.storePurchaseInProgress
+                        ? () => onPurchase(product)
+                        : null,
                   );
                 },
               ),
@@ -1217,31 +1304,39 @@ class _ShopRewardTile extends StatelessWidget {
 }
 
 class _ShopProductTile extends StatelessWidget {
-  const _ShopProductTile({required this.product, required this.onTap});
+  const _ShopProductTile({
+    required this.game,
+    required this.product,
+    required this.onTap,
+  });
 
+  final GameController game;
   final StoreProduct product;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final name = switch (product) {
-      StoreProduct.noAds => 'No Ads',
-      StoreProduct.coinPack => '1,000 Coin Pack',
-      StoreProduct.starterPack => 'Starter Pack',
+      StoreProduct.noAds => loc.noAds,
+      StoreProduct.coinPack => loc.coinPack,
+      StoreProduct.gemPack => loc.gemPack,
+      StoreProduct.emergencySupply => loc.emergencySupplyPack,
+      StoreProduct.starterPack => loc.starterPack,
     };
     final description = switch (product) {
-      StoreProduct.noAds => 'Remove all ads forever',
-      StoreProduct.coinPack => 'Grow your business faster',
-      StoreProduct.starterPack => '500 coins, 20 gems, and two upgrades',
+      StoreProduct.noAds => loc.oneTimePurchase,
+      StoreProduct.coinPack => loc.coinPackDesc,
+      StoreProduct.gemPack => loc.gemPackDesc,
+      StoreProduct.emergencySupply => loc.emergencySupplyPackDesc,
+      StoreProduct.starterPack => loc.starterPackDesc,
     };
-    final price = switch (product) {
-      StoreProduct.noAds => 'US\$2.99',
-      StoreProduct.coinPack => 'US\$0.99',
-      StoreProduct.starterPack => 'US\$4.99',
-    };
+    final price = game.storePrice(product) ?? loc.previewMode;
     final icon = switch (product) {
       StoreProduct.noAds => Icons.block_rounded,
       StoreProduct.coinPack => Icons.monetization_on_rounded,
+      StoreProduct.gemPack => Icons.diamond_rounded,
+      StoreProduct.emergencySupply => Icons.inventory_2_rounded,
       StoreProduct.starterPack => Icons.card_giftcard_rounded,
     };
 
@@ -1369,9 +1464,9 @@ class _OfflineEarningsSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 15),
-          const Text(
-            'OFFLINE EARNINGS',
-            style: TextStyle(
+          Text(
+            AppLocalizations.of(context).welcomeBack.toUpperCase(),
+            style: const TextStyle(
               color: Color(0xFFE08D19),
               fontSize: 12,
               fontWeight: FontWeight.w900,
@@ -1380,7 +1475,7 @@ class _OfflineEarningsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            'While you were away...',
+            AppLocalizations.of(context).businessKeptEarning,
             style: const TextStyle(color: Color(0xFF6F766F), fontSize: 14),
           ),
           const SizedBox(height: 17),

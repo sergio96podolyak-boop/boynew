@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../game/game_models.dart';
+
 /// Localization bundle for PoMarket supporting English, Hebrew, and Arabic.
 ///
 /// English uses LTR; Hebrew and Arabic use RTL. The brand name "PoMarket"
@@ -97,6 +99,20 @@ class AppLocalizations {
 
   String get notEnoughCoins => _t('notEnoughCoins');
 
+  String upgradeTitle(UpgradeType type) {
+    return _t('upgradeTitle${type.name}');
+  }
+
+  String questTitle(int stage, int target) {
+    final key = switch (stage) {
+      0 => 'questStockProducts',
+      1 => 'questCompleteSales',
+      2 => 'questBuyUpgrade',
+      _ => 'questCompleteMoreSales',
+    };
+    return _t(key).replaceFirst('{target}', '$target');
+  }
+
   // ---------------------------------------------------------------------------
   // Staff screen
   // ---------------------------------------------------------------------------
@@ -130,6 +146,30 @@ class AppLocalizations {
   String get staffLocked => _t('staffLocked');
 
   String get staffUnlockRequirement => _t('staffUnlockRequirement');
+
+  String get staffAssignment => _t('staffAssignment');
+
+  String get staffStatus => _t('staffStatus');
+
+  String get statusIdle => _t('statusIdle');
+
+  String get statusServing => _t('statusServing');
+
+  String get statusStocking => _t('statusStocking');
+
+  String get statusCleaning => _t('statusCleaning');
+
+  String get statusManaging => _t('statusManaging');
+
+  String get assignmentCheckout => _t('assignmentCheckout');
+
+  String get assignmentShelves => _t('assignmentShelves');
+
+  String get assignmentFloor => _t('assignmentFloor');
+
+  String get assignmentOffice => _t('assignmentOffice');
+
+  String get serviceTime => _t('serviceTime');
 
   // ---------------------------------------------------------------------------
   // Departments screen
@@ -169,6 +209,10 @@ class AppLocalizations {
 
   String get departmentElectronicsDesc => _t('departmentElectronicsDesc');
 
+  String get bakeryUnlocked => _t('bakeryUnlocked');
+
+  String get bakeryUnlockedMessage => _t('bakeryUnlockedMessage');
+
   // ---------------------------------------------------------------------------
   // Inventory screen
   // ---------------------------------------------------------------------------
@@ -194,6 +238,14 @@ class AppLocalizations {
   String get fulfill => _t('fulfill');
 
   String get emptyInventory => _t('emptyInventory');
+
+  String get orderGeneralStock => _t('orderGeneralStock');
+
+  String get emergencyStock => _t('emergencyStock');
+
+  String get emergencyStockDesc => _t('emergencyStockDesc');
+
+  String get deliveryReady => _t('deliveryReady');
 
   // ---------------------------------------------------------------------------
   // Quests screen
@@ -255,6 +307,14 @@ class AppLocalizations {
 
   String get coinPackDesc => _t('coinPackDesc');
 
+  String get gemPack => _t('gemPack');
+
+  String get gemPackDesc => _t('gemPackDesc');
+
+  String get emergencySupplyPack => _t('emergencySupplyPack');
+
+  String get emergencySupplyPackDesc => _t('emergencySupplyPackDesc');
+
   String get previewMode => _t('previewMode');
 
   String get setupRequired => _t('setupRequired');
@@ -267,11 +327,17 @@ class AppLocalizations {
 
   String get productNotConfigured => _t('productNotConfigured');
 
+  String get purchaseCancelled => _t('purchaseCancelled');
+
+  String get purchaseFailed => _t('purchaseFailed');
+
   String get previewPrice => _t('previewPrice');
 
   String get previewPrice2 => _t('previewPrice2');
 
   String get previewPrice3 => _t('previewPrice3');
+
+  String get secureStorePurchases => _t('secureStorePurchases');
 
   // ---------------------------------------------------------------------------
   // Settings screen
@@ -333,6 +399,10 @@ class AppLocalizations {
 
   String get restorePurchasesUnavailable => _t('restorePurchasesUnavailable');
 
+  String get restorePurchasesDesc => _t('restorePurchasesDesc');
+
+  String get replay => _t('replay');
+
   // ---------------------------------------------------------------------------
   // Game screen (existing + new)
   // ---------------------------------------------------------------------------
@@ -346,6 +416,10 @@ class AppLocalizations {
   String get reward => _t('reward');
 
   String get loading => _t('loading');
+
+  String get unavailable => _t('unavailable');
+
+  String get retryIn => _t('retryIn');
 
   String get hub => _t('hub');
 
@@ -374,6 +448,8 @@ class AppLocalizations {
   String get comeBackTomorrow => _t('comeBackTomorrow');
 
   String get collectReward => _t('collectReward');
+
+  String get maxLevel => _t('maxLevel');
 
   String get yourCurrentBusinessScore => _t('yourCurrentBusinessScore');
 
@@ -462,6 +538,20 @@ class AppLocalizations {
 
   String get startPlaying => _t('startPlaying');
 
+  String get skip => _t('skip');
+
+  String get tutorialSubtitle => _t('tutorialSubtitle');
+
+  String get tutorialStep => _t('tutorialStep');
+
+  String get moveAndCollect => _t('moveAndCollect');
+
+  String get moveAndCollectDesc => _t('moveAndCollectDesc');
+
+  String get keepShelvesFullDesc => _t('keepShelvesFullDesc');
+
+  String get sellEarnGrowDesc => _t('sellEarnGrowDesc');
+
   // ---------------------------------------------------------------------------
   // Static lookup
   // ---------------------------------------------------------------------------
@@ -505,6 +595,16 @@ class AppLocalizations {
     'buy': 'Buy',
     'affordable': 'Affordable',
     'notEnoughCoins': 'You need more coins for this upgrade',
+    'upgradeTitlebag': 'Bigger Bag',
+    'upgradeTitleshelf': 'Expanded Shelf',
+    'upgradeTitleprice': 'Premium Products',
+    'upgradeTitlespeed': 'Running Shoes',
+    'upgradeTitlecheckout': 'Checkout Speed',
+    'upgradeTitlerestock': 'Restock Flow',
+    'questStockProducts': 'Stock {target} products on the shelf',
+    'questCompleteSales': 'Complete {target} sales',
+    'questBuyUpgrade': 'Buy a business upgrade',
+    'questCompleteMoreSales': 'Complete {target} more sales',
     'staffManagement': 'Staff Management',
     'hire': 'Hire',
     'hired': 'Hired',
@@ -520,6 +620,18 @@ class AppLocalizations {
     'staffSummaryManager': 'Boosts global efficiency',
     'staffLocked': 'Staff feature locked',
     'staffUnlockRequirement': 'Unlock at store level 3',
+    'staffAssignment': 'Assignment',
+    'staffStatus': 'Status',
+    'statusIdle': 'Idle',
+    'statusServing': 'Serving',
+    'statusStocking': 'Stocking',
+    'statusCleaning': 'Cleaning',
+    'statusManaging': 'Managing',
+    'assignmentCheckout': 'Checkout',
+    'assignmentShelves': 'Shelves',
+    'assignmentFloor': 'Market floor',
+    'assignmentOffice': 'Office',
+    'serviceTime': '{value}s per customer',
     'departmentsTitle': 'Departments',
     'unlocked': 'Unlocked',
     'locked': 'Locked',
@@ -537,6 +649,9 @@ class AppLocalizations {
     'departmentBeautyDesc': 'Cosmetics and personal care.',
     'departmentElectronics': 'Electronics',
     'departmentElectronicsDesc': 'Gadgets and tech accessories.',
+    'bakeryUnlocked': 'Bakery unlocked!',
+    'bakeryUnlockedMessage':
+        'Fresh bread and pastries are now available in your market.',
     'inventoryTitle': 'Inventory',
     'carried': 'Carried',
     'shelfStock': 'Shelf Stock',
@@ -548,6 +663,11 @@ class AppLocalizations {
     'placeOrder': 'Place Order',
     'fulfill': 'Fulfill',
     'emptyInventory': 'Your inventory is empty',
+    'orderGeneralStock': 'Order 6 general products',
+    'emergencyStock': 'Free emergency stock',
+    'emergencyStockDesc':
+        'Available only when your market has no stock and cannot place an order.',
+    'deliveryReady': 'Delivery ready',
     'questsTitle': 'Quests',
     'activeQuest': 'Active Quest',
     'claimReward': 'Claim Reward',
@@ -572,17 +692,26 @@ class AppLocalizations {
     'starterPackDesc': '500 coins, 20 gems, and two upgrades',
     'coinPack': '1,000 Coin Pack',
     'coinPackDesc': 'Grow your business faster',
+    'gemPack': '40 Gem Pack',
+    'gemPackDesc': 'A small bundle of premium currency',
+    'emergencySupplyPack': 'Emergency Supply Pack',
+    'emergencySupplyPackDesc': 'Adds 12 general products to storage',
     'previewMode': 'Preview mode',
     'setupRequired': 'SETUP REQUIRED',
     'previewModeDesc':
         'Preview build — store items activate after they are created in the developer accounts.',
-    'rewardedPreviewDesc': 'Preview mode grants the reward without a real ad.',
+    'rewardedPreviewDesc':
+        'Rewarded ads are unavailable in this preview build.',
     'purchaseComplete': 'Purchase complete — items added to your game',
     'productNotConfigured':
         'This product has not been configured in the store yet',
-    'previewPrice': 'US\$0.99',
-    'previewPrice2': 'US\$4.99',
-    'previewPrice3': 'US\$9.99',
+    'purchaseCancelled': 'Purchase cancelled',
+    'purchaseFailed': 'Purchase could not be verified',
+    'previewPrice': 'Preview · US\$0.99',
+    'previewPrice2': 'Preview · US\$4.99',
+    'previewPrice3': 'Preview · US\$9.99',
+    'secureStorePurchases':
+        'Secure purchases through the App Store or Google Play.',
     'settingsTitle': 'Settings',
     'language': 'Language',
     'sound': 'Sound',
@@ -614,11 +743,15 @@ class AppLocalizations {
     'restorePurchasesNone': 'No previous purchases found',
     'restorePurchasesUnavailable':
         'Restore purchases is not available in preview mode',
+    'restorePurchasesDesc': 'Restore previous purchases',
+    'replay': 'REPLAY',
     'yourMiniMarket': 'Your mini market',
     'muteSound': 'Mute sound',
     'unmuteSound': 'Unmute sound',
     'reward': 'REWARD',
     'loading': 'LOADING…',
+    'unavailable': 'UNAVAILABLE',
+    'retryIn': 'RETRY IN {seconds}s',
     'hub': 'HUB',
     'coinsEarned': 'You received {value} coins',
     'productStocked': 'Product stocked!',
@@ -633,6 +766,7 @@ class AppLocalizations {
     'dayStreak': '{streak} DAY STREAK!',
     'comeBackTomorrow': 'Come back tomorrow to grow your reward.',
     'collectReward': 'COLLECT REWARD',
+    'maxLevel': 'Max Level',
     'yourCurrentBusinessScore': 'YOUR CURRENT BUSINESS SCORE',
     'postScore': 'POST SCORE',
     'challenge': 'CHALLENGE',
@@ -677,6 +811,16 @@ class AppLocalizations {
     'keepShelvesFull': 'Keep Shelves Full',
     'sellEarnGrow': 'Sell, Earn & Grow',
     'startPlaying': 'START PLAYING',
+    'skip': 'SKIP',
+    'tutorialSubtitle': 'Your store opens in three quick steps',
+    'tutorialStep': 'STEP {current} OF {total}',
+    'moveAndCollect': 'Move & Collect',
+    'moveAndCollectDesc':
+        'Tap a destination or drag near your player. Visit STORAGE to collect products into your bag.',
+    'keepShelvesFullDesc':
+        'Carry products to the SHELF. Customers can only shop while products are available.',
+    'sellEarnGrowDesc':
+        'Serve customers at CHECKOUT, then use earnings for upgrades, staff, and new departments.',
   };
 
   // ---------------------------------------------------------------------------
@@ -713,6 +857,16 @@ class AppLocalizations {
     'buy': 'קנה',
     'affordable': 'ניתן להרשות',
     'notEnoughCoins': 'אין לך מספיק מטבעות לשדרוג זה',
+    'upgradeTitlebag': 'תיק גדול יותר',
+    'upgradeTitleshelf': 'מדף מורחב',
+    'upgradeTitleprice': 'מוצרי פרימיום',
+    'upgradeTitlespeed': 'נעלי ריצה',
+    'upgradeTitlecheckout': 'מהירות קופה',
+    'upgradeTitlerestock': 'זרימת מילוי',
+    'questStockProducts': 'מלאו {target} מוצרים על המדף',
+    'questCompleteSales': 'השלימו {target} מכירות',
+    'questBuyUpgrade': 'קנו שדרוג עסקי',
+    'questCompleteMoreSales': 'השלימו עוד {target} מכירות',
     'staffManagement': 'ניהול צוות',
     'hire': 'שכור',
     'hired': 'שוכר',
@@ -728,6 +882,18 @@ class AppLocalizations {
     'staffSummaryManager': 'מגביר יעילות גלובלית',
     'staffLocked': 'תכונת צוות נעולה',
     'staffUnlockRequirement': 'פתח ברמת חנות 3',
+    'staffAssignment': 'שיבוץ',
+    'staffStatus': 'מצב',
+    'statusIdle': 'פנוי',
+    'statusServing': 'משרת לקוח',
+    'statusStocking': 'מסדר מדפים',
+    'statusCleaning': 'מנקה',
+    'statusManaging': 'מנהל',
+    'assignmentCheckout': 'קופה',
+    'assignmentShelves': 'מדפים',
+    'assignmentFloor': 'רצפת החנות',
+    'assignmentOffice': 'משרד',
+    'serviceTime': '{value} שנ׳ ללקוח',
     'departmentsTitle': 'מחלקות',
     'unlocked': 'פתוח',
     'locked': 'נעול',
@@ -745,6 +911,8 @@ class AppLocalizations {
     'departmentBeautyDesc': 'קוסמטיקה וטיפוח אישי.',
     'departmentElectronics': 'אלקטרוניקה',
     'departmentElectronicsDesc': 'גאדג\'טים ואקססוריאות טכנולוגיים.',
+    'bakeryUnlocked': 'המאפייה נפתחה!',
+    'bakeryUnlockedMessage': 'לחמים ומאפים טריים זמינים עכשיו בחנות.',
     'inventoryTitle': 'מלאי',
     'carried': 'נשיאה',
     'shelfStock': 'מלאי במדף',
@@ -756,6 +924,10 @@ class AppLocalizations {
     'placeOrder': 'בצע הזמנה',
     'fulfill': 'בצע',
     'emptyInventory': 'המלאי שלך ריק',
+    'orderGeneralStock': 'הזמנת 6 מוצרים כלליים',
+    'emergencyStock': 'מלאי חירום חינם',
+    'emergencyStockDesc': 'זמין רק כשהחנות ללא מלאי ואי אפשר לבצע הזמנה.',
+    'deliveryReady': 'המשלוח מוכן',
     'questsTitle': 'משימות',
     'activeQuest': 'משימה פעילה',
     'claimReward': 'קבל תגמול',
@@ -780,17 +952,23 @@ class AppLocalizations {
     'starterPackDesc': '500 מטבעות, 20 חדושים, ושני שדרוגים',
     'coinPack': 'חבילת 1,000 מטבעות',
     'coinPackDesc': 'גדל את העסק שלך מהר יותר',
+    'gemPack': 'חבילת 40 אבני חן',
+    'gemPackDesc': 'חבילה קטנה של מטבע פרימיום',
+    'emergencySupplyPack': 'חבילת אספקת חירום',
+    'emergencySupplyPackDesc': 'מוסיפה 12 מוצרים כלליים למחסן',
     'previewMode': 'מצב תצוגה מקדימה',
     'setupRequired': 'נדרש הגדרה',
     'previewModeDesc':
         'גרסת תצוגה מקדימה — פריטי חנות נפתחים לאחר יצירתם בחשבונות המפתחים.',
-    'rewardedPreviewDesc':
-        'מצב תצוגה מקדימה מעניק את התגמול מבלי להציג מודעיה אמיתית.',
+    'rewardedPreviewDesc': 'פרסומות מתגמלות אינן זמינות בגרסת התצוגה המקדימה.',
     'purchaseComplete': 'הרכישה הושלמה — פריטים נוספו למשחק שלך',
     'productNotConfigured': 'המוצר הזה לא הוגדר בחנות עדיין',
-    'previewPrice': 'US\$0.99',
-    'previewPrice2': 'US\$4.99',
-    'previewPrice3': 'US\$9.99',
+    'purchaseCancelled': 'הרכישה בוטלה',
+    'purchaseFailed': 'לא ניתן היה לאמת את הרכישה',
+    'previewPrice': 'תצוגה מקדימה · US\$0.99',
+    'previewPrice2': 'תצוגה מקדימה · US\$4.99',
+    'previewPrice3': 'תצוגה מקדימה · US\$9.99',
+    'secureStorePurchases': 'רכישות מאובטחות דרך App Store או Google Play.',
     'settingsTitle': 'הגדרות',
     'language': 'שפה',
     'sound': 'צליל',
@@ -821,11 +999,15 @@ class AppLocalizations {
     'restorePurchasesSuccess': 'הרכישות שוחזרו בהצלחה',
     'restorePurchasesNone': 'לא נמצאו רכישות קודמות',
     'restorePurchasesUnavailable': 'שחזור רכישות אינו זמין במצב תצוגה מקדימה',
+    'restorePurchasesDesc': 'שחזור רכישות קודמות',
+    'replay': 'הפעל שוב',
     'yourMiniMarket': 'החנות הקטנה שלך',
     'muteSound': 'אל צליל',
     'unmuteSound': 'הפעל צליל',
     'reward': 'תגמול',
     'loading': 'טוען…',
+    'unavailable': 'לא זמין',
+    'retryIn': 'נסה שוב בעוד {seconds} שנ׳',
     'hub': 'מרכז',
     'coinsEarned': 'קיבלת {value} מטבעות',
     'productStocked': 'מוצר נמוסף!',
@@ -841,6 +1023,7 @@ class AppLocalizations {
     'dayStreak': '{streak} יום רצוף!',
     'comeBackTomorrow': 'חוזרי מחר כדי לגדול את התגמול שלך.',
     'collectReward': 'אסוף תגמול',
+    'maxLevel': 'רמה מרבית',
     'yourCurrentBusinessScore': 'הניקוד העסקי הנוכחי שלך',
     'postScore': 'פרסם ניקוד',
     'challenge': 'אתגר',
@@ -884,6 +1067,16 @@ class AppLocalizations {
     'keepShelvesFull': 'שמור מדפים מלאים',
     'sellEarnGrow': 'מכור, רווה, גדול',
     'startPlaying': 'התחל לשחק',
+    'skip': 'דלג',
+    'tutorialSubtitle': 'החנות נפתחת בשלושה צעדים קצרים',
+    'tutorialStep': 'שלב {current} מתוך {total}',
+    'moveAndCollect': 'תנועה ואיסוף',
+    'moveAndCollectDesc':
+        'לחצו על יעד או גררו ליד השחקן. הגיעו למחסן כדי לאסוף מוצרים לתיק.',
+    'keepShelvesFullDesc':
+        'קחו מוצרים למדף. לקוחות יכולים לקנות רק כשיש מוצרים זמינים.',
+    'sellEarnGrowDesc':
+        'שרתו לקוחות בקופה והשקיעו את ההכנסות בשדרוגים, צוות ומחלקות.',
   };
 
   // ---------------------------------------------------------------------------
@@ -920,6 +1113,16 @@ class AppLocalizations {
     'buy': 'اشترِ',
     'affordable': 'متوفر',
     'notEnoughCoins': 'تحتاج المزيد من العملات لهذا التحديث',
+    'upgradeTitlebag': 'حقيبة أكبر',
+    'upgradeTitleshelf': 'رف موسع',
+    'upgradeTitleprice': 'منتجات مميزة',
+    'upgradeTitlespeed': 'حذاء جري',
+    'upgradeTitlecheckout': 'سرعة الدفع',
+    'upgradeTitlerestock': 'تدفق إعادة التعبئة',
+    'questStockProducts': 'ضع {target} منتجات على الرف',
+    'questCompleteSales': 'أكمل {target} مبيعات',
+    'questBuyUpgrade': 'اشترِ ترقية للعمل',
+    'questCompleteMoreSales': 'أكمل {target} مبيعات إضافية',
     'staffManagement': 'إدارة الموظفين',
     'hire': 'وظّف',
     'hired': 'موظف',
@@ -935,6 +1138,18 @@ class AppLocalizations {
     'staffSummaryManager': 'يعزز الكفاءة العامة',
     'staffLocked': 'ميزة الموظفين مقفلة',
     'staffUnlockRequirement': 'افتح عند مستوى المتجر 3',
+    'staffAssignment': 'المهمة',
+    'staffStatus': 'الحالة',
+    'statusIdle': 'متاح',
+    'statusServing': 'يخدم',
+    'statusStocking': 'يرتب الأرفف',
+    'statusCleaning': 'ينظف',
+    'statusManaging': 'يدير',
+    'assignmentCheckout': 'صندوق الدفع',
+    'assignmentShelves': 'الرفوف',
+    'assignmentFloor': 'أرضية المتجر',
+    'assignmentOffice': 'المكتب',
+    'serviceTime': '{value} ث لكل عميل',
     'departmentsTitle': 'الأقسام',
     'unlocked': 'مفتوح',
     'locked': 'مقفل',
@@ -952,6 +1167,9 @@ class AppLocalizations {
     'departmentBeautyDesc': 'تجميل وعناية شخصية.',
     'departmentElectronics': 'إلكترونيات',
     'departmentElectronicsDesc': 'أجهزة وملحقات تكنولوجية.',
+    'bakeryUnlocked': 'تم فتح المخبز!',
+    'bakeryUnlockedMessage':
+        'أصبح الخبز والمعجنات الطازجة متاحة الآن في متجرك.',
     'inventoryTitle': 'المخزون',
     'carried': 'الحمل',
     'shelfStock': 'مخزون الأرفف',
@@ -963,6 +1181,10 @@ class AppLocalizations {
     'placeOrder': 'إرسال طلب',
     'fulfill': 'تنفيذ',
     'emptyInventory': 'مخزونك فارغ',
+    'orderGeneralStock': 'اطلب 6 منتجات عامة',
+    'emergencyStock': 'مخزون طوارئ مجاني',
+    'emergencyStockDesc': 'متاح فقط عندما لا يوجد مخزون ولا يمكن تقديم طلب.',
+    'deliveryReady': 'الشحنة جاهزة',
     'questsTitle': 'المهام',
     'activeQuest': 'المهمة النشطة',
     'claimReward': 'استلام المكافأة',
@@ -988,16 +1210,23 @@ class AppLocalizations {
     'starterPackDesc': '500 عملات، 20 جواهر، وترقيتين',
     'coinPack': 'حزمة 1,000 عملة',
     'coinPackDesc': 'كنمو عملك بشكل أسرع',
+    'gemPack': 'حزمة 40 جوهرة',
+    'gemPackDesc': 'حزمة صغيرة من العملة المميزة',
+    'emergencySupplyPack': 'حزمة إمدادات الطوارئ',
+    'emergencySupplyPackDesc': 'تضيف 12 منتجًا عامًا إلى المخزن',
     'previewMode': 'وضع المعاينة',
     'setupRequired': 'مطلوب إعداد',
     'previewModeDesc':
         'إصدار معاينة — سلع المتجر تصبح نشطة بعد إنشائها في حسابات المطورين.',
-    'rewardedPreviewDesc': 'وضع المعاينة يمنح المكافأة دون إعلان حقيقي.',
+    'rewardedPreviewDesc': 'إعلانات المكافآت غير متاحة في إصدار المعاينة.',
     'purchaseComplete': 'اكتملت العملية — تمت إضافة العناصر إلى لعبتك',
     'productNotConfigured': 'هذا المنتج لم يتم تكوينه في المتجر بعد',
-    'previewPrice': 'US\$0.99',
-    'previewPrice2': 'US\$4.99',
-    'previewPrice3': 'US\$9.99',
+    'purchaseCancelled': 'تم إلغاء الشراء',
+    'purchaseFailed': 'تعذر التحقق من عملية الشراء',
+    'previewPrice': 'معاينة · US\$0.99',
+    'previewPrice2': 'معاينة · US\$4.99',
+    'previewPrice3': 'معاينة · US\$9.99',
+    'secureStorePurchases': 'مشتريات آمنة عبر App Store أو Google Play.',
     'settingsTitle': 'الإعدادات',
     'language': 'اللغة',
     'sound': 'الصوت',
@@ -1029,11 +1258,15 @@ class AppLocalizations {
     'restorePurchasesNone': 'لم يتم العثور على مشتريات سابقة',
     'restorePurchasesUnavailable':
         'استعادة المشتريات غير متاحة في وضع المعاينة',
+    'restorePurchasesDesc': 'استعادة المشتريات السابقة',
+    'replay': 'إعادة',
     'yourMiniMarket': 'متجرك الصغير',
     'muteSound': 'كتم الصوت',
     'unmuteSound': 'إلغاء كتم الصوت',
     'reward': 'مكافأة',
     'loading': 'جارٍ التحميل…',
+    'unavailable': 'غير متاح',
+    'retryIn': 'أعد المحاولة خلال {seconds} ث',
     'hub': 'المركز',
     'coinsEarned': 'لقد تلقيت {value} عملات',
     'productStocked': 'تم تعبئة المنتج!',
@@ -1048,6 +1281,7 @@ class AppLocalizations {
     'dayStreak': '{streak} يوم متتالي!',
     'comeBackTomorrow': 'عد غدا لزيادة مكافأتك.',
     'collectReward': 'استلام المكافأة',
+    'maxLevel': 'المستوى الأقصى',
     'yourCurrentBusinessScore': 'نقاط عملك الحالية',
     'postScore': 'نشر النقاط',
     'challenge': 'تحدي',
@@ -1091,5 +1325,15 @@ class AppLocalizations {
     'keepShelvesFull': 'حافظ على الأرفف مملوءة',
     'sellEarnGrow': 'بع، اربح، وتنمو',
     'startPlaying': 'ابدأ اللعب',
+    'skip': 'تخطي',
+    'tutorialSubtitle': 'يفتح متجرك في ثلاث خطوات سريعة',
+    'tutorialStep': 'الخطوة {current} من {total}',
+    'moveAndCollect': 'تحرك واجمع',
+    'moveAndCollectDesc':
+        'اضغط على وجهة أو اسحب قرب اللاعب. توجّه إلى المخزن لجمع المنتجات في حقيبتك.',
+    'keepShelvesFullDesc':
+        'انقل المنتجات إلى الرف. لا يمكن للعملاء التسوق إلا عند توفر المنتجات.',
+    'sellEarnGrowDesc':
+        'اخدم العملاء عند صندوق الدفع ثم استثمر الأرباح في التطوير والموظفين والأقسام.',
   };
 }

@@ -30,7 +30,7 @@ class UpgradesScreen extends StatelessWidget {
             for (final offer in controller.upgrades)
               _UpgradeTile(
                 offer: offer,
-                affordable: controller.coins >= offer.cost,
+                affordable: controller.canBuyUpgrade(offer.type),
                 onBuy: () {
                   final purchased = controller.buyUpgrade(offer.type);
                   if (!purchased) {
@@ -63,6 +63,7 @@ class _UpgradeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final color = offer.color;
     return PressableScale(
       child: Card(
@@ -90,11 +91,11 @@ class _UpgradeTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      offer.title,
+                      loc.upgradeTitle(offer.type),
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     Text(
-                      '${offer.subtitle} · Level ${offer.level}',
+                      '${_localizedSubtitle(loc, offer)} · ${loc.level} ${offer.level}',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
@@ -119,5 +120,28 @@ class _UpgradeTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _localizedSubtitle(AppLocalizations loc, UpgradeOffer currentOffer) {
+    return switch (currentOffer.type) {
+      UpgradeType.bag => loc.carryProducts.replaceFirst(
+        '{capacity}',
+        '${3 + currentOffer.level}',
+      ),
+      UpgradeType.shelf => '${loc.capacity}: ${4 + currentOffer.level * 2}',
+      UpgradeType.price => loc.profitPerSale.replaceFirst(
+        '{value}',
+        '${4 + currentOffer.level * 2}',
+      ),
+      UpgradeType.speed => loc.movementSpeed.replaceFirst(
+        '{value}',
+        '${currentOffer.level * 8}',
+      ),
+      UpgradeType.checkout => loc.serviceTime.replaceFirst(
+        '{value}',
+        currentOffer.subtitle.split('s').first,
+      ),
+      UpgradeType.restock => loc.keepShelvesFilled,
+    };
   }
 }

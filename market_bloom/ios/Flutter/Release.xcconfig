@@ -1,1 +1,3 @@
 #include "Generated.xcconfig"
+// Supply POMARKET_ADMOB_APP_ID in the release build environment.
+GAD_APPLICATION_IDENTIFIER=$(POMARKET_ADMOB_APP_ID)

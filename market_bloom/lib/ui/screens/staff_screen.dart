@@ -10,18 +10,17 @@ class StaffScreen extends StatelessWidget {
 
   final GameController controller;
 
-  static const _unlockLevel = 3;
-
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
-    final unlocked = controller.storeLevel >= _unlockLevel;
 
     return Scaffold(
       appBar: AppBar(title: Text(loc.staffManagement)),
       body: AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
+          final unlocked =
+              controller.storeLevel >= GameBalance.staffUnlockLevel;
           if (!unlocked) {
             return _LockedStaffCard(
               loc: loc,
@@ -75,7 +74,7 @@ class _LockedStaffCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Current store level: $storeLevel',
+                  '${loc.storeLevel}: $storeLevel',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -108,6 +107,7 @@ class _StaffCard extends StatelessWidget {
     );
     final hired = controller.isStaffHired(role);
     final level = controller.staffLevel(role);
+    final status = controller.staffStatus(role);
 
     String roleName;
     String summary;
@@ -181,9 +181,30 @@ class _StaffCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Text(
-              'Level: $level',
-              style: const TextStyle(fontWeight: FontWeight.w700),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _StaffDetailChip(
+                  icon: Icons.trending_up_rounded,
+                  label: '${loc.level} $level',
+                ),
+                _StaffDetailChip(
+                  icon: Icons.place_rounded,
+                  label:
+                      '${loc.staffAssignment}: ${_assignmentLabel(member.assignment)}',
+                ),
+                if (hired)
+                  _StaffDetailChip(
+                    icon: Icons.circle,
+                    label: '${loc.staffStatus}: ${_statusLabel(status)}',
+                  ),
+                if (hired)
+                  _StaffDetailChip(
+                    icon: Icons.bolt_rounded,
+                    label: _effectLabel(),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             if (!hired)
@@ -213,7 +234,9 @@ class _StaffCard extends StatelessWidget {
                           if (controller.upgradeStaff(role)) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('$roleName upgraded!'),
+                                content: Text(
+                                  '$roleName — ${loc.upgradeStaff}',
+                                ),
                                 behavior: SnackBarBehavior.floating,
                               ),
                             );
@@ -226,6 +249,70 @@ class _StaffCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  String _assignmentLabel(StaffAssignment assignment) {
+    return switch (assignment) {
+      StaffAssignment.checkout => loc.assignmentCheckout,
+      StaffAssignment.shelves => loc.assignmentShelves,
+      StaffAssignment.floor => loc.assignmentFloor,
+      StaffAssignment.office => loc.assignmentOffice,
+    };
+  }
+
+  String _statusLabel(StaffStatus status) {
+    return switch (status) {
+      StaffStatus.notHired => loc.staffLocked,
+      StaffStatus.idle => loc.statusIdle,
+      StaffStatus.serving => loc.statusServing,
+      StaffStatus.stocking => loc.statusStocking,
+      StaffStatus.cleaning => loc.statusCleaning,
+      StaffStatus.managing => loc.statusManaging,
+    };
+  }
+
+  String _effectLabel() {
+    return switch (role) {
+      StaffRole.cashier => loc.serviceTime.replaceFirst(
+        '{value}',
+        controller.cashierCheckoutSeconds.toStringAsFixed(2),
+      ),
+      StaffRole.stocker => loc.staffSummaryStocker,
+      StaffRole.cleaner => loc.staffSummaryCleaner,
+      StaffRole.manager => loc.staffSummaryManager,
+    };
+  }
+}
+
+class _StaffDetailChip extends StatelessWidget {
+  const _StaffDetailChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 36),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
