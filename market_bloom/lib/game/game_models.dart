@@ -188,7 +188,13 @@ abstract final class GameBalance {
   static const upgradesPerStoreLevel = 4;
   static const staffUnlockLevel = 3;
   static const bakeryUnlockLevel = 3;
+  static const bakeryReadyCapacity = 4;
+  static const bakeryStarterStock = 3;
+  static const bakeryProductionInterval = Duration(seconds: 8);
+  static const bakeryCollectionSeconds = 0.45;
   static const starterStorageStock = 12;
+  static const quickRestockQuantity = 6;
+  static const quickRestockCost = 20;
   static const emergencyStockQuantity = 4;
   static const emergencyStockCooldown = Duration(minutes: 10);
   static const baseCheckoutSeconds = 1.05;

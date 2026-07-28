@@ -213,6 +213,30 @@ class AppLocalizations {
 
   String get bakeryUnlockedMessage => _t('bakeryUnlockedMessage');
 
+  String get bakeryReady => _t('bakeryReady');
+
+  String get bakeryBakingHint => _t('bakeryBakingHint');
+
+  String get bakeryCollectingHint => _t('bakeryCollectingHint');
+
+  String get bakeryBagFullHint => _t('bakeryBagFullHint');
+
+  String get bakeryLockedHint => _t('bakeryLockedHint');
+
+  String get storageEmptyHint => _t('storageEmptyHint');
+
+  String get collectingStorageHint => _t('collectingStorageHint');
+
+  String get bagFullHint => _t('bagFullHint');
+
+  String get bagEmptyHint => _t('bagEmptyHint');
+
+  String get shelfFullHint => _t('shelfFullHint');
+
+  String get stockingShelfHint => _t('stockingShelfHint');
+
+  String get checkoutHint => _t('checkoutHint');
+
   // ---------------------------------------------------------------------------
   // Inventory screen
   // ---------------------------------------------------------------------------
@@ -246,6 +270,12 @@ class AppLocalizations {
   String get emergencyStockDesc => _t('emergencyStockDesc');
 
   String get deliveryReady => _t('deliveryReady');
+
+  String get quickRestock => _t('quickRestock');
+
+  String get quickRestockPending => _t('quickRestockPending');
+
+  String get quickRestockOrdered => _t('quickRestockOrdered');
 
   // ---------------------------------------------------------------------------
   // Quests screen
@@ -652,6 +682,18 @@ class AppLocalizations {
     'bakeryUnlocked': 'Bakery unlocked!',
     'bakeryUnlockedMessage':
         'Fresh bread and pastries are now available in your market.',
+    'bakeryReady': 'Ready {current}/{capacity}',
+    'bakeryBakingHint': 'The bakery is baking fresh pastries…',
+    'bakeryCollectingHint': 'Collecting fresh pastries from the bakery',
+    'bakeryBagFullHint': 'Bag full — take the pastries to the shelf',
+    'bakeryLockedHint': 'The bakery unlocks at level {level}',
+    'storageEmptyHint': 'Storage is empty — order stock below',
+    'collectingStorageHint': 'Collecting products from storage',
+    'bagFullHint': 'Bag full — take the products to the shelf',
+    'bagEmptyHint': 'Your bag is empty',
+    'shelfFullHint': 'The shelf is full',
+    'stockingShelfHint': 'Stocking products on the shelf',
+    'checkoutHint': 'Customers pay here',
     'inventoryTitle': 'Inventory',
     'carried': 'Carried',
     'shelfStock': 'Shelf Stock',
@@ -668,6 +710,9 @@ class AppLocalizations {
     'emergencyStockDesc':
         'Available only when your market has no stock and cannot place an order.',
     'deliveryReady': 'Delivery ready',
+    'quickRestock': 'Order 6 stock · 20',
+    'quickRestockPending': 'Stock delivery is on the way',
+    'quickRestockOrdered': 'Stock ordered — delivery is on the way',
     'questsTitle': 'Quests',
     'activeQuest': 'Active Quest',
     'claimReward': 'Claim Reward',
@@ -913,10 +958,22 @@ class AppLocalizations {
     'departmentElectronicsDesc': 'גאדג\'טים ואקססוריאות טכנולוגיים.',
     'bakeryUnlocked': 'המאפייה נפתחה!',
     'bakeryUnlockedMessage': 'לחמים ומאפים טריים זמינים עכשיו בחנות.',
+    'bakeryReady': 'מוכן {current}/{capacity}',
+    'bakeryBakingHint': 'המאפייה אופה מאפים טריים…',
+    'bakeryCollectingHint': 'אוספים מאפים טריים מהמאפייה',
+    'bakeryBagFullHint': 'התיק מלא — קחו את המאפים למדף',
+    'bakeryLockedHint': 'המאפייה נפתחת ברמה {level}',
+    'storageEmptyHint': 'המחסן ריק — אפשר להזמין מלאי למטה',
+    'collectingStorageHint': 'אוספים מוצרים מהמחסן',
+    'bagFullHint': 'התיק מלא — קחו את המוצרים למדף',
+    'bagEmptyHint': 'התיק ריק',
+    'shelfFullHint': 'המדף מלא',
+    'stockingShelfHint': 'מסדרים מוצרים על המדף',
+    'checkoutHint': 'הלקוחות משלמים כאן',
     'inventoryTitle': 'מלאי',
     'carried': 'נשיאה',
     'shelfStock': 'מלאי במדף',
-    'storage': 'אחסון',
+    'storage': 'מחסן',
     'totalInventory': 'סה"כ מלאי',
     'inventoryCapacity': 'תפוסת מלאי',
     'pendingDeliveries': 'משלוחים בהמתנה',
@@ -928,6 +985,9 @@ class AppLocalizations {
     'emergencyStock': 'מלאי חירום חינם',
     'emergencyStockDesc': 'זמין רק כשהחנות ללא מלאי ואי אפשר לבצע הזמנה.',
     'deliveryReady': 'המשלוח מוכן',
+    'quickRestock': 'הזמנת 6 מוצרים · 20',
+    'quickRestockPending': 'משלוח המלאי בדרך',
+    'quickRestockOrdered': 'המלאי הוזמן — המשלוח בדרך',
     'questsTitle': 'משימות',
     'activeQuest': 'משימה פעילה',
     'claimReward': 'קבל תגמול',
@@ -1170,10 +1230,22 @@ class AppLocalizations {
     'bakeryUnlocked': 'تم فتح المخبز!',
     'bakeryUnlockedMessage':
         'أصبح الخبز والمعجنات الطازجة متاحة الآن في متجرك.',
+    'bakeryReady': 'جاهز {current}/{capacity}',
+    'bakeryBakingHint': 'المخبز يخبز معجنات طازجة…',
+    'bakeryCollectingHint': 'يتم جمع المعجنات الطازجة من المخبز',
+    'bakeryBagFullHint': 'الحقيبة ممتلئة — انقل المعجنات إلى الرف',
+    'bakeryLockedHint': 'يفتح المخبز عند المستوى {level}',
+    'storageEmptyHint': 'المخزن فارغ — اطلب مخزونًا من الأسفل',
+    'collectingStorageHint': 'يتم جمع المنتجات من المخزن',
+    'bagFullHint': 'الحقيبة ممتلئة — انقل المنتجات إلى الرف',
+    'bagEmptyHint': 'حقيبتك فارغة',
+    'shelfFullHint': 'الرف ممتلئ',
+    'stockingShelfHint': 'يتم ترتيب المنتجات على الرف',
+    'checkoutHint': 'يدفع العملاء هنا',
     'inventoryTitle': 'المخزون',
     'carried': 'الحمل',
     'shelfStock': 'مخزون الأرفف',
-    'storage': 'التخزين',
+    'storage': 'المخزن',
     'totalInventory': 'إجمالي المخزون',
     'inventoryCapacity': 'سعة المخزون',
     'pendingDeliveries': 'شحنات معلقة',
@@ -1185,6 +1257,9 @@ class AppLocalizations {
     'emergencyStock': 'مخزون طوارئ مجاني',
     'emergencyStockDesc': 'متاح فقط عندما لا يوجد مخزون ولا يمكن تقديم طلب.',
     'deliveryReady': 'الشحنة جاهزة',
+    'quickRestock': 'اطلب 6 منتجات · 20',
+    'quickRestockPending': 'شحنة المخزون في الطريق',
+    'quickRestockOrdered': 'تم طلب المخزون — الشحنة في الطريق',
     'questsTitle': 'المهام',
     'activeQuest': 'المهمة النشطة',
     'claimReward': 'استلام المكافأة',

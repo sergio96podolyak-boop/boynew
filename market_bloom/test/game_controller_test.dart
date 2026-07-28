@@ -634,15 +634,41 @@ void main() {
       game.debugSetProgress(sales: 16);
       expect(game.storeLevel, 3);
       expect(game.bakeryUnlocked, isTrue);
+      expect(game.bakeryReadyStock, GameBalance.bakeryStarterStock);
       expect(game.takeDepartmentUnlock(), DepartmentType.bakery);
       expect(game.takeDepartmentUnlock(), isNull);
 
       game.debugSetProgress(sales: 24);
       expect(game.storeLevel, 4);
       expect(game.bakeryUnlocked, isTrue);
+      expect(game.bakeryReadyStock, GameBalance.bakeryStarterStock);
       expect(game.takeDepartmentUnlock(), isNull);
     },
   );
+
+  test('Bakery produces pastries and lets the player collect them', () {
+    game.debugSetProgress(sales: 16);
+
+    expect(game.bakeryReadyStock, GameBalance.bakeryStarterStock);
+
+    game.debugSetPlayerPosition(GameController.bakeryZone);
+    _advance(
+      game,
+      GameBalance.bakeryCollectionSeconds * GameBalance.bakeryStarterStock +
+          0.2,
+    );
+
+    expect(game.carried, GameBalance.bakeryStarterStock);
+    expect(game.bakeryReadyStock, 0);
+
+    game.debugSetPlayerPosition(const Offset(0.5, 0.72));
+    _advance(
+      game,
+      GameBalance.bakeryProductionInterval.inMilliseconds / 1000 + 0.1,
+    );
+
+    expect(game.bakeryReadyStock, 1);
+  });
 
   test('old level-3 save unlocks Bakery and restart preserves it', () async {
     final bakeryStorage = MemoryGameStorage()
@@ -663,7 +689,11 @@ void main() {
 
     expect(restored.storeLevel, 3);
     expect(restored.bakeryUnlocked, isTrue);
+    expect(restored.bakeryReadyStock, GameBalance.bakeryStarterStock);
     expect(restored.takeDepartmentUnlock(), isNull);
+    restored.debugSetPlayerPosition(GameController.bakeryZone);
+    _advance(restored, GameBalance.bakeryCollectionSeconds + 0.1);
+    expect(restored.bakeryReadyStock, GameBalance.bakeryStarterStock - 1);
     await restored.save();
 
     final restarted = GameController(
@@ -674,6 +704,7 @@ void main() {
     await restarted.initialize();
 
     expect(restarted.bakeryUnlocked, isTrue);
+    expect(restarted.bakeryReadyStock, GameBalance.bakeryStarterStock - 1);
     expect(restarted.takeDepartmentUnlock(), isNull);
   });
 
@@ -799,6 +830,40 @@ void main() {
       expect(deliveryGame.fulfillPendingDelivery(order.id), isFalse);
       expect(deliveryGame.inventoryFor('Produce'), 4);
       expect(deliveryGame.inventoryFor('Produce'), isNonNegative);
+    },
+  );
+
+  test(
+    'quick restock orders General stock once without opening a menu',
+    () async {
+      var now = DateTime(2026, 7, 28, 12);
+      final quickStorage = MemoryGameStorage()
+        ..data = <String, dynamic>{
+          'coins': 100,
+          'inventory': <String, Object>{'General': 0},
+          'dailyBonus': <String, Object>{'lastClaimedOn': '2026-07-28'},
+        };
+      final quickGame = GameController(
+        storage: quickStorage,
+        monetization: PreviewMonetizationService(),
+        now: () => now,
+      );
+      await quickGame.initialize();
+
+      expect(quickGame.canQuickRestock, isTrue);
+      expect(quickGame.placeQuickRestock(), isNotNull);
+      expect(quickGame.coins, 100 - GameBalance.quickRestockCost);
+      expect(quickGame.hasPendingGeneralDelivery, isTrue);
+      expect(quickGame.placeQuickRestock(), isNull);
+
+      now = now.add(GameBalance.inventoryOrderDelay);
+      final delivery = quickGame.pendingDeliveries.single;
+      expect(quickGame.fulfillPendingDelivery(delivery.id), isTrue);
+      expect(
+        quickGame.inventoryFor('General'),
+        GameBalance.quickRestockQuantity,
+      );
+      expect(quickGame.hasPendingGeneralDelivery, isFalse);
     },
   );
 

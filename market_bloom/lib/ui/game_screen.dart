@@ -237,6 +237,17 @@ class _GameScreenState extends State<GameScreen>
                                         bakeryLabel: AppLocalizations.of(
                                           context,
                                         ).departmentBakery.toUpperCase(),
+                                        bakeryReadyLabel:
+                                            AppLocalizations.of(context)
+                                                .bakeryReady
+                                                .replaceFirst(
+                                                  '{current}',
+                                                  '${game.bakeryReadyStock}',
+                                                )
+                                                .replaceFirst(
+                                                  '{capacity}',
+                                                  '${GameBalance.bakeryReadyCapacity}',
+                                                ),
                                         bakeryLockedLabel:
                                             AppLocalizations.of(
                                               context,
@@ -678,8 +689,10 @@ class _ControlDeck extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final showQuickStock = game.inventoryFor('General') == 0;
     return Container(
-      height: 120,
+      height: showQuickStock ? 162 : 120,
       margin: const EdgeInsets.fromLTRB(10, 2, 10, 8),
       padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
       decoration: BoxDecoration(
@@ -704,7 +717,7 @@ class _ControlDeck extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  game.interactionHint,
+                  _localizedInteractionHint(loc, game),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -732,6 +745,10 @@ class _ControlDeck extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 3),
+          if (showQuickStock) ...[
+            _QuickStockAction(game: game, loc: loc),
+            const SizedBox(height: 4),
+          ],
           Expanded(
             child: GridView.count(
               physics: const NeverScrollableScrollPhysics(),
@@ -741,21 +758,19 @@ class _ControlDeck extends StatelessWidget {
               childAspectRatio: 1.4,
               children: [
                 _RoundAction(
-                  label: AppLocalizations.of(context).upgrades,
+                  label: loc.upgrades,
                   icon: Icons.upgrade_rounded,
                   color: const Color(0xFF5B8DEF),
                   onTap: onUpgrades,
                 ),
                 _RoundAction(
-                  label: game.rewardInProgress
-                      ? AppLocalizations.of(context).loading
-                      : AppLocalizations.of(context).reward,
+                  label: game.rewardInProgress ? loc.loading : loc.reward,
                   icon: Icons.ondemand_video_rounded,
                   color: const Color(0xFFE85D75),
                   onTap: game.rewardInProgress ? null : onReward,
                 ),
                 _RoundAction(
-                  label: AppLocalizations.of(context).shop,
+                  label: loc.shop,
                   icon: Icons.shopping_bag_rounded,
                   color: const Color(0xFFF6A623),
                   onTap: onShop,
@@ -766,6 +781,110 @@ class _ControlDeck extends StatelessWidget {
           const SizedBox(height: 4),
           _ControlInstruction(settings: settings),
         ],
+      ),
+    );
+  }
+}
+
+String _localizedInteractionHint(AppLocalizations loc, GameController game) {
+  if ((game.playerPosition - GameController.bakeryZone).distance <= 0.13) {
+    if (!game.bakeryUnlocked) {
+      return loc.bakeryLockedHint.replaceFirst(
+        '{level}',
+        '${GameBalance.bakeryUnlockLevel}',
+      );
+    }
+    if (game.carried >= game.bagCapacity) {
+      return loc.bakeryBagFullHint;
+    }
+    return game.bakeryReadyStock > 0
+        ? loc.bakeryCollectingHint
+        : loc.bakeryBakingHint;
+  }
+  if ((game.playerPosition - GameController.stockZone).distance <= 0.13) {
+    if (game.inventoryFor('General') <= 0) {
+      return loc.storageEmptyHint;
+    }
+    return game.carried >= game.bagCapacity
+        ? loc.bagFullHint
+        : loc.collectingStorageHint;
+  }
+  if ((game.playerPosition - GameController.shelfZone).distance <= 0.14) {
+    if (game.carried == 0) {
+      return loc.bagEmptyHint;
+    }
+    if (game.shelfStock >= game.shelfCapacity) {
+      return loc.shelfFullHint;
+    }
+    return loc.stockingShelfHint;
+  }
+  if ((game.playerPosition - GameController.checkoutZone).distance <= 0.13) {
+    return loc.checkoutHint;
+  }
+  return '';
+}
+
+class _QuickStockAction extends StatelessWidget {
+  const _QuickStockAction({required this.game, required this.loc});
+
+  final GameController game;
+  final AppLocalizations loc;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = game.hasPendingGeneralDelivery;
+    final emergency = game.canClaimEmergencyStock;
+    final enabled = !pending && (emergency || game.canQuickRestock);
+    final label = pending
+        ? loc.quickRestockPending
+        : emergency
+        ? '${loc.emergencyStock} +${GameBalance.emergencyStockQuantity}'
+        : loc.quickRestock;
+    final color = emergency ? const Color(0xFF38B879) : const Color(0xFFF6A623);
+
+    return SizedBox(
+      key: const ValueKey('quick-restock-action'),
+      width: double.infinity,
+      height: 34,
+      child: FilledButton.icon(
+        onPressed: enabled
+            ? () {
+                final succeeded = emergency
+                    ? game.claimEmergencyStock()
+                    : game.placeQuickRestock() != null;
+                unawaited(
+                  succeeded
+                      ? SfxManager.instance.success()
+                      : SfxManager.instance.error(),
+                );
+                if (!succeeded) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      emergency ? loc.emergencyStock : loc.quickRestockOrdered,
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            : null,
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          backgroundColor: color,
+          disabledBackgroundColor: color.withValues(alpha: 0.42),
+          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+        ),
+        icon: Icon(
+          pending
+              ? Icons.local_shipping_rounded
+              : emergency
+              ? Icons.inventory_2_rounded
+              : Icons.add_shopping_cart_rounded,
+          size: 17,
+        ),
+        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     );
   }

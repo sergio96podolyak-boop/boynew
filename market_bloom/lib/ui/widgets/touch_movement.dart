@@ -57,7 +57,7 @@ class TouchMovement extends StatefulWidget {
       GameController.stockZone,
       GameController.shelfZone,
       GameController.checkoutZone,
-      Offset(0.78, 0.76),
+      GameController.bakeryZone,
     ];
     var nearest = target;
     var nearestDistance = 0.12;

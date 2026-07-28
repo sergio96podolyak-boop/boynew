@@ -81,14 +81,20 @@ class InventoryScreen extends StatelessWidget {
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed:
-                    controller.coins >= 20 &&
+                    controller.coins >= GameBalance.quickRestockCost &&
                         controller.pendingDeliveryCount == 0 &&
-                        totalInventory + 6 <= capacity
-                    ? () =>
-                          controller.placeInventoryOrder('General', 6, cost: 20)
+                        totalInventory + GameBalance.quickRestockQuantity <=
+                            capacity
+                    ? () => controller.placeInventoryOrder(
+                        'General',
+                        GameBalance.quickRestockQuantity,
+                        cost: GameBalance.quickRestockCost,
+                      )
                     : null,
                 icon: const Icon(Icons.local_shipping_rounded),
-                label: Text('${loc.orderGeneralStock} · 20'),
+                label: Text(
+                  '${loc.orderGeneralStock} · ${GameBalance.quickRestockCost}',
+                ),
               ),
               if (controller.canClaimEmergencyStock) ...[
                 const SizedBox(height: 12),

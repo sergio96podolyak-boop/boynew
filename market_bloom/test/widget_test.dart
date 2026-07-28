@@ -482,6 +482,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('empty storage offers quick restock in the compact market', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final storage = MemoryGameStorage()
+      ..data = <String, dynamic>{
+        'coins': 25,
+        'inventory': <String, Object>{'General': 0},
+      };
+    final controller = GameController(
+      storage: storage,
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: _testSettings(),
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.byKey(const ValueKey('quick-restock-action')), findsOneWidget);
+    expect(find.text('Order 6 stock · 20'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('quick-restock-action')));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(controller.hasPendingGeneralDelivery, isTrue);
+    expect(find.text('Stock delivery is on the way'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 700));
+  });
+
   testWidgets(
     'NavigationRail renders with MaterialLocalizations on wide viewports',
     (tester) async {

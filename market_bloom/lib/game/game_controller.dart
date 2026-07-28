@@ -21,6 +21,7 @@ class GameController extends ChangeNotifier {
   static const stockZone = Offset(0.16, 0.79);
   static const shelfZone = Offset(0.43, 0.47);
   static const checkoutZone = Offset(0.77, 0.25);
+  static const bakeryZone = Offset(0.78, 0.76);
   static const entrance = Offset(0.5, 0.04);
   static const exit = Offset(0.62, -0.08);
 
@@ -38,6 +39,7 @@ class GameController extends ChangeNotifier {
   int gems = 3;
   int carried = 0;
   int shelfStock = 0;
+  int bakeryReadyStock = 0;
   int totalSales = 0;
   int totalCoinsEarned = 0;
   int stockedTotal = 0;
@@ -69,6 +71,8 @@ class GameController extends ChangeNotifier {
   double _customerSpawnTimer = 0.8;
   double _stockActionTimer = 0;
   double _shelfActionTimer = 0;
+  double _bakeryProductionTimer = 0;
+  double _bakeryCollectTimer = 0;
   double _saveTimer = 0;
   double _historyTimer = 0;
   int _customerId = 0;
@@ -93,6 +97,7 @@ class GameController extends ChangeNotifier {
   double _staffTimer = 0;
   double _deliveryTimer = 0;
   DateTime? _lastEmergencyStockAt;
+  bool _bakeryActivated = false;
   int _lastObservedStoreLevel = 1;
   bool _restoredInventoryPresent = false;
   final Map<RewardPlacement, DateTime> _rewardLastClaimed =
@@ -118,6 +123,23 @@ class GameController extends ChangeNotifier {
   double get levelProgress => salesIntoLevel / GameBalance.salesPerStoreLevel;
   Offset? get movementTarget => _movementTarget;
   bool get bakeryUnlocked => isDepartmentUnlocked(DepartmentType.bakery);
+  bool get hasPendingGeneralDelivery => _pendingDeliveries.any(
+    (delivery) => delivery.category.toLowerCase() == 'general',
+  );
+  bool get canQuickRestock {
+    final pendingQuantity = _pendingDeliveries.fold<int>(
+      0,
+      (sum, delivery) => sum + delivery.quantity,
+    );
+    return inventoryFor('General') == 0 &&
+        !hasPendingGeneralDelivery &&
+        coins >= GameBalance.quickRestockCost &&
+        totalStoredInventory +
+                pendingQuantity +
+                GameBalance.quickRestockQuantity <=
+            storageCapacity;
+  }
+
   double get cashierCheckoutSeconds {
     final staffBonus = max(0, staffLevel(StaffRole.cashier) - 1) * 0.07;
     final upgradeBonus = max(0, checkoutLevel - 1) * 0.09;
@@ -130,7 +152,7 @@ class GameController extends ChangeNotifier {
   int get totalStoredInventory =>
       _inventoryByCategory.values.fold<int>(0, (sum, value) => sum + value);
   bool get canClaimEmergencyStock {
-    if (coins >= 20 ||
+    if (coins >= GameBalance.quickRestockCost ||
         carried > 0 ||
         shelfStock > 0 ||
         totalStoredInventory > 0 ||
@@ -409,6 +431,37 @@ class GameController extends ChangeNotifier {
   }
 
   void _updateStations(double dt) {
+    if (bakeryUnlocked) {
+      if (bakeryReadyStock < GameBalance.bakeryReadyCapacity) {
+        _bakeryProductionTimer += dt;
+        if (_bakeryProductionTimer >=
+            GameBalance.bakeryProductionInterval.inMilliseconds / 1000) {
+          _bakeryProductionTimer = 0;
+          bakeryReadyStock++;
+          totalActions++;
+        }
+      } else {
+        _bakeryProductionTimer = 0;
+      }
+
+      if (_near(playerPosition, bakeryZone, 0.13) &&
+          bakeryReadyStock > 0 &&
+          carried < bagCapacity) {
+        _bakeryCollectTimer += dt;
+        if (_bakeryCollectTimer >= GameBalance.bakeryCollectionSeconds) {
+          _bakeryCollectTimer = 0;
+          bakeryReadyStock--;
+          carried++;
+          totalActions++;
+        }
+      } else {
+        _bakeryCollectTimer = 0;
+      }
+    } else {
+      _bakeryProductionTimer = 0;
+      _bakeryCollectTimer = 0;
+    }
+
     if (_near(playerPosition, stockZone, 0.13) &&
         carried < bagCapacity &&
         inventoryFor('General') > 0) {
@@ -990,6 +1043,17 @@ class GameController extends ChangeNotifier {
     return delivery;
   }
 
+  InventoryDelivery? placeQuickRestock() {
+    if (!canQuickRestock) {
+      return null;
+    }
+    return placeInventoryOrder(
+      'General',
+      GameBalance.quickRestockQuantity,
+      cost: GameBalance.quickRestockCost,
+    );
+  }
+
   bool fulfillPendingDelivery(String id) {
     final delivery = _pendingDeliveries.firstWhere(
       (item) => item.id == id,
@@ -1160,12 +1224,14 @@ class GameController extends ChangeNotifier {
 
   Map<String, dynamic> _saveSnapshot() {
     return <String, dynamic>{
-      'version': 3,
+      'version': 4,
       'savedAt': _now().toIso8601String(),
       'coins': coins,
       'gems': gems,
       'carried': carried,
       'shelfStock': shelfStock,
+      'bakeryReadyStock': bakeryReadyStock,
+      'bakeryActivated': _bakeryActivated,
       'totalSales': totalSales,
       'totalCoinsEarned': totalCoinsEarned,
       'stockedTotal': stockedTotal,
@@ -1254,6 +1320,7 @@ class GameController extends ChangeNotifier {
     gems = 3;
     carried = 0;
     shelfStock = 0;
+    bakeryReadyStock = 0;
     totalSales = 0;
     totalCoinsEarned = 0;
     stockedTotal = 0;
@@ -1289,6 +1356,7 @@ class GameController extends ChangeNotifier {
     _checkoutQueue.clear();
     _restoredInventoryPresent = false;
     _lastEmergencyStockAt = null;
+    _bakeryActivated = false;
     _rewardLastClaimed.clear();
     _rewardClaimDay = null;
     _rewardClaimsToday = 0;
@@ -1424,6 +1492,13 @@ class GameController extends ChangeNotifier {
     gems = _readIntAny(saved, const ['gems', 'premiumCurrency'], 3);
     carried = _readIntAny(saved, const ['carried', 'bagStock'], 0);
     shelfStock = _readIntAny(saved, const ['shelfStock', 'stock'], 0);
+    bakeryReadyStock = _readIntAny(
+      saved,
+      const ['bakeryReadyStock', 'readyBakeryStock'],
+      0,
+      maximum: GameBalance.bakeryReadyCapacity,
+    );
+    _bakeryActivated = _readBoolAny(saved, const ['bakeryActivated'], false);
     totalSales = _readIntAny(saved, const ['totalSales', 'sales'], 0);
     totalCoinsEarned = _readIntAny(saved, const [
       'totalCoinsEarned',
@@ -1683,6 +1758,10 @@ class GameController extends ChangeNotifier {
 
     carried = carried.clamp(0, bagCapacity);
     shelfStock = shelfStock.clamp(0, shelfCapacity);
+    bakeryReadyStock = bakeryReadyStock.clamp(
+      0,
+      GameBalance.bakeryReadyCapacity,
+    );
     checkoutLevel = checkoutLevel.clamp(1, 10);
     restockLevel = restockLevel.clamp(1, 10);
 
@@ -1724,6 +1803,10 @@ class GameController extends ChangeNotifier {
           _departmentUnlocks.add(department.type);
         }
       }
+    }
+    if (bakeryUnlocked && !_bakeryActivated) {
+      _bakeryActivated = true;
+      bakeryReadyStock = max(bakeryReadyStock, GameBalance.bakeryStarterStock);
     }
   }
 

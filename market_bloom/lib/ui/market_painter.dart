@@ -13,6 +13,7 @@ class MarketPainter extends CustomPainter {
     required this.shelfLabel,
     required this.checkoutLabel,
     required this.bakeryLabel,
+    required this.bakeryReadyLabel,
     required this.bakeryLockedLabel,
     required this.textDirection,
   });
@@ -23,6 +24,7 @@ class MarketPainter extends CustomPainter {
   final String shelfLabel;
   final String checkoutLabel;
   final String bakeryLabel;
+  final String bakeryReadyLabel;
   final String bakeryLockedLabel;
   final TextDirection textDirection;
 
@@ -383,8 +385,9 @@ class MarketPainter extends CustomPainter {
   }
 
   void _drawExpansion(Canvas canvas, Rect market) {
-    final center = _point(market, const Offset(0.78, 0.76));
+    final center = _point(market, GameController.bakeryZone);
     final unlocked = game.bakeryUnlocked;
+    _interactionGlow(canvas, market, GameController.bakeryZone, 0.13);
     final zone = RRect.fromRectAndRadius(
       Rect.fromCenter(center: center, width: 105, height: 91),
       const Radius.circular(18),
@@ -423,17 +426,41 @@ class MarketPainter extends CustomPainter {
     _text(
       canvas,
       unlocked ? '🥐' : '🔒',
-      center - const Offset(0, 14),
-      fontSize: 25,
+      center - const Offset(0, 19),
+      fontSize: 23,
     );
+    if (unlocked) {
+      for (var index = 0; index < GameBalance.bakeryReadyCapacity; index++) {
+        final ready = index < game.bakeryReadyStock;
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: center + Offset(-21 + index * 14, 2),
+            width: 10,
+            height: 6,
+          ),
+          Paint()
+            ..color = ready ? const Color(0xFFE09A20) : const Color(0x33A98D62),
+        );
+      }
+    }
     _text(
       canvas,
       unlocked ? bakeryLabel : bakeryLockedLabel,
-      center + const Offset(0, 20),
+      center + const Offset(0, 17),
       color: const Color(0xFF645E55),
-      fontSize: 11,
+      fontSize: 10,
       weight: FontWeight.w800,
     );
+    if (unlocked) {
+      _text(
+        canvas,
+        bakeryReadyLabel,
+        center + const Offset(0, 31),
+        color: const Color(0xFF8A5B17),
+        fontSize: 9,
+        weight: FontWeight.w900,
+      );
+    }
   }
 
   void _drawMovementTarget(Canvas canvas, Rect market) {
@@ -500,6 +527,33 @@ class MarketPainter extends CustomPainter {
       pi,
       true,
       Paint()..color = const Color(0xFF473126),
+    );
+    final cashierFace = bodyCenter - const Offset(0, 21);
+    final cashierFeaturePaint = Paint()
+      ..color = const Color(0xFF382B2A)
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(
+      cashierFace + const Offset(-3.4, 0.5),
+      1.2,
+      Paint()..color = const Color(0xFF382B2A),
+    );
+    canvas.drawCircle(
+      cashierFace + const Offset(3.4, 0.5),
+      1.2,
+      Paint()..color = const Color(0xFF382B2A),
+    );
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: cashierFace + const Offset(0, 4),
+        width: 7,
+        height: serving ? 5 : 3,
+      ),
+      0,
+      pi,
+      false,
+      cashierFeaturePaint,
     );
     if (serving) {
       final scannerAlpha = (150 + (sin(animationTime * 15) + 1) * 50)
@@ -572,16 +626,6 @@ class MarketPainter extends CustomPainter {
       15,
       Paint()..color = const Color(0xFFFFCFAC),
     );
-    canvas.drawCircle(
-      bodyCenter - const Offset(0, 27),
-      12,
-      Paint()..color = const Color(0xFF2A3E4B),
-    );
-    canvas.drawCircle(
-      bodyCenter - const Offset(0, 28),
-      6,
-      Paint()..color = const Color(0xFFFFE4C9),
-    );
 
     final hair = Paint()..color = const Color(0xFF5A3825);
     canvas.drawArc(
@@ -593,14 +637,40 @@ class MarketPainter extends CustomPainter {
     );
     canvas.drawCircle(bodyCenter + const Offset(12, -31), 6, hair);
     canvas.drawCircle(
-      bodyCenter + const Offset(-5, -28),
-      1.5,
+      bodyCenter + const Offset(-5, -26),
+      1.6,
       Paint()..color = const Color(0xFF273043),
     );
     canvas.drawCircle(
-      bodyCenter + const Offset(5, -28),
-      1.5,
+      bodyCenter + const Offset(5, -26),
+      1.6,
       Paint()..color = const Color(0xFF273043),
+    );
+    final playerFeaturePaint = Paint()
+      ..color = const Color(0xFF56352E)
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(
+      bodyCenter + const Offset(-8, -31),
+      bodyCenter + const Offset(-3, -32),
+      playerFeaturePaint,
+    );
+    canvas.drawLine(
+      bodyCenter + const Offset(3, -32),
+      bodyCenter + const Offset(8, -31),
+      playerFeaturePaint,
+    );
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: bodyCenter + const Offset(0, -21),
+        width: 11,
+        height: 7,
+      ),
+      0,
+      pi,
+      false,
+      playerFeaturePaint,
     );
 
     if (game.carried > 0) {
@@ -669,11 +739,84 @@ class MarketPainter extends CustomPainter {
       11,
       Paint()..color = const Color(0xFFFFD3B6),
     );
-    canvas.drawCircle(
-      center - const Offset(0, 20),
-      8,
-      Paint()..color = const Color(0xFF273043),
+    final customerFace = center - const Offset(0, 20);
+    final hairColors = <Color>[
+      const Color(0xFF3B2A24),
+      const Color(0xFF7A4F2B),
+      const Color(0xFF2F3E52),
+      const Color(0xFF8A623D),
+    ];
+    final customerHair = Paint()
+      ..color = hairColors[customer.id.abs() % hairColors.length];
+    canvas.drawArc(
+      Rect.fromCircle(center: customerFace - const Offset(0, 1.5), radius: 12),
+      pi,
+      pi,
+      true,
+      customerHair,
     );
+    canvas.drawCircle(
+      customerFace + const Offset(-3.5, 0.5),
+      1.1,
+      Paint()..color = const Color(0xFF382B2A),
+    );
+    canvas.drawCircle(
+      customerFace + const Offset(3.5, 0.5),
+      1.1,
+      Paint()..color = const Color(0xFF382B2A),
+    );
+    final customerFeaturePaint = Paint()
+      ..color = const Color(0xFF573B35)
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final isWorried =
+        customer.phase == CustomerPhase.shopping && game.shelfStock == 0;
+    final isHappy =
+        customer.hasProduct ||
+        customer.phase == CustomerPhase.paying ||
+        customer.phase == CustomerPhase.leaving;
+    if (isWorried) {
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: customerFace + const Offset(0, 6),
+          width: 7,
+          height: 4,
+        ),
+        pi,
+        pi,
+        false,
+        customerFeaturePaint,
+      );
+      canvas.drawLine(
+        customerFace + const Offset(-6, -3),
+        customerFace + const Offset(-2, -2),
+        customerFeaturePaint,
+      );
+      canvas.drawLine(
+        customerFace + const Offset(2, -2),
+        customerFace + const Offset(6, -3),
+        customerFeaturePaint,
+      );
+    } else if (isHappy) {
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: customerFace + const Offset(0, 4),
+          width: 8,
+          height: 5,
+        ),
+        0,
+        pi,
+        false,
+        customerFeaturePaint,
+      );
+    } else {
+      canvas.drawLine(
+        customerFace + const Offset(-3, 5),
+        customerFace + const Offset(3, 5),
+        customerFeaturePaint,
+      );
+    }
 
     if (customer.hasProduct) {
       canvas.drawCircle(
