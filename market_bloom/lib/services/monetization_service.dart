@@ -19,6 +19,13 @@ abstract interface class MonetizationService {
 
   Future<bool> purchase(StoreProduct product);
 
+  /// Attempts to restore previously purchased products.
+  ///
+  /// Returns `true` if any purchases were restored, `false` otherwise.
+  /// Preview builds that do not connect to a real store should return
+  /// `false` without performing any side effects.
+  Future<bool> restorePurchases();
+
   void dispose();
 }
 
@@ -49,6 +56,9 @@ class PreviewMonetizationService implements MonetizationService {
 
   @override
   Future<bool> purchase(StoreProduct product) async => false;
+
+  @override
+  Future<bool> restorePurchases() async => false;
 
   @override
   Future<bool> showRewardedAd(RewardPlacement placement) async {

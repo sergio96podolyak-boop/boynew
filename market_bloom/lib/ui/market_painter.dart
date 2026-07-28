@@ -53,11 +53,11 @@ class MarketPainter extends CustomPainter {
     canvas.clipRRect(room);
 
     final gridPaint = Paint()
-      ..color = const Color(0x1A315F4A)
-      ..strokeWidth = 1.0;
+      ..color = const Color(0x0A315F4A)
+      ..strokeWidth = 0.6;
     final diamondPaint = Paint()
-      ..color = const Color(0x0F315F4A)
-      ..strokeWidth = 0.8;
+      ..color = const Color(0x06315F4A)
+      ..strokeWidth = 0.5;
 
     final tile = 34.0;
     final halfTile = tile / 2;

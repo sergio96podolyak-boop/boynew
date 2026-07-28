@@ -154,3 +154,74 @@ class InventoryDelivery {
   final DateTime readyAt;
   bool completed;
 }
+
+/// Static catalog of department definitions with unlock requirements.
+///
+/// The unlock levels mirror the existing store-level gating used in
+/// [MarketPainter._drawExpansion] (bakery at level 3) and extend it to
+/// all departments represented by [DepartmentType].
+abstract final class DepartmentCatalog {
+  static const List<DepartmentDefinition> all = <DepartmentDefinition>[
+    DepartmentDefinition(
+      type: DepartmentType.generalGoods,
+      name: 'General Goods',
+      description: 'The foundation of your market.',
+      unlockLevel: 1,
+      unlockCost: 0,
+      icon: Icons.storefront_rounded,
+      color: Color(0xFF5B8DEF),
+    ),
+    DepartmentDefinition(
+      type: DepartmentType.bakery,
+      name: 'Bakery',
+      description: 'Fresh bread and pastries.',
+      unlockLevel: 3,
+      unlockCost: 200,
+      icon: Icons.bakery_dining_rounded,
+      color: Color(0xFFF6A623),
+    ),
+    DepartmentDefinition(
+      type: DepartmentType.produce,
+      name: 'Produce',
+      description: 'Fresh fruits and vegetables.',
+      unlockLevel: 5,
+      unlockCost: 400,
+      icon: Icons.eco_rounded,
+      color: Color(0xFF43AA8B),
+    ),
+    DepartmentDefinition(
+      type: DepartmentType.refrigerated,
+      name: 'Refrigerated',
+      description: 'Cold storage for perishables.',
+      unlockLevel: 7,
+      unlockCost: 600,
+      icon: Icons.ac_unit_rounded,
+      color: Color(0xFF3F88C5),
+    ),
+    DepartmentDefinition(
+      type: DepartmentType.beauty,
+      name: 'Beauty',
+      description: 'Cosmetics and personal care.',
+      unlockLevel: 9,
+      unlockCost: 800,
+      icon: Icons.spa_rounded,
+      color: Color(0xFFE85D75),
+    ),
+    DepartmentDefinition(
+      type: DepartmentType.electronics,
+      name: 'Electronics',
+      description: 'Gadgets and tech accessories.',
+      unlockLevel: 11,
+      unlockCost: 1000,
+      icon: Icons.devices_rounded,
+      color: Color(0xFF8B66D8),
+    ),
+  ];
+
+  static final Map<DepartmentType, DepartmentDefinition> byType =
+      <DepartmentType, DepartmentDefinition>{
+        for (final definition in all) definition.type: definition,
+      };
+
+  static DepartmentDefinition? find(DepartmentType type) => byType[type];
+}

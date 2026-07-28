@@ -101,7 +101,9 @@ class _PoMarketSplashState extends State<PoMarketSplash>
       _entranceController.value = 1;
       _progressController.value = 1;
       await _waitUntilReady();
-      await Future<void>.delayed(Duration.zero);
+      // Use a microtask rather than Future.delayed to avoid leaving a
+      // pending fake timer that would trip flutter_test's invariants.
+      await Future<void>.value();
       if (mounted) {
         _completeOnce();
       }

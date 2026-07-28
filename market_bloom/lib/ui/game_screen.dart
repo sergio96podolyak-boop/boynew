@@ -162,95 +162,96 @@ class _GameScreenState extends State<GameScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: CelebrationOverlay(
-        controller: _celebration,
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFFDDF5E8), Color(0xFFF8EED9)],
-            ),
+    final bottomPadding =
+        MediaQuery.of(context).padding.bottom + kBottomNavigationBarHeight;
+    return CelebrationOverlay(
+      controller: _celebration,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFDDF5E8), Color(0xFFF8EED9)],
           ),
-          child: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Stack(
-                  children: [
-                    AnimatedBuilder(
-                      animation: game,
-                      builder: (context, _) => Column(
-                        children: [
-                          _TopBar(
-                            game: game,
-                            onMute: () => unawaited(_toggleMute()),
-                          ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
-                              child: Stack(
-                                children: [
-                                  Positioned.fill(
-                                    child: RepaintBoundary(
-                                      child: CustomPaint(
-                                        painter: MarketPainter(
-                                          game: game,
-                                          animationTime: _animationTime,
-                                        ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Stack(
+                children: [
+                  AnimatedBuilder(
+                    animation: game,
+                    builder: (context, _) => Column(
+                      children: [
+                        _TopBar(
+                          game: game,
+                          onMute: () => unawaited(_toggleMute()),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: RepaintBoundary(
+                                    child: CustomPaint(
+                                      painter: MarketPainter(
+                                        game: game,
+                                        animationTime: _animationTime,
                                       ),
                                     ),
                                   ),
-                                  Positioned(
-                                    top: 13,
-                                    right: 15,
-                                    left: 15,
-                                    child: _QuestCard(
-                                      quest: game.quest,
-                                      onClaim: _claimQuest,
-                                    ),
+                                ),
+                                Positioned(
+                                  top: 13,
+                                  right: 15,
+                                  left: 15,
+                                  child: _QuestCard(
+                                    quest: game.quest,
+                                    onClaim: _claimQuest,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
-                          _ControlDeck(
-                            game: game,
-                            onUpgrades: _showUpgrades,
-                            onReward: _claimAdReward,
-                            onShop: _showMoneyShop,
-                            onHub: _showMetaHub,
-                          ),
-                        ],
-                      ),
+                        ),
+                        _ControlDeck(
+                          game: game,
+                          onUpgrades: _showUpgrades,
+                          onReward: _claimAdReward,
+                          onShop: _showMoneyShop,
+                          onHub: _showMetaHub,
+                        ),
+                        SizedBox(height: bottomPadding),
+                      ],
                     ),
-                    Positioned(
-                      top: 112,
-                      left: 12,
-                      right: 12,
-                      child: IgnorePointer(
-                        ignoring: _achievementToast == null,
-                        child: AnimatedSlide(
-                          duration: const Duration(milliseconds: 360),
-                          curve: Curves.easeOutBack,
-                          offset: _achievementToast == null
-                              ? const Offset(0, -1.4)
-                              : Offset.zero,
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 220),
-                            opacity: _achievementToast == null ? 0 : 1,
-                            child: _achievementToast == null
-                                ? const SizedBox.shrink()
-                                : _AchievementToast(
-                                    achievement: _achievementToast!,
-                                  ),
-                          ),
+                  ),
+                  Positioned(
+                    top: 112,
+                    left: 12,
+                    right: 12,
+                    child: IgnorePointer(
+                      ignoring: _achievementToast == null,
+                      child: AnimatedSlide(
+                        duration: const Duration(milliseconds: 360),
+                        curve: Curves.easeOutBack,
+                        offset: _achievementToast == null
+                            ? const Offset(0, -1.4)
+                            : Offset.zero,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 220),
+                          opacity: _achievementToast == null ? 0 : 1,
+                          child: _achievementToast == null
+                              ? const SizedBox.shrink()
+                              : _AchievementToast(
+                                  achievement: _achievementToast!,
+                                ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

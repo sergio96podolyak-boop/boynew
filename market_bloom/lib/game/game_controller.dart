@@ -114,6 +114,8 @@ class GameController extends ChangeNotifier {
       _achievementProgress.where((item) => item.isUnlocked).length;
   bool get hasPendingAchievement => _achievementUnlocks.isNotEmpty;
   int get pendingDeliveryCount => _pendingDeliveries.length;
+  List<DepartmentState> get departments =>
+      List<DepartmentState>.unmodifiable(_departments);
 
   String? storePrice(StoreProduct product) => monetization.priceFor(product);
 

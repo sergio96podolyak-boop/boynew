@@ -1,0 +1,230 @@
+import 'package:flutter/material.dart';
+
+import '../../game/game_controller.dart';
+import '../../services/app_localizations.dart';
+import '../../services/monetization_service.dart';
+import '../widgets/pressable_scale.dart';
+
+/// Preview shop interface for PoMarket.
+///
+/// Shows example coin/gem packs and rewarded-ad actions using the existing
+/// [MonetizationService] abstractions. Does not process real money or fake
+/// successful purchases. Rewarded-ad rewards are only granted through the
+/// existing monetization service success callback.
+class ShopScreen extends StatelessWidget {
+  const ShopScreen({super.key, required this.controller});
+
+  final GameController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(loc.shopTitle)),
+      body: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) => ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (controller.isMonetizationPreview) _PreviewBadge(loc: loc),
+            const SizedBox(height: 8),
+            Text(
+              controller.storePurchasesAvailable
+                  ? 'Secure purchases through the App Store or Google Play.'
+                  : loc.previewModeDesc,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _StoreCard(
+              icon: Icons.ondemand_video_rounded,
+              color: const Color(0xFFE85D75),
+              title: loc.rewardedBonus,
+              subtitle:
+                  '${loc.watchAndEarn} — ${controller.instantAdReward} coins',
+              buttonLabel: controller.rewardInProgress
+                  ? loc.loading
+                  : loc.watchAndEarn,
+              onTap: controller.rewardInProgress
+                  ? null
+                  : () async {
+                      final reward = controller.instantAdReward;
+                      final completed = await controller.claimInstantAdReward();
+                      if (!context.mounted) return;
+                      if (completed) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              loc.coinsEarned.replaceFirst(
+                                '{value}',
+                                '$reward',
+                              ),
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+            ),
+            const SizedBox(height: 12),
+            _StoreCard(
+              icon: Icons.block_rounded,
+              color: const Color(0xFF5B8DEF),
+              title: loc.noAds,
+              subtitle: controller.adsRemoved ? loc.owned : loc.oneTimePurchase,
+              buttonLabel: controller.adsRemoved
+                  ? loc.owned
+                  : controller.storePrice(StoreProduct.noAds) ??
+                        loc.setupRequired,
+              onTap:
+                  !controller.storePurchasesAvailable ||
+                      controller.adsRemoved ||
+                      controller.storePurchaseInProgress
+                  ? null
+                  : () => _purchase(context, StoreProduct.noAds),
+            ),
+            const SizedBox(height: 12),
+            _StoreCard(
+              icon: Icons.rocket_launch_rounded,
+              color: const Color(0xFFF6A623),
+              title: loc.starterPack,
+              subtitle: loc.starterPackDesc,
+              buttonLabel:
+                  controller.storePrice(StoreProduct.starterPack) ??
+                  loc.previewPrice2,
+              onTap:
+                  !controller.storePurchasesAvailable ||
+                      controller.storePurchaseInProgress
+                  ? null
+                  : () => _purchase(context, StoreProduct.starterPack),
+            ),
+            const SizedBox(height: 12),
+            _StoreCard(
+              icon: Icons.monetization_on_rounded,
+              color: const Color(0xFF38B879),
+              title: loc.coinPack,
+              subtitle: loc.coinPackDesc,
+              buttonLabel:
+                  controller.storePrice(StoreProduct.coinPack) ??
+                  loc.previewPrice,
+              onTap:
+                  !controller.storePurchasesAvailable ||
+                      controller.storePurchaseInProgress
+                  ? null
+                  : () => _purchase(context, StoreProduct.coinPack),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _purchase(BuildContext context, StoreProduct product) async {
+    final purchased = await controller.purchaseStoreProduct(product);
+    if (!context.mounted) return;
+    final loc = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          purchased ? loc.purchaseComplete : loc.productNotConfigured,
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+class _PreviewBadge extends StatelessWidget {
+  const _PreviewBadge({required this.loc});
+
+  final AppLocalizations loc;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: const Color(0xFFFFF3E0),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.info_rounded, color: Color(0xFFE65100)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                loc.previewMode,
+                style: const TextStyle(
+                  color: Color(0xFFE65100),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StoreCard extends StatelessWidget {
+  const _StoreCard({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final Future<void> Function()? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: color,
+              child: Icon(icon, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PressableScale(
+              child: FilledButton(
+                onPressed: onTap == null ? null : () => onTap!(),
+                child: Text(buttonLabel),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

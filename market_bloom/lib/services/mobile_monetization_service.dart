@@ -222,6 +222,19 @@ class MobileMonetizationService implements MonetizationService {
   }
 
   @override
+  Future<bool> restorePurchases() async {
+    if (_disposed || !_storeAvailable) {
+      return false;
+    }
+    try {
+      await _inAppPurchase.restorePurchases();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
   void dispose() {
     _disposed = true;
     _rewardedAd?.dispose();
