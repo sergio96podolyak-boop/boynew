@@ -140,7 +140,7 @@ class _StaffCard extends StatelessWidget {
                     context,
                   ).colorScheme.primaryContainer,
                   child: Icon(
-                    Icons.person_rounded,
+                    _roleIcon(),
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
@@ -210,18 +210,28 @@ class _StaffCard extends StatelessWidget {
             if (!hired)
               PressableScale(
                 child: FilledButton.icon(
-                  onPressed: controller.coins >= member.hireCost
-                      ? () {
-                          if (controller.hireStaff(role)) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('$roleName ${loc.hired}!'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        }
-                      : null,
+                  onPressed: () {
+                    if (controller.hireStaff(role)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('$roleName ${loc.hired}!'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          loc.staffNeedsCoins.replaceFirst(
+                            '{cost}',
+                            '${member.hireCost}',
+                          ),
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
                   icon: const Icon(Icons.person_add_rounded),
                   label: Text('${loc.hire} — ${member.hireCost}'),
                 ),
@@ -259,6 +269,15 @@ class _StaffCard extends StatelessWidget {
       StaffAssignment.shelves => loc.assignmentShelves,
       StaffAssignment.floor => loc.assignmentFloor,
       StaffAssignment.office => loc.assignmentOffice,
+    };
+  }
+
+  IconData _roleIcon() {
+    return switch (role) {
+      StaffRole.cashier => Icons.point_of_sale_rounded,
+      StaffRole.stocker => Icons.inventory_2_rounded,
+      StaffRole.cleaner => Icons.cleaning_services_rounded,
+      StaffRole.manager => Icons.business_center_rounded,
     };
   }
 

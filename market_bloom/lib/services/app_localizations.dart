@@ -147,6 +147,8 @@ class AppLocalizations {
 
   String get staffUnlockRequirement => _t('staffUnlockRequirement');
 
+  String get staffNeedsCoins => _t('staffNeedsCoins');
+
   String get staffAssignment => _t('staffAssignment');
 
   String get staffStatus => _t('staffStatus');
@@ -650,6 +652,7 @@ class AppLocalizations {
     'staffSummaryManager': 'Boosts global efficiency',
     'staffLocked': 'Staff feature locked',
     'staffUnlockRequirement': 'Unlock at store level 3',
+    'staffNeedsCoins': 'You need {cost} coins to hire this worker',
     'staffAssignment': 'Assignment',
     'staffStatus': 'Status',
     'statusIdle': 'Idle',
@@ -927,6 +930,7 @@ class AppLocalizations {
     'staffSummaryManager': 'מגביר יעילות גלובלית',
     'staffLocked': 'תכונת צוות נעולה',
     'staffUnlockRequirement': 'פתח ברמת חנות 3',
+    'staffNeedsCoins': 'צריך {cost} מטבעות כדי לגייס את העובד הזה',
     'staffAssignment': 'שיבוץ',
     'staffStatus': 'מצב',
     'statusIdle': 'פנוי',
@@ -1198,6 +1202,7 @@ class AppLocalizations {
     'staffSummaryManager': 'يعزز الكفاءة العامة',
     'staffLocked': 'ميزة الموظفين مقفلة',
     'staffUnlockRequirement': 'افتح عند مستوى المتجر 3',
+    'staffNeedsCoins': 'تحتاج إلى {cost} عملات لتوظيف هذا العامل',
     'staffAssignment': 'المهمة',
     'staffStatus': 'الحالة',
     'statusIdle': 'متاح',

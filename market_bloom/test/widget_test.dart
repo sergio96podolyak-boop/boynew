@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomarket/game/game_controller.dart';
+import 'package:pomarket/game/game_models.dart';
 import 'package:pomarket/main.dart';
 import 'package:pomarket/services/game_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -522,6 +523,45 @@ void main() {
 
     expect(controller.hasPendingGeneralDelivery, isTrue);
     expect(find.text('Stock delivery is on the way'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 700));
+  });
+
+  testWidgets('all hired staff roles render in the playable market', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+    controller.debugSetProgress(sales: 16);
+    controller.coins = 1000;
+    for (final role in StaffRole.values) {
+      expect(controller.hireStaff(role), isTrue, reason: role.name);
+    }
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: _testSettings(),
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    for (final role in StaffRole.values) {
+      expect(controller.isStaffHired(role), isTrue, reason: role.name);
+    }
+    expect(find.byType(CustomPaint), findsWidgets);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(milliseconds: 700));
   });

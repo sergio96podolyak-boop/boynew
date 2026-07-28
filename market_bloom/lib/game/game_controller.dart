@@ -1140,10 +1140,14 @@ class GameController extends ChangeNotifier {
         stockerLevel > 0 &&
         inventoryFor('General') > 0 &&
         shelfStock < shelfCapacity) {
-      _inventoryByCategory['General'] = inventoryFor('General') - 1;
-      shelfStock = min(shelfCapacity, shelfStock + 1);
-      stockedTotal++;
-      totalActions++;
+      final quantity = min(
+        stockerLevel,
+        min(inventoryFor('General'), shelfCapacity - shelfStock),
+      );
+      _inventoryByCategory['General'] = inventoryFor('General') - quantity;
+      shelfStock += quantity;
+      stockedTotal += quantity;
+      totalActions += quantity;
     }
 
     if (isStaffHired(StaffRole.cleaner) &&
@@ -1151,7 +1155,10 @@ class GameController extends ChangeNotifier {
         customers.isNotEmpty) {
       for (final customer in customers) {
         if (customer.satisfaction < 1.0) {
-          customer.satisfaction = min(1.0, customer.satisfaction + 0.03);
+          customer.satisfaction = min(
+            1.0,
+            customer.satisfaction + 0.03 * cleanerLevel,
+          );
           break;
         }
       }

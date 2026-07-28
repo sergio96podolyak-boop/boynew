@@ -42,6 +42,15 @@ class MarketPainter extends CustomPainter {
     if (game.isStaffHired(StaffRole.cashier)) {
       _drawCashier(canvas, market);
     }
+    for (final role in const <StaffRole>[
+      StaffRole.stocker,
+      StaffRole.cleaner,
+      StaffRole.manager,
+    ]) {
+      if (game.isStaffHired(role)) {
+        _drawStaffMember(canvas, market, role);
+      }
+    }
     for (final customer in game.customers) {
       _drawCustomer(canvas, _point(market, customer.position), customer);
     }
@@ -566,6 +575,198 @@ class MarketPainter extends CustomPainter {
       );
       _bubble(canvas, bodyCenter - const Offset(16, 39), '💳');
     }
+  }
+
+  void _drawStaffMember(Canvas canvas, Rect market, StaffRole role) {
+    final status = game.staffStatus(role);
+    final active = status != StaffStatus.idle;
+    final basePosition = switch (role) {
+      StaffRole.stocker => GameController.shelfZone + const Offset(0.15, 0.055),
+      StaffRole.cleaner => Offset(0.52 + sin(animationTime * 0.7) * 0.09, 0.84),
+      StaffRole.manager => const Offset(0.22, 0.25),
+      StaffRole.cashier => GameController.checkoutZone,
+    };
+    final bounce = active ? sin(animationTime * 8 + role.index) * 1.3 : 0.0;
+    final center = _point(market, basePosition);
+    final bodyCenter = center + Offset(0, bounce);
+    final uniformColor = switch (role) {
+      StaffRole.stocker => const Color(0xFF5B8DEF),
+      StaffRole.cleaner => const Color(0xFF1FA8A8),
+      StaffRole.manager => const Color(0xFF8B66D8),
+      StaffRole.cashier => const Color(0xFF315F8F),
+    };
+    final hairColor = switch (role) {
+      StaffRole.stocker => const Color(0xFF473126),
+      StaffRole.cleaner => const Color(0xFF2F3E52),
+      StaffRole.manager => const Color(0xFF6B4528),
+      StaffRole.cashier => const Color(0xFF473126),
+    };
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center + const Offset(0, 17),
+        width: 29,
+        height: 10,
+      ),
+      Paint()..color = const Color(0x22000000),
+    );
+
+    final legPaint = Paint()
+      ..color = const Color(0xFF334052)
+      ..strokeWidth = 4.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      bodyCenter + const Offset(-5, 9),
+      bodyCenter + const Offset(-6, 21),
+      legPaint,
+    );
+    canvas.drawLine(
+      bodyCenter + const Offset(5, 9),
+      bodyCenter + const Offset(6, 21),
+      legPaint,
+    );
+
+    final torso = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: bodyCenter, width: 26, height: 33),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(torso, Paint()..color = uniformColor);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: bodyCenter + const Offset(0, 5),
+          width: 18,
+          height: 16,
+        ),
+        const Radius.circular(5),
+      ),
+      Paint()..color = const Color(0xEFFFFFFF),
+    );
+
+    final face = bodyCenter - const Offset(0, 21);
+    canvas.drawCircle(face, 10, Paint()..color = const Color(0xFFFFD3B6));
+    canvas.drawArc(
+      Rect.fromCircle(center: face - const Offset(0, 2), radius: 11),
+      pi,
+      pi,
+      true,
+      Paint()..color = hairColor,
+    );
+    canvas.drawCircle(
+      face + const Offset(-3.3, 0.5),
+      1.1,
+      Paint()..color = const Color(0xFF382B2A),
+    );
+    canvas.drawCircle(
+      face + const Offset(3.3, 0.5),
+      1.1,
+      Paint()..color = const Color(0xFF382B2A),
+    );
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: face + const Offset(0, 4),
+        width: 7,
+        height: active ? 5 : 3,
+      ),
+      0,
+      pi,
+      false,
+      Paint()
+        ..color = const Color(0xFF573B35)
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke,
+    );
+
+    switch (role) {
+      case StaffRole.stocker:
+        final box = RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: bodyCenter + const Offset(15, 4),
+            width: 15,
+            height: 13,
+          ),
+          const Radius.circular(3),
+        );
+        canvas.drawRRect(box, Paint()..color = const Color(0xFFF6A623));
+        canvas.drawLine(
+          bodyCenter + const Offset(8, 1),
+          bodyCenter + const Offset(22, 1),
+          Paint()
+            ..color = const Color(0xFFB76E00)
+            ..strokeWidth = 1.2,
+        );
+        if (status == StaffStatus.stocking) {
+          _bubble(canvas, bodyCenter - const Offset(15, 39), '📦');
+        }
+        break;
+      case StaffRole.cleaner:
+        final mopPaint = Paint()
+          ..color = const Color(0xFF6B5545)
+          ..strokeWidth = 2.4
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(
+          bodyCenter + const Offset(8, -5),
+          bodyCenter + const Offset(18, 21),
+          mopPaint,
+        );
+        for (var offset = -4.0; offset <= 4; offset += 4) {
+          canvas.drawLine(
+            bodyCenter + Offset(18, 21),
+            bodyCenter + Offset(18 + offset, 25),
+            Paint()
+              ..color = const Color(0xFF5B8DEF)
+              ..strokeWidth = 2
+              ..strokeCap = StrokeCap.round,
+          );
+        }
+        if (status == StaffStatus.cleaning) {
+          _bubble(canvas, bodyCenter - const Offset(15, 39), '✨');
+        }
+        break;
+      case StaffRole.manager:
+        final clipboard = RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: bodyCenter + const Offset(15, 2),
+            width: 14,
+            height: 18,
+          ),
+          const Radius.circular(3),
+        );
+        canvas.drawRRect(clipboard, Paint()..color = const Color(0xFFFFF3D7));
+        canvas.drawRRect(
+          clipboard,
+          Paint()
+            ..color = const Color(0xFF5F477E)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4,
+        );
+        canvas.drawLine(
+          bodyCenter + const Offset(11, 0),
+          bodyCenter + const Offset(19, 0),
+          Paint()
+            ..color = const Color(0xFF8B66D8)
+            ..strokeWidth = 1.3,
+        );
+        _bubble(canvas, bodyCenter - const Offset(15, 39), '📈');
+        break;
+      case StaffRole.cashier:
+        break;
+    }
+
+    canvas.drawCircle(
+      bodyCenter + const Offset(-11, 12),
+      7,
+      Paint()..color = const Color(0xFF315F4A),
+    );
+    _text(
+      canvas,
+      '${game.staffLevel(role)}',
+      bodyCenter + const Offset(-11, 12),
+      color: Colors.white,
+      fontSize: 8,
+      weight: FontWeight.w900,
+    );
   }
 
   void _drawPlayer(Canvas canvas, Offset center) {

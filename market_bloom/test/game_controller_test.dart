@@ -547,13 +547,16 @@ void main() {
     },
   );
 
-  test('hireable staff consume coins and persist their levels', () async {
+  test('every staff role can be hired and persists across restart', () async {
     game.debugSetProgress(sales: 16);
-    game.coins = 600;
+    game.coins = 1000;
 
-    expect(game.hireStaff(StaffRole.cashier), isTrue);
-    expect(game.staffLevel(StaffRole.cashier), 1);
-    expect(game.coins, lessThan(600));
+    for (final role in StaffRole.values) {
+      expect(game.hireStaff(role), isTrue, reason: role.name);
+      expect(game.staffLevel(role), 1, reason: role.name);
+      expect(game.isStaffHired(role), isTrue, reason: role.name);
+    }
+    expect(game.coins, lessThan(1000));
 
     await game.save();
 
@@ -564,7 +567,44 @@ void main() {
     );
     await restored.initialize();
 
-    expect(restored.staffLevel(StaffRole.cashier), 1);
+    for (final role in StaffRole.values) {
+      expect(restored.staffLevel(role), 1, reason: role.name);
+      expect(restored.isStaffHired(role), isTrue, reason: role.name);
+    }
+  });
+
+  test('stocker, cleaner, and manager perform visible gameplay work', () {
+    game.debugSetProgress(sales: 16);
+    game.coins = 1000;
+
+    expect(game.hireStaff(StaffRole.stocker), isTrue);
+    final initialInventory = game.inventoryFor('General');
+    _advance(game, 1.3);
+    expect(game.shelfStock, 1);
+    expect(game.inventoryFor('General'), initialInventory - 1);
+
+    expect(game.upgradeStaff(StaffRole.stocker), isTrue);
+    final shelfBeforeLevelTwo = game.shelfStock;
+    _advance(game, 1.3);
+    expect(game.shelfStock, shelfBeforeLevelTwo + 2);
+
+    final customer = MarketCustomer(
+      id: 990,
+      position: GameController.entrance,
+      color: const Color(0xFF5B8DEF),
+      satisfaction: 0.5,
+    );
+    game.customers
+      ..clear()
+      ..add(customer);
+    expect(game.hireStaff(StaffRole.cleaner), isTrue);
+    _advance(game, 1.3);
+    expect(customer.satisfaction, greaterThan(0.5));
+
+    expect(game.hireStaff(StaffRole.manager), isTrue);
+    final coinsBeforeManagerWork = game.coins;
+    _advance(game, 1.3);
+    expect(game.coins, greaterThan(coinsBeforeManagerWork));
   });
 
   test(
