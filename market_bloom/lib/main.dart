@@ -1,3 +1,4 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -8,9 +9,9 @@ import 'services/app_localizations.dart';
 import 'services/app_settings.dart';
 import 'services/game_storage.dart';
 import 'services/monetization_service.dart';
+import 'services/app_localizations_delegate.dart';
 import 'ui/app_shell.dart';
 import 'ui/splash_screen.dart';
-import 'services/app_localizations_delegate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -96,12 +97,18 @@ class PoMarketApp extends StatelessWidget {
       animation: settings,
       builder: (context, _) {
         final locale = settings.language;
+
         return MaterialApp(
           title: 'PoMarket',
           debugShowCheckedModeBanner: false,
           locale: locale,
           supportedLocales: AppLocalizations.supportedLocales,
-          localizationsDelegates: [AppLocalizationsDelegate()],
+          localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            AppLocalizationsDelegate(),
+          ],
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(
               seedColor: seed,

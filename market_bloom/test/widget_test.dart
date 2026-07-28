@@ -325,4 +325,159 @@ void main() {
     expect(find.text('PLAY TIME'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'NavigationRail renders with MaterialLocalizations on wide viewports',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = GameController(
+        storage: MemoryGameStorage(),
+        monetization: PreviewMonetizationService(),
+      );
+      await controller.initialize();
+      controller.completeOnboarding();
+      controller.acknowledgeDailyBonus();
+
+      await tester.pumpWidget(
+        PoMarketApp(
+          controller: controller,
+          settings: _testSettings(),
+          showSplash: false,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(
+        MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('NavigationRail renders with MaterialLocalizations in English', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final settings = AppSettings(preferences: _MockSharedPrefs());
+    await settings.load();
+    await settings.setLanguage(const Locale('en'));
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: settings,
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.text('Market'), findsOneWidget);
+    expect(find.text('Upgrades'), findsOneWidget);
+    expect(
+      MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('NavigationRail renders with MaterialLocalizations in Hebrew', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final settings = AppSettings(preferences: _MockSharedPrefs());
+    await settings.load();
+    await settings.setLanguage(const Locale('he'));
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: settings,
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.text('שוק'), findsOneWidget);
+    expect(find.text('שדרוגים'), findsOneWidget);
+    expect(
+      MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('NavigationRail renders with MaterialLocalizations in Arabic', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final settings = AppSettings(preferences: _MockSharedPrefs());
+    await settings.load();
+    await settings.setLanguage(const Locale('ar'));
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: settings,
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.text('السوق'), findsOneWidget);
+    expect(find.text('التحديثات'), findsOneWidget);
+    expect(
+      MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
