@@ -20,6 +20,37 @@ class QuestsScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              _MissionCard(
+                title: loc.shiftMission,
+                objective: loc.serveFiveCustomers,
+                progress: controller.shiftMissionProgress,
+                target: controller.shiftMissionTarget,
+                reward: 20,
+                completed: controller.shiftMissionCompleted,
+                claimed: controller.shiftMissionClaimed,
+                onClaim: controller.claimShiftMission,
+                loc: loc,
+              ),
+              _MissionCard(
+                title: loc.dailyMission,
+                objective: loc.keepCustomersHappy,
+                progress: controller.dailyMissionCompleted ? 1 : 0,
+                target: 1,
+                reward: 15,
+                completed: controller.dailyMissionCompleted,
+                claimed: controller.dailyMissionClaimed,
+                onClaim: controller.claimDailyMission,
+                loc: loc,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  loc.progressionMission,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
@@ -127,6 +158,79 @@ class QuestsScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _MissionCard extends StatelessWidget {
+  const _MissionCard({
+    required this.title,
+    required this.objective,
+    required this.progress,
+    required this.target,
+    required this.reward,
+    required this.completed,
+    required this.claimed,
+    required this.onClaim,
+    required this.loc,
+  });
+
+  final String title;
+  final String objective;
+  final int progress;
+  final int target;
+  final int reward;
+  final bool completed;
+  final bool claimed;
+  final bool Function() onClaim;
+  final AppLocalizations loc;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = claimed ? loc.claimed : loc.active;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+                Text(
+                  state,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: completed ? Colors.green : null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(objective),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: (progress / target).clamp(0, 1)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$progress/$target · ${loc.missionReward} $reward',
+                  ),
+                ),
+                if (completed && !claimed)
+                  TextButton(onPressed: onClaim, child: Text(loc.claimMission)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

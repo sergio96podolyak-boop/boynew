@@ -65,6 +65,19 @@ class GameController extends ChangeNotifier {
   bool onboardingComplete = false;
   bool _tutorialReplayRequested = false;
 
+  static const shiftDurationSeconds = 90.0;
+  static const shiftPreparationSeconds = 8.0;
+  static const shiftRushStartSeconds = 42.0;
+  static const shiftClosingStartSeconds = 76.0;
+  int shiftNumber = 1;
+  double shiftElapsedSeconds = 0;
+  int shiftSales = 0;
+  int shiftRevenue = 0;
+  int shiftMissedSales = 0;
+  bool shiftMissionClaimed = false;
+  DateTime? _dailyMissionClaimedOn;
+  ShiftSummary? pendingShiftSummary;
+
   bool initialized = false;
   bool paused = false;
   bool rewardInProgress = false;
@@ -179,6 +192,55 @@ class GameController extends ChangeNotifier {
     0.85,
     3.2 - storeLevel * 0.12 - staffProductivity(StaffRole.promoter) * 0.15,
   );
+  ShiftPhase get shiftPhase {
+    if (pendingShiftSummary != null) {
+      return ShiftPhase.summary;
+    }
+    if (shiftElapsedSeconds < shiftPreparationSeconds) {
+      return ShiftPhase.preparation;
+    }
+    if (shiftElapsedSeconds < shiftRushStartSeconds) {
+      return ShiftPhase.open;
+    }
+    if (shiftElapsedSeconds < shiftClosingStartSeconds) {
+      return ShiftPhase.rush;
+    }
+    return ShiftPhase.closing;
+  }
+
+  bool get rushActive => shiftPhase == ShiftPhase.rush;
+
+  int get shiftMissionTarget => 5;
+  int get shiftMissionProgress => min(shiftMissionTarget, shiftSales);
+  bool get shiftMissionCompleted => shiftSales >= shiftMissionTarget;
+  bool get dailyMissionCompleted =>
+      totalSales > 0 && averageCustomerSatisfaction >= 0.8;
+  bool get dailyMissionClaimed =>
+      _dailyMissionClaimedOn != null &&
+      _sameCalendarDay(_dailyMissionClaimedOn!, _now());
+
+  double get shiftProgress =>
+      (shiftElapsedSeconds / shiftDurationSeconds).clamp(0, 1);
+
+  double get averageCustomerSatisfaction {
+    if (customers.isEmpty) {
+      return 1;
+    }
+    return customers.fold<double>(
+          0,
+          (total, customer) => total + customer.satisfaction,
+        ) /
+        customers.length;
+  }
+
+  List<MarketCustomer> get checkoutQueue =>
+      List<MarketCustomer>.unmodifiable(_checkoutQueue);
+
+  List<Offset> get checkoutQueueSlots => List<Offset>.generate(
+    _checkoutQueue.length,
+    (index) => checkoutZone + Offset(-0.03, 0.10 + index * 0.085),
+    growable: false,
+  );
   bool get hasPendingGeneralDelivery => _pendingDeliveries.any(
     (delivery) => delivery.category.toLowerCase() == 'general',
   );
@@ -272,6 +334,17 @@ class GameController extends ChangeNotifier {
     final level = max(1, _departmentFor(type)?.level ?? 1);
     return itemPrice + (definition?.priceBonus ?? 0) + max(0, level - 1) * 2;
   }
+
+  double departmentDemand(DepartmentType type) {
+    final level = max(1, _departmentFor(type)?.level ?? 1);
+    return (1.04 - max(0, priceLevel - 1) * 0.055 + (level - 1) * 0.012).clamp(
+      0.55,
+      1.08,
+    );
+  }
+
+  int departmentEstimatedProfit(DepartmentType type) =>
+      max(1, departmentItemPrice(type) - 2 - max(0, priceLevel - 1));
 
   int departmentUpgradeCost(DepartmentType type) {
     final definition = DepartmentCatalog.find(type);
@@ -535,13 +608,14 @@ class GameController extends ChangeNotifier {
     final safeDt = min(dt, 0.05);
     final actionsBefore = totalActions;
     final salesBefore = totalSales;
+    _updateShift(safeDt);
     _updatePlayer(safeDt);
     _updateStations(safeDt);
     _updateCustomers(safeDt);
     totalPlaySeconds += safeDt;
     _dirty = true;
 
-    _customerSpawnTimer -= safeDt;
+    _customerSpawnTimer -= safeDt * (rushActive ? 1.35 : 1);
     if (_customerSpawnTimer <= 0 && customers.length < customerCapacity) {
       _spawnCustomer();
       _customerSpawnTimer = customerSpawnInterval;
@@ -563,6 +637,65 @@ class GameController extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  void _updateShift(double dt) {
+    if (pendingShiftSummary != null) {
+      return;
+    }
+    shiftElapsedSeconds = min(shiftDurationSeconds, shiftElapsedSeconds + dt);
+    if (shiftElapsedSeconds >= shiftDurationSeconds) {
+      pendingShiftSummary = ShiftSummary(
+        shiftNumber: shiftNumber,
+        sales: shiftSales,
+        revenue: shiftRevenue,
+        missedSales: shiftMissedSales,
+        satisfaction: averageCustomerSatisfaction,
+        xp: shiftSales * 2 + max(0, 10 - shiftMissedSales),
+        stockRemaining: totalShelfInventory + totalStoredInventory,
+      );
+      paused = true;
+      _markDirty(immediate: true);
+    }
+  }
+
+  void startNextShift() {
+    shiftNumber++;
+    shiftElapsedSeconds = 0;
+    shiftSales = 0;
+    shiftRevenue = 0;
+    shiftMissedSales = 0;
+    shiftMissionClaimed = false;
+    pendingShiftSummary = null;
+    paused = false;
+    _markDirty(immediate: true);
+    notifyListeners();
+  }
+
+  bool claimShiftMission() {
+    if (!shiftMissionCompleted || shiftMissionClaimed) {
+      return false;
+    }
+    shiftMissionClaimed = true;
+    coins += 20;
+    totalCoinsEarned += 20;
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    notifyListeners();
+    return true;
+  }
+
+  bool claimDailyMission() {
+    if (!dailyMissionCompleted || dailyMissionClaimed) {
+      return false;
+    }
+    _dailyMissionClaimedOn = _now();
+    coins += 15;
+    totalCoinsEarned += 15;
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    notifyListeners();
+    return true;
   }
 
   void _updatePlayer(double dt) {
@@ -897,7 +1030,7 @@ class GameController extends ChangeNotifier {
               ? queueIndex
               : _checkoutQueue.length;
           final queueTarget =
-              checkoutZone + Offset(-0.03, 0.10 + effectiveIndex * 0.075);
+              checkoutZone + Offset(-0.03, 0.10 + effectiveIndex * 0.085);
           _moveCustomer(customer, queueTarget, dt);
 
           if (queueIndex == 0 &&
@@ -920,6 +1053,8 @@ class GameController extends ChangeNotifier {
             coins += saleValue;
             totalCoinsEarned += saleValue;
             totalSales++;
+            shiftSales++;
+            shiftRevenue += saleValue;
             totalActions++;
             customer.phase = CustomerPhase.leaving;
             customer.phaseTime = 0;
@@ -977,6 +1112,7 @@ class GameController extends ChangeNotifier {
         ..emotion = 'worried';
       if (customer.phaseTime >= 1.4) {
         customer.missedItems++;
+        shiftMissedSales++;
         customer.shoppingIndex++;
         customer.phaseTime = 0;
         if (customer.currentDepartment == null) {
@@ -1716,7 +1852,7 @@ class GameController extends ChangeNotifier {
 
   Map<String, dynamic> _saveSnapshot() {
     return <String, dynamic>{
-      'version': 6,
+      'version': 7,
       'savedAt': _now().toIso8601String(),
       'coins': coins,
       'gems': gems,
@@ -1731,6 +1867,13 @@ class GameController extends ChangeNotifier {
       'stockerLoad': _stockerLoad,
       'stockerDepartment': _stockerDepartment?.name,
       'totalSales': totalSales,
+      'shiftNumber': shiftNumber,
+      'shiftElapsedSeconds': shiftElapsedSeconds,
+      'shiftSales': shiftSales,
+      'shiftRevenue': shiftRevenue,
+      'shiftMissedSales': shiftMissedSales,
+      'shiftMissionClaimed': shiftMissionClaimed,
+      'dailyMissionClaimedOn': _dailyMissionClaimedOn?.toIso8601String(),
       'totalCoinsEarned': totalCoinsEarned,
       'stockedTotal': stockedTotal,
       'upgradesBought': upgradesBought,
@@ -2038,6 +2181,24 @@ class GameController extends ChangeNotifier {
       saved['stockerDepartment'],
     );
     totalSales = _readIntAny(saved, const ['totalSales', 'sales'], 0);
+    shiftNumber = _readIntAny(saved, const ['shiftNumber'], 1, minimum: 1);
+    shiftElapsedSeconds = _readDoubleAny(saved, const [
+      'shiftElapsedSeconds',
+    ], 0).clamp(0, shiftDurationSeconds);
+    shiftSales = _readIntAny(saved, const ['shiftSales'], 0, minimum: 0);
+    shiftRevenue = _readIntAny(saved, const ['shiftRevenue'], 0, minimum: 0);
+    shiftMissedSales = _readIntAny(
+      saved,
+      const ['shiftMissedSales'],
+      0,
+      minimum: 0,
+    );
+    shiftMissionClaimed = _readBoolAny(saved, const [
+      'shiftMissionClaimed',
+    ], false);
+    _dailyMissionClaimedOn = _readDateAny(saved, const [
+      'dailyMissionClaimedOn',
+    ]);
     totalCoinsEarned = _readIntAny(saved, const [
       'totalCoinsEarned',
       'coinsEarned',

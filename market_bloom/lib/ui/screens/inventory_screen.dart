@@ -342,6 +342,27 @@ class _CategoryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _InfoChip(
+                label: loc.demand,
+                value:
+                    '${(controller.departmentDemand(definition.type) * 100).round()}%',
+              ),
+              _InfoChip(
+                label: loc.sellingPrice,
+                value: '${controller.departmentItemPrice(definition.type)}',
+              ),
+              _InfoChip(
+                label: loc.estimatedProfit,
+                value:
+                    '${controller.departmentEstimatedProfit(definition.type)}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -385,6 +406,28 @@ class _CategoryCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$label $value',
+        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
       ),
     );
   }

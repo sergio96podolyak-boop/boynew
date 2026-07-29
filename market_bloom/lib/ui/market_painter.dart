@@ -635,13 +635,7 @@ class MarketPainter extends CustomPainter {
 
   void _drawQueueGuide(Canvas canvas, Rect market) {
     final checkoutCenter = _point(market, GameController.checkoutZone);
-    final queueCustomers = game.customers
-        .where(
-          (customer) =>
-              customer.phase == CustomerPhase.checkout ||
-              customer.phase == CustomerPhase.paying,
-        )
-        .toList();
+    final queueCustomers = game.checkoutQueue;
     if (queueCustomers.isEmpty) {
       return;
     }
@@ -1537,12 +1531,13 @@ class MarketPainter extends CustomPainter {
     final center = _point(market, zone);
     final active = (game.playerPosition - zone).distance <= radius;
     final pulse = active ? 0.55 + sin(animationTime * 4) * 0.12 : 0.35;
-    final ringRadius = min(market.width, market.height) * radius;
+    final ringRadius =
+        min(market.width, market.height) * min(radius * 0.58, 0.075);
     canvas.drawCircle(
       center,
       ringRadius,
       Paint()
-        ..color = active ? const Color(0x3338B879) : const Color(0x0F315F4A)
+        ..color = active ? const Color(0x2238B879) : const Color(0x08315F4A)
         ..style = PaintingStyle.fill,
     );
     if (active) {

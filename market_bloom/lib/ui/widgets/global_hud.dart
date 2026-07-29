@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../game/game_controller.dart';
+import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
 import '../../services/app_settings.dart';
 
@@ -29,6 +30,7 @@ class GlobalHud extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxWidth < 360;
+            final tight = constraints.maxWidth < 430;
             final showSubtitle = constraints.maxWidth >= 350;
 
             return AnimatedBuilder(
@@ -131,6 +133,8 @@ class GlobalHud extends StatelessWidget {
                             compact: compact,
                             reducedMotion: reducedMotion,
                           ),
+                          SizedBox(width: compact ? 3 : 6),
+                          _ShiftPill(game: game, loc: loc, compact: tight),
                           if (game.shelfStock < 3) ...[
                             SizedBox(width: compact ? 3 : 5),
                             Tooltip(
@@ -229,6 +233,92 @@ class _HudPill extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ShiftPill extends StatelessWidget {
+  const _ShiftPill({
+    required this.game,
+    required this.loc,
+    required this.compact,
+  });
+
+  final GameController game;
+  final AppLocalizations loc;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final phase = switch (game.shiftPhase) {
+      ShiftPhase.preparation => loc.shiftPreparation,
+      ShiftPhase.open => loc.shiftOpen,
+      ShiftPhase.rush => loc.rushHour,
+      ShiftPhase.closing => loc.shiftClosing,
+      ShiftPhase.summary => loc.shiftSummary,
+    };
+    final rush = game.rushActive;
+    if (compact) {
+      return Semantics(
+        label: '${loc.shift} ${game.shiftNumber}, $phase',
+        child: Tooltip(
+          message: phase,
+          child: Icon(
+            rush ? Icons.local_fire_department_rounded : Icons.schedule_rounded,
+            color: rush ? const Color(0xFFFF8FA0) : const Color(0xFF65D7A5),
+            size: 18,
+          ),
+        ),
+      );
+    }
+    return Semantics(
+      label: '${loc.shift} ${game.shiftNumber}, $phase',
+      child: Container(
+        constraints: BoxConstraints(minWidth: compact ? 40 : 54),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 4 : 7,
+          vertical: compact ? 4 : 5,
+        ),
+        decoration: BoxDecoration(
+          color: (rush ? const Color(0xFFE85D75) : const Color(0xFF2B9C73))
+              .withValues(alpha: 0.22),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: rush ? const Color(0xFFFF8FA0) : const Color(0xFF65D7A5),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${loc.shift} ${game.shiftNumber}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: compact ? 7 : 8,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 3),
+            SizedBox(
+              width: compact ? 32 : 40,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: game.shiftProgress,
+                  minHeight: compact ? 3 : 4,
+                  color: rush
+                      ? const Color(0xFFFF8FA0)
+                      : const Color(0xFF65D7A5),
+                  backgroundColor: Colors.white.withValues(alpha: 0.18),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

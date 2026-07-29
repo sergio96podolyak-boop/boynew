@@ -601,11 +601,71 @@ class AppLocalizations {
 
   String get customers => _t('customers');
 
+  String get sales => _t('sales');
+
+  String get demand => _t('demand');
+
+  String get sellingPrice => _t('sellingPrice');
+
+  String get estimatedProfit => _t('estimatedProfit');
+
+  String get shift => _t('shift');
+
+  String get shiftPreparation => _t('shiftPreparation');
+
+  String get shiftOpen => _t('shiftOpen');
+
+  String get rushHour => _t('rushHour');
+
+  String get shiftClosing => _t('shiftClosing');
+
+  String get currentEarnings => _t('currentEarnings');
+
+  String get satisfaction => _t('satisfaction');
+
+  String get nextRush => _t('nextRush');
+
+  String get shiftSummary => _t('shiftSummary');
+
+  String get revenue => _t('revenue');
+
+  String get missedSales => _t('missedSales');
+
+  String get stockRemaining => _t('stockRemaining');
+
+  String get shiftXp => _t('shiftXp');
+
+  String get continueShift => _t('continueShift');
+
+  String get upgradeNow => _t('upgradeNow');
+
+  String get shiftMission => _t('shiftMission');
+
+  String get dailyMission => _t('dailyMission');
+
+  String get progressionMission => _t('progressionMission');
+
+  String get serveFiveCustomers => _t('serveFiveCustomers');
+
+  String get keepCustomersHappy => _t('keepCustomersHappy');
+
+  String get active => _t('active');
+
+  String get claimed => _t('claimed');
+
+  String get missionReward => _t('missionReward');
+
+  String get claimMission => _t('claimMission');
+
   String get itemsStocked => _t('itemsStocked');
 
   String get upgradesCount => _t("upgradesCount");
 
   String get achievementUnlocked => _t('achievementUnlocked');
+
+  String achievementTitle(String id) => _t('achievementTitle_$id');
+
+  String achievementDescription(String id) => _t('achievementDescription_$id');
 
   String get levelLabel => _t('levelLabel');
 
@@ -841,6 +901,24 @@ class AppLocalizations {
     'questInProgress': 'In Progress',
     'noActiveQuest': 'No active quest',
     'achievementsTitle': 'Achievements',
+    'achievementTitle_first_sale': 'First Checkout',
+    'achievementDescription_first_sale': 'Complete your first customer sale.',
+    'achievementTitle_shelf_starter': 'Shelf Starter',
+    'achievementDescription_shelf_starter':
+        'Stock 25 products on your shelves.',
+    'achievementTitle_bustling_market': 'Bustling Market',
+    'achievementDescription_bustling_market': 'Serve 50 happy customers.',
+    'achievementTitle_coin_club': 'Coin Club',
+    'achievementDescription_coin_club':
+        'Earn 1,000 coins across your business.',
+    'achievementTitle_upgrade_pro': 'Upgrade Pro',
+    'achievementDescription_upgrade_pro': 'Purchase 10 business upgrades.',
+    'achievementTitle_growing_business': 'Growing Business',
+    'achievementDescription_growing_business': 'Reach store level 5.',
+    'achievementTitle_streak_starter': 'Streak Starter',
+    'achievementDescription_streak_starter': 'Open PoMarket 3 days in a row.',
+    'achievementTitle_market_mogul': 'Market Mogul',
+    'achievementDescription_market_mogul': 'Hold a balance of 5,000 coins.',
     'badgesUnlocked': 'badges unlocked',
     'unlockedLabel': 'UNLOCKED',
     'bronze': 'Bronze',
@@ -954,6 +1032,34 @@ class AppLocalizations {
     'bestBalance': 'BEST BALANCE',
     'highScore': 'HIGH SCORE',
     'customers': 'CUSTOMERS',
+    'sales': 'SALES',
+    'demand': 'Demand',
+    'sellingPrice': 'Price',
+    'estimatedProfit': 'Profit',
+    'shift': 'SHIFT',
+    'shiftPreparation': 'Preparation',
+    'shiftOpen': 'Open',
+    'rushHour': 'Rush hour',
+    'shiftClosing': 'Closing soon',
+    'currentEarnings': 'Earnings',
+    'satisfaction': 'Satisfaction',
+    'nextRush': 'Rush in {seconds}s',
+    'shiftSummary': 'Shift {shift} complete',
+    'revenue': 'Revenue',
+    'missedSales': 'Missed sales',
+    'stockRemaining': 'Stock remaining',
+    'shiftXp': 'XP earned',
+    'continueShift': 'Continue shift',
+    'upgradeNow': 'Upgrade now',
+    'shiftMission': 'Shift mission',
+    'dailyMission': 'Daily mission',
+    'progressionMission': 'Progression mission',
+    'serveFiveCustomers': 'Serve five customers this shift',
+    'keepCustomersHappy': 'Keep customers at 80% satisfaction',
+    'active': 'Active',
+    'claimed': 'Claimed',
+    'missionReward': 'Reward',
+    'claimMission': 'Claim mission',
     'itemsStocked': 'ITEMS STOCKED',
     'upgradesCount': 'UPGRADES',
     'achievementUnlocked': 'ACHIEVEMENT UNLOCKED',
@@ -1157,6 +1263,23 @@ class AppLocalizations {
     'questInProgress': 'בתהליך',
     'noActiveQuest': 'אין משימה פעילה',
     'achievementsTitle': 'הישגים',
+    'achievementTitle_first_sale': 'קופה ראשונה',
+    'achievementDescription_first_sale': 'השלם מכירה ראשונה ללקוח.',
+    'achievementTitle_shelf_starter': 'מדף ראשון',
+    'achievementDescription_shelf_starter': 'הנח 25 מוצרים על המדפים.',
+    'achievementTitle_bustling_market': 'שוק שוקק',
+    'achievementDescription_bustling_market': 'שרת 50 לקוחות מרוצים.',
+    'achievementTitle_coin_club': 'מועדון המטבעות',
+    'achievementDescription_coin_club': 'צבור 1,000 מטבעות בעסק.',
+    'achievementTitle_upgrade_pro': 'מומחה שדרוגים',
+    'achievementDescription_upgrade_pro': 'רכוש 10 שדרוגים עסקיים.',
+    'achievementTitle_growing_business': 'עסק בצמיחה',
+    'achievementDescription_growing_business': 'הגע לרמת חנות 5.',
+    'achievementTitle_streak_starter': 'רצף ראשון',
+    'achievementDescription_streak_starter':
+        'פתח את PoMarket במשך 3 ימים ברצף.',
+    'achievementTitle_market_mogul': 'איל השוק',
+    'achievementDescription_market_mogul': 'החזק יתרה של 5,000 מטבעות.',
     'badgesUnlocked': 'הישגים נפתחו',
     'unlockedLabel': 'נפתח',
     'bronze': 'ארד',
@@ -1266,6 +1389,34 @@ class AppLocalizations {
     'bestBalance': 'מאזן מרבי',
     'highScore': 'ניקוד גבוה',
     'customers': 'לקוחות',
+    'sales': 'מכירות',
+    'demand': 'ביקוש',
+    'sellingPrice': 'מחיר',
+    'estimatedProfit': 'רווח',
+    'shift': 'משמרת',
+    'shiftPreparation': 'הכנה',
+    'shiftOpen': 'פתוחה',
+    'rushHour': 'שעת עומס',
+    'shiftClosing': 'נסגרת בקרוב',
+    'currentEarnings': 'הכנסות',
+    'satisfaction': 'שביעות רצון',
+    'nextRush': 'עומס בעוד {seconds} שניות',
+    'shiftSummary': 'משמרת {shift} הסתיימה',
+    'revenue': 'הכנסות',
+    'missedSales': 'מכירות שהוחמצו',
+    'stockRemaining': 'מלאי שנותר',
+    'shiftXp': 'ניסיון שנצבר',
+    'continueShift': 'המשך משמרת',
+    'upgradeNow': 'שדרג עכשיו',
+    'shiftMission': 'משימת משמרת',
+    'dailyMission': 'משימה יומית',
+    'progressionMission': 'משימת התקדמות',
+    'serveFiveCustomers': 'שרת חמישה לקוחות במשמרת',
+    'keepCustomersHappy': 'שמור על 80% שביעות רצון',
+    'active': 'פעילה',
+    'claimed': 'נאספה',
+    'missionReward': 'פרס',
+    'claimMission': 'אסוף משימה',
     'itemsStocked': 'פריטים נמוסים',
     'upgradesCount': 'שדרוגים',
     'achievementUnlocked': 'הישג נפתח',
@@ -1470,6 +1621,23 @@ class AppLocalizations {
     'questInProgress': 'قيد التقدم',
     'noActiveQuest': 'لا توجد مهمة نشطة',
     'achievementsTitle': 'الإنجازات',
+    'achievementTitle_first_sale': 'أول عملية بيع',
+    'achievementDescription_first_sale': 'أكمل أول عملية بيع لعميل.',
+    'achievementTitle_shelf_starter': 'رف البداية',
+    'achievementDescription_shelf_starter': 'ضع 25 منتجاً على الرفوف.',
+    'achievementTitle_bustling_market': 'سوق نابض',
+    'achievementDescription_bustling_market': 'اخدم 50 عميلاً سعيداً.',
+    'achievementTitle_coin_club': 'نادي العملات',
+    'achievementDescription_coin_club': 'اكسب 1,000 عملة في متجرك.',
+    'achievementTitle_upgrade_pro': 'محترف التطوير',
+    'achievementDescription_upgrade_pro': 'اشترِ 10 ترقيات للمتجر.',
+    'achievementTitle_growing_business': 'متجر نامٍ',
+    'achievementDescription_growing_business': 'صل إلى مستوى المتجر 5.',
+    'achievementTitle_streak_starter': 'بداية الاستمرارية',
+    'achievementDescription_streak_starter':
+        'افتح PoMarket ثلاثة أيام متتالية.',
+    'achievementTitle_market_mogul': 'قطب السوق',
+    'achievementDescription_market_mogul': 'احتفظ برصيد قدره 5,000 عملة.',
     'badgesUnlocked': 'شارات مفتوحة',
     'unlockedLabel': 'مفتوح',
     'bronze': 'برونزي',
@@ -1580,6 +1748,34 @@ class AppLocalizations {
     'bestBalance': 'أفضل رصيد',
     'highScore': 'أعلى نقاط',
     'customers': 'عملاء',
+    'sales': 'المبيعات',
+    'demand': 'الطلب',
+    'sellingPrice': 'السعر',
+    'estimatedProfit': 'الربح',
+    'shift': 'الوردية',
+    'shiftPreparation': 'التحضير',
+    'shiftOpen': 'مفتوحة',
+    'rushHour': 'ساعة ازدحام',
+    'shiftClosing': 'الإغلاق قريباً',
+    'currentEarnings': 'الأرباح',
+    'satisfaction': 'رضا العملاء',
+    'nextRush': 'الازدحام خلال {seconds} ث',
+    'shiftSummary': 'انتهت الوردية {shift}',
+    'revenue': 'الإيرادات',
+    'missedSales': 'المبيعات الفائتة',
+    'stockRemaining': 'المخزون المتبقي',
+    'shiftXp': 'الخبرة المكتسبة',
+    'continueShift': 'متابعة الوردية',
+    'upgradeNow': 'ترقية الآن',
+    'shiftMission': 'مهمة الوردية',
+    'dailyMission': 'المهمة اليومية',
+    'progressionMission': 'مهمة التقدم',
+    'serveFiveCustomers': 'اخدم خمسة عملاء في هذه الوردية',
+    'keepCustomersHappy': 'حافظ على رضا العملاء عند 80%',
+    'active': 'نشطة',
+    'claimed': 'تم الاستلام',
+    'missionReward': 'المكافأة',
+    'claimMission': 'استلام المهمة',
     'itemsStocked': 'منتجات مضافة',
     'upgradesCount': 'تحديثات',
     'achievementUnlocked': 'إنجاز مفتوح',

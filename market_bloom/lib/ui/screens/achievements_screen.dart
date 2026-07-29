@@ -131,7 +131,7 @@ class _AchievementCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          definition.title,
+                          loc.achievementTitle(definition.id),
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                       ),
@@ -149,7 +149,7 @@ class _AchievementCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    definition.description,
+                    loc.achievementDescription(definition.id),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,

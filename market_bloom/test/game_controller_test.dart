@@ -35,6 +35,52 @@ void main() {
     expect(game.stockedTotal, game.bagCapacity);
   });
 
+  test('shift lifecycle exposes rush, summary, and restart state', () {
+    expect(game.shiftPhase, ShiftPhase.preparation);
+    _advance(game, GameController.shiftRushStartSeconds + 0.1);
+    expect(game.shiftPhase, ShiftPhase.rush);
+    expect(game.rushActive, isTrue);
+
+    _advance(
+      game,
+      GameController.shiftDurationSeconds -
+          GameController.shiftRushStartSeconds,
+    );
+    expect(game.shiftPhase, ShiftPhase.summary);
+    expect(game.pendingShiftSummary, isNotNull);
+    expect(game.paused, isTrue);
+
+    final completedShift = game.shiftNumber;
+    game.startNextShift();
+    expect(game.shiftNumber, completedShift + 1);
+    expect(game.shiftPhase, ShiftPhase.preparation);
+    expect(game.pendingShiftSummary, isNull);
+    expect(game.paused, isFalse);
+  });
+
+  test('checkout queue uses separated FIFO slots', () {
+    for (var index = 0; index < 3; index++) {
+      final customer =
+          MarketCustomer(
+              id: 800 + index,
+              position: GameController.checkoutZone,
+              color: Colors.primaries[index],
+            )
+            ..phase = CustomerPhase.checkout
+            ..hasProduct = true;
+      game.customers.add(customer);
+    }
+    game.debugSetPlayerPosition(GameController.checkoutZone);
+    _advance(game, 0.2);
+
+    expect(game.checkoutQueue, hasLength(3));
+    expect(game.checkoutQueue.map((customer) => customer.id), [800, 801, 802]);
+    final slots = game.checkoutQueueSlots;
+    expect(slots, hasLength(3));
+    expect((slots[1] - slots[0]).distance, greaterThan(0.08));
+    expect((slots[2] - slots[1]).distance, greaterThan(0.08));
+  });
+
   test('stocked shelves create sales and coins when player is at checkout', () {
     game.debugSetPlayerPosition(GameController.stockZone);
     _advance(game, 2.2);

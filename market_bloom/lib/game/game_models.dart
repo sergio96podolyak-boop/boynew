@@ -4,6 +4,29 @@ import 'package:flutter/material.dart';
 
 enum CustomerPhase { entering, shopping, checkout, paying, leaving }
 
+/// Short mobile-friendly operating cycle for the market floor.
+enum ShiftPhase { preparation, open, rush, closing, summary }
+
+class ShiftSummary {
+  const ShiftSummary({
+    required this.shiftNumber,
+    required this.sales,
+    required this.revenue,
+    required this.missedSales,
+    required this.satisfaction,
+    required this.xp,
+    required this.stockRemaining,
+  });
+
+  final int shiftNumber;
+  final int sales;
+  final int revenue;
+  final int missedSales;
+  final double satisfaction;
+  final int xp;
+  final int stockRemaining;
+}
+
 enum CheckoutOperator { player, cashier }
 
 class MarketCustomer {

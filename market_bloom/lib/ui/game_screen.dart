@@ -313,6 +313,17 @@ class _GameScreenState extends State<GameScreen>
                                     onClaim: _claimQuest,
                                   ),
                                 ),
+                                if (game.pendingShiftSummary != null)
+                                  Positioned(
+                                    left: 16,
+                                    right: 16,
+                                    bottom: 12,
+                                    child: _ShiftSummaryCard(
+                                      summary: game.pendingShiftSummary!,
+                                      onContinue: game.startNextShift,
+                                      onUpgrade: _showUpgrades,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -574,6 +585,123 @@ class _GameScreenState extends State<GameScreen>
       ),
     );
     game.acknowledgeDailyBonus();
+  }
+}
+
+class _ShiftSummaryCard extends StatelessWidget {
+  const _ShiftSummaryCard({
+    required this.summary,
+    required this.onContinue,
+    required this.onUpgrade,
+  });
+
+  final ShiftSummary summary;
+  final VoidCallback onContinue;
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    final satisfaction = (summary.satisfaction * 100).round();
+    return Card(
+      elevation: 10,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              loc.shiftSummary.replaceFirst(
+                '{shift}',
+                '${summary.shiftNumber}',
+              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _SummaryMetric(
+                  icon: Icons.point_of_sale_rounded,
+                  label: loc.sales,
+                  value: '${summary.sales}',
+                ),
+                _SummaryMetric(
+                  icon: Icons.monetization_on_rounded,
+                  label: loc.revenue,
+                  value: '${summary.revenue}',
+                ),
+                _SummaryMetric(
+                  icon: Icons.sentiment_satisfied_alt_rounded,
+                  label: loc.satisfaction,
+                  value: '$satisfaction%',
+                ),
+                _SummaryMetric(
+                  icon: Icons.warning_amber_rounded,
+                  label: loc.missedSales,
+                  value: '${summary.missedSales}',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onUpgrade,
+                    child: Text(loc.upgradeNow),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onContinue,
+                    child: Text(loc.continueShift),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 5),
+          Text(
+            '$label $value',
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
   }
 }
 
