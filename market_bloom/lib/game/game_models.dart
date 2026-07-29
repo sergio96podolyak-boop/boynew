@@ -17,7 +17,13 @@ class MarketCustomer {
     this.tipValue = 0,
     this.basketCount = 1,
     this.emotion = 'neutral',
-  });
+    List<DepartmentType>? shoppingList,
+    this.shoppingIndex = 0,
+    this.basketValue = 0,
+    this.missedItems = 0,
+  }) : shoppingList = List<DepartmentType>.of(
+         shoppingList ?? const <DepartmentType>[DepartmentType.generalGoods],
+       );
 
   int id;
   Offset position;
@@ -31,7 +37,16 @@ class MarketCustomer {
   int tipValue;
   int basketCount;
   String emotion;
+  final List<DepartmentType> shoppingList;
+  int shoppingIndex;
+  int basketValue;
+  int missedItems;
   CheckoutOperator? checkoutOperator;
+
+  DepartmentType? get currentDepartment =>
+      shoppingIndex >= 0 && shoppingIndex < shoppingList.length
+      ? shoppingList[shoppingIndex]
+      : null;
 }
 
 enum UpgradeType { bag, shelf, price, speed, checkout, restock }
@@ -186,6 +201,15 @@ class DepartmentDefinition {
     required this.unlockCost,
     required this.icon,
     required this.color,
+    required this.category,
+    required this.emoji,
+    required this.displayZone,
+    required this.baseShelfCapacity,
+    required this.starterShelfStock,
+    required this.starterStorageStock,
+    required this.orderQuantity,
+    required this.orderCost,
+    required this.priceBonus,
     this.autoUnlock = false,
   });
 
@@ -196,15 +220,32 @@ class DepartmentDefinition {
   final int unlockCost;
   final IconData icon;
   final Color color;
+  final String category;
+  final String emoji;
+  final Offset displayZone;
+  final int baseShelfCapacity;
+  final int starterShelfStock;
+  final int starterStorageStock;
+  final int orderQuantity;
+  final int orderCost;
+  final int priceBonus;
   final bool autoUnlock;
 }
 
 class DepartmentState {
-  DepartmentState({required this.type, this.level = 0, this.unlocked = false});
+  DepartmentState({
+    required this.type,
+    this.level = 0,
+    this.unlocked = false,
+    this.activated = false,
+    this.itemsSold = 0,
+  });
 
   final DepartmentType type;
   int level;
   bool unlocked;
+  bool activated;
+  int itemsSold;
 }
 
 class InventoryDelivery {
@@ -287,6 +328,15 @@ abstract final class DepartmentCatalog {
       unlockCost: 0,
       icon: Icons.storefront_rounded,
       color: Color(0xFF5B8DEF),
+      category: 'General',
+      emoji: '🛒',
+      displayZone: Offset(0.35, 0.51),
+      baseShelfCapacity: 6,
+      starterShelfStock: 0,
+      starterStorageStock: GameBalance.starterStorageStock,
+      orderQuantity: GameBalance.quickRestockQuantity,
+      orderCost: GameBalance.quickRestockCost,
+      priceBonus: 0,
       autoUnlock: true,
     ),
     DepartmentDefinition(
@@ -297,6 +347,15 @@ abstract final class DepartmentCatalog {
       unlockCost: 0,
       icon: Icons.bakery_dining_rounded,
       color: Color(0xFFF6A623),
+      category: 'Bakery',
+      emoji: '🥐',
+      displayZone: Offset(0.79, 0.63),
+      baseShelfCapacity: 5,
+      starterShelfStock: 0,
+      starterStorageStock: 0,
+      orderQuantity: 4,
+      orderCost: 34,
+      priceBonus: 2,
       autoUnlock: true,
     ),
     DepartmentDefinition(
@@ -307,6 +366,15 @@ abstract final class DepartmentCatalog {
       unlockCost: 400,
       icon: Icons.eco_rounded,
       color: Color(0xFF43AA8B),
+      category: 'Produce',
+      emoji: '🥬',
+      displayZone: Offset(0.59, 0.51),
+      baseShelfCapacity: 6,
+      starterShelfStock: 2,
+      starterStorageStock: 6,
+      orderQuantity: 6,
+      orderCost: 45,
+      priceBonus: 3,
     ),
     DepartmentDefinition(
       type: DepartmentType.refrigerated,
@@ -316,6 +384,15 @@ abstract final class DepartmentCatalog {
       unlockCost: 600,
       icon: Icons.ac_unit_rounded,
       color: Color(0xFF3F88C5),
+      category: 'Refrigerated',
+      emoji: '🥛',
+      displayZone: Offset(0.19, 0.29),
+      baseShelfCapacity: 6,
+      starterShelfStock: 2,
+      starterStorageStock: 6,
+      orderQuantity: 6,
+      orderCost: 60,
+      priceBonus: 5,
     ),
     DepartmentDefinition(
       type: DepartmentType.beauty,
@@ -325,6 +402,15 @@ abstract final class DepartmentCatalog {
       unlockCost: 800,
       icon: Icons.spa_rounded,
       color: Color(0xFFE85D75),
+      category: 'Beauty',
+      emoji: '🧴',
+      displayZone: Offset(0.43, 0.27),
+      baseShelfCapacity: 5,
+      starterShelfStock: 2,
+      starterStorageStock: 5,
+      orderQuantity: 5,
+      orderCost: 76,
+      priceBonus: 8,
     ),
     DepartmentDefinition(
       type: DepartmentType.electronics,
@@ -334,6 +420,15 @@ abstract final class DepartmentCatalog {
       unlockCost: 1000,
       icon: Icons.devices_rounded,
       color: Color(0xFF8B66D8),
+      category: 'Electronics',
+      emoji: '🎧',
+      displayZone: Offset(0.79, 0.47),
+      baseShelfCapacity: 4,
+      starterShelfStock: 1,
+      starterStorageStock: 4,
+      orderQuantity: 4,
+      orderCost: 100,
+      priceBonus: 12,
     ),
   ];
 

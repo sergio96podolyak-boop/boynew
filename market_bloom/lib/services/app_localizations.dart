@@ -223,6 +223,40 @@ class AppLocalizations {
 
   String get departmentsTitle => _t('departmentsTitle');
 
+  String get departmentOperations => _t('departmentOperations');
+
+  String get departmentOperationsSubtitle => _t('departmentOperationsSubtitle');
+
+  String get departmentMilestones => _t('departmentMilestones');
+
+  String get activeDepartments => _t('activeDepartments');
+
+  String get floorStock => _t('floorStock');
+
+  String get salesBoost => _t('salesBoost');
+
+  String get liveInStore => _t('liveInStore');
+
+  String get warehouseStock => _t('warehouseStock');
+
+  String get profitPerItem => _t('profitPerItem');
+
+  String get itemsSold => _t('itemsSold');
+
+  String get upgradeDepartment => _t('upgradeDepartment');
+
+  String get prepareCrate => _t('prepareCrate');
+
+  String get crateSelected => _t('crateSelected');
+
+  String get orderCategoryStock => _t('orderCategoryStock');
+
+  String get deliveryInTransit => _t('deliveryInTransit');
+
+  String get starterStockAdded => _t('starterStockAdded');
+
+  String get departmentUpgraded => _t('departmentUpgraded');
+
   String get unlocked => _t('unlocked');
 
   String get locked => _t('locked');
@@ -732,6 +766,24 @@ class AppLocalizations {
     'roleUnlockAtLevel': 'Role unlocks at store level {level}',
     'workerRoute': 'Live route: storage → shelf',
     'departmentsTitle': 'Departments',
+    'departmentOperations': 'Live Department Hub',
+    'departmentOperationsSubtitle':
+        'Every unlocked department appears on the market floor with its own stock, demand, and profit.',
+    'departmentMilestones': 'Build your modern market',
+    'activeDepartments': 'Active',
+    'floorStock': 'Floor stock',
+    'salesBoost': 'Value boost',
+    'liveInStore': 'LIVE IN STORE',
+    'warehouseStock': 'Warehouse',
+    'profitPerItem': 'Value',
+    'itemsSold': 'Sold',
+    'upgradeDepartment': 'Upgrade',
+    'prepareCrate': 'Prepare crate',
+    'crateSelected': 'Crate selected',
+    'orderCategoryStock': 'Order stock',
+    'deliveryInTransit': 'Delivery on the way',
+    'starterStockAdded': 'department opened with starter stock',
+    'departmentUpgraded': 'department upgraded',
     'unlocked': 'Unlocked',
     'locked': 'Locked',
     'unlockAtLevel': 'Unlocks at level {level}',
@@ -1032,6 +1084,24 @@ class AppLocalizations {
     'roleUnlockAtLevel': 'התפקיד נפתח ברמת חנות {level}',
     'workerRoute': 'מסלול חי: מחסן → מדף',
     'departmentsTitle': 'מחלקות',
+    'departmentOperations': 'מרכז מחלקות חי',
+    'departmentOperationsSubtitle':
+        'כל מחלקה שנפתחת מופיעה בחנות עם מלאי, ביקוש ורווח משלה.',
+    'departmentMilestones': 'בונים סופרמרקט מודרני',
+    'activeDepartments': 'פעילות',
+    'floorStock': 'מלאי בחנות',
+    'salesBoost': 'תוספת ערך',
+    'liveInStore': 'פעיל בחנות',
+    'warehouseStock': 'במחסן',
+    'profitPerItem': 'ערך',
+    'itemsSold': 'נמכרו',
+    'upgradeDepartment': 'שדרוג',
+    'prepareCrate': 'הכנת ארגז',
+    'crateSelected': 'הארגז נבחר',
+    'orderCategoryStock': 'הזמנת מלאי',
+    'deliveryInTransit': 'המשלוח בדרך',
+    'starterStockAdded': 'המחלקה נפתחה עם מלאי התחלתי',
+    'departmentUpgraded': 'המחלקה שודרגה',
     'unlocked': 'פתוח',
     'locked': 'נעול',
     'unlockAtLevel': 'נפתח ברמה {level}',
@@ -1326,6 +1396,24 @@ class AppLocalizations {
     'roleUnlockAtLevel': 'يفتح الدور عند مستوى المتجر {level}',
     'workerRoute': 'مسار مباشر: المخزن → الرف',
     'departmentsTitle': 'الأقسام',
+    'departmentOperations': 'مركز الأقسام المباشر',
+    'departmentOperationsSubtitle':
+        'كل قسم مفتوح يظهر داخل المتجر بمخزونه وطلبه وربحه الخاص.',
+    'departmentMilestones': 'ابنِ سوقك الحديث',
+    'activeDepartments': 'نشطة',
+    'floorStock': 'مخزون المتجر',
+    'salesBoost': 'زيادة القيمة',
+    'liveInStore': 'نشط في المتجر',
+    'warehouseStock': 'المخزن',
+    'profitPerItem': 'القيمة',
+    'itemsSold': 'المبيعات',
+    'upgradeDepartment': 'ترقية',
+    'prepareCrate': 'جهّز الصندوق',
+    'crateSelected': 'تم اختيار الصندوق',
+    'orderCategoryStock': 'طلب مخزون',
+    'deliveryInTransit': 'الشحنة في الطريق',
+    'starterStockAdded': 'تم فتح القسم مع مخزون ابتدائي',
+    'departmentUpgraded': 'تمت ترقية القسم',
     'unlocked': 'مفتوح',
     'locked': 'مقفل',
     'unlockAtLevel': 'يفتح عند المستوى {level}',

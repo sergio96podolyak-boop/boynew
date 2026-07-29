@@ -15,6 +15,7 @@ class MarketPainter extends CustomPainter {
     required this.bakeryLabel,
     required this.bakeryReadyLabel,
     required this.bakeryLockedLabel,
+    required this.departmentLabels,
     required this.textDirection,
   });
 
@@ -26,18 +27,22 @@ class MarketPainter extends CustomPainter {
   final String bakeryLabel;
   final String bakeryReadyLabel;
   final String bakeryLockedLabel;
+  final Map<DepartmentType, String> departmentLabels;
   final TextDirection textDirection;
 
   @override
   void paint(Canvas canvas, Size size) {
     final market = Rect.fromLTWH(8, 6, size.width - 16, size.height - 12);
     _drawMarket(canvas, market);
+    _drawAmbientDetails(canvas, market);
     _drawEntrance(canvas, market);
     _drawStockRoom(canvas, market);
     _drawShelf(canvas, market);
+    _drawDepartmentDisplays(canvas, market);
     _drawCheckout(canvas, market);
     _drawExpansion(canvas, market);
     _drawMovementTarget(canvas, market);
+    _drawStockerRoute(canvas, market);
 
     if (game.isStaffHired(StaffRole.cashier)) {
       for (
@@ -143,6 +148,343 @@ class MarketPainter extends CustomPainter {
         ..strokeWidth = 4,
     );
   }
+
+  void _drawAmbientDetails(Canvas canvas, Rect market) {
+    final scale = _sceneScale(market);
+    final header = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: _point(market, const Offset(0.5, 0.105)),
+        width: 158 * scale,
+        height: 28 * scale,
+      ),
+      Radius.circular(11 * scale),
+    );
+    canvas.drawRRect(
+      header.shift(Offset(0, 3 * scale)),
+      Paint()..color = const Color(0x22000000),
+    );
+    canvas.drawRRect(
+      header,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF163F35), Color(0xFF2E8A63)],
+        ).createShader(header.outerRect),
+    );
+    _text(
+      canvas,
+      'PoMarket  •  FRESH & FAST',
+      header.center,
+      color: Colors.white,
+      fontSize: 10 * scale,
+      weight: FontWeight.w900,
+    );
+
+    final lightPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [const Color(0x66FFF2AF), const Color(0x00FFF2AF)],
+      ).createShader(market);
+    for (final x in [0.16, 0.36, 0.64, 0.84]) {
+      final center = _point(market, Offset(x, 0.15));
+      canvas.drawCircle(center, 27 * scale, lightPaint);
+      canvas.drawCircle(
+        center,
+        3.5 * scale,
+        Paint()..color = const Color(0xFFFFE291),
+      );
+    }
+
+    final arrowPaint = Paint()
+      ..color = const Color(0x17315F4A)
+      ..strokeWidth = 2 * scale
+      ..strokeCap = StrokeCap.round;
+    for (var index = 0; index < 5; index++) {
+      final y = 0.38 + index * 0.09;
+      final center = _point(market, Offset(0.50, y));
+      canvas.drawLine(
+        center + Offset(-8 * scale, 0),
+        center + Offset(8 * scale, 0),
+        arrowPaint,
+      );
+      canvas.drawLine(
+        center + Offset(3 * scale, -4 * scale),
+        center + Offset(8 * scale, 0),
+        arrowPaint,
+      );
+      canvas.drawLine(
+        center + Offset(3 * scale, 4 * scale),
+        center + Offset(8 * scale, 0),
+        arrowPaint,
+      );
+    }
+
+    _drawPlanter(canvas, market, const Offset(0.08, 0.16), scale);
+    _drawPlanter(canvas, market, const Offset(0.92, 0.16), scale);
+  }
+
+  void _drawPlanter(Canvas canvas, Rect market, Offset position, double scale) {
+    final center = _point(market, position);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: center + Offset(0, 7 * scale),
+          width: 19 * scale,
+          height: 14 * scale,
+        ),
+        Radius.circular(5 * scale),
+      ),
+      Paint()..color = const Color(0xFFC77B45),
+    );
+    for (final direction in [-1.0, 0.0, 1.0]) {
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: center + Offset(direction * 5 * scale, -3 * scale),
+          width: 9 * scale,
+          height: 17 * scale,
+        ),
+        Paint()..color = const Color(0xFF3A9A68),
+      );
+    }
+  }
+
+  void _drawDepartmentDisplays(Canvas canvas, Rect market) {
+    for (final definition in DepartmentCatalog.all) {
+      if (definition.type == DepartmentType.generalGoods ||
+          !game.isDepartmentUnlocked(definition.type)) {
+        continue;
+      }
+      _drawDepartmentDisplay(canvas, market, definition);
+    }
+  }
+
+  void _drawDepartmentDisplay(
+    Canvas canvas,
+    Rect market,
+    DepartmentDefinition definition,
+  ) {
+    final center = _point(market, definition.displayZone);
+    final scale = _sceneScale(market);
+    final width = 72 * scale;
+    final height = 61 * scale;
+    final stock = game.departmentStock(definition.type);
+    final capacity = game.departmentCapacity(definition.type);
+    final active =
+        (game.playerPosition - definition.displayZone).distance <= 0.13;
+    final pulse = (sin(animationTime * 3 + definition.type.index) + 1) / 2;
+
+    if (active) {
+      canvas.drawCircle(
+        center,
+        41 * scale + pulse * 4 * scale,
+        Paint()
+          ..color = definition.color.withValues(alpha: 0.18)
+          ..style = PaintingStyle.fill,
+      );
+    }
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: center + Offset(4 * scale, 5 * scale),
+          width: width,
+          height: height,
+        ),
+        Radius.circular(14 * scale),
+      ),
+      Paint()..color = const Color(0x21000000),
+    );
+    final body = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: center, width: width, height: height),
+      Radius.circular(14 * scale),
+    );
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(definition.color, Colors.white, 0.34)!,
+            definition.color,
+          ],
+        ).createShader(body.outerRect),
+    );
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..color = Color.lerp(definition.color, Colors.black, 0.28)!
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2 * scale,
+    );
+
+    final canopy = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: center - Offset(0, 23 * scale),
+        width: width * 0.82,
+        height: 13 * scale,
+      ),
+      Radius.circular(6 * scale),
+    );
+    canvas.drawRRect(canopy, Paint()..color = const Color(0xEFFFFFFF));
+    _text(
+      canvas,
+      definition.emoji,
+      center - Offset(0, 22 * scale),
+      fontSize: 12 * scale,
+    );
+
+    _drawDepartmentProducts(
+      canvas,
+      center: center + Offset(0, 5 * scale),
+      definition: definition,
+      count: min(stock, 8),
+      scale: scale,
+    );
+
+    if (stock == 0) {
+      _text(
+        canvas,
+        '!',
+        center + Offset(0, 7 * scale),
+        color: Colors.white,
+        fontSize: 20 * scale,
+        weight: FontWeight.w900,
+      );
+    } else if (definition.type == DepartmentType.produce) {
+      for (var index = 0; index < 3; index++) {
+        final sparkle =
+            center +
+            Offset(
+              (-22 + index * 22) * scale,
+              (-8 + sin(animationTime * 2 + index) * 4) * scale,
+            );
+        canvas.drawCircle(
+          sparkle,
+          (1.2 + pulse) * scale,
+          Paint()..color = const Color(0xDDFFF2A8),
+        );
+      }
+    }
+
+    final label = departmentLabels[definition.type] ?? definition.name;
+    _stationLabel(
+      canvas,
+      center + Offset(0, 43 * scale),
+      '$label $stock/$capacity',
+    );
+  }
+
+  void _drawDepartmentProducts(
+    Canvas canvas, {
+    required Offset center,
+    required DepartmentDefinition definition,
+    required int count,
+    required double scale,
+  }) {
+    for (var index = 0; index < count; index++) {
+      final row = index ~/ 4;
+      final column = index % 4;
+      final productCenter =
+          center + Offset((-20 + column * 13) * scale, (-6 + row * 15) * scale);
+      switch (definition.type) {
+        case DepartmentType.produce:
+          canvas.drawCircle(
+            productCenter,
+            5 * scale,
+            Paint()
+              ..color = index.isEven
+                  ? const Color(0xFF76C94F)
+                  : const Color(0xFFEF604F),
+          );
+          canvas.drawLine(
+            productCenter - Offset(0, 4 * scale),
+            productCenter - Offset(-2 * scale, 8 * scale),
+            Paint()
+              ..color = const Color(0xFF2F7A43)
+              ..strokeWidth = 1.4 * scale,
+          );
+          break;
+        case DepartmentType.refrigerated:
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(
+                center: productCenter,
+                width: 8 * scale,
+                height: 12 * scale,
+              ),
+              Radius.circular(2 * scale),
+            ),
+            Paint()..color = const Color(0xFFEAF8FF),
+          );
+          canvas.drawRect(
+            Rect.fromCenter(
+              center: productCenter - Offset(0, 3 * scale),
+              width: 8 * scale,
+              height: 3 * scale,
+            ),
+            Paint()..color = const Color(0xFF69B8E7),
+          );
+          break;
+        case DepartmentType.beauty:
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(
+                center: productCenter,
+                width: 7 * scale,
+                height: 13 * scale,
+              ),
+              Radius.circular(3 * scale),
+            ),
+            Paint()
+              ..color = index.isEven
+                  ? const Color(0xFFFFE0EA)
+                  : const Color(0xFFF6C4FF),
+          );
+          canvas.drawRect(
+            Rect.fromCenter(
+              center: productCenter - Offset(0, 7 * scale),
+              width: 4 * scale,
+              height: 3 * scale,
+            ),
+            Paint()..color = const Color(0xFF67546C),
+          );
+          break;
+        case DepartmentType.electronics:
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(
+                center: productCenter,
+                width: 11 * scale,
+                height: 9 * scale,
+              ),
+              Radius.circular(2 * scale),
+            ),
+            Paint()..color = const Color(0xFF26344F),
+          );
+          canvas.drawCircle(
+            productCenter,
+            2 * scale,
+            Paint()..color = const Color(0xFF72E3FF),
+          );
+          break;
+        case DepartmentType.bakery:
+          canvas.drawOval(
+            Rect.fromCenter(
+              center: productCenter,
+              width: 11 * scale,
+              height: 7 * scale,
+            ),
+            Paint()
+              ..color = index.isEven
+                  ? const Color(0xFFFFD27A)
+                  : const Color(0xFFDE9143),
+          );
+          break;
+        case DepartmentType.generalGoods:
+          break;
+      }
+    }
+  }
+
+  double _sceneScale(Rect market) => (market.width / 520).clamp(0.64, 1.0);
 
   void _drawEntrance(Canvas canvas, Rect market) {
     final center = _point(market, GameController.entrance);
@@ -495,6 +837,38 @@ class MarketPainter extends CustomPainter {
     canvas.drawCircle(center, 3.5, Paint()..color = const Color(0xFF38B879));
   }
 
+  void _drawStockerRoute(Canvas canvas, Rect market) {
+    if (!game.isStaffHired(StaffRole.stocker)) {
+      return;
+    }
+    final department = game.stockerTargetDepartment;
+    if (department == null) {
+      return;
+    }
+    final from = _point(market, GameController.stockerPickupZone);
+    final to = _point(market, game.departmentZone(department));
+    final color =
+        DepartmentCatalog.find(department)?.color ?? const Color(0xFF5B8DEF);
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.24)
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    final delta = to - from;
+    final distance = delta.distance;
+    if (distance <= 0) {
+      return;
+    }
+    final direction = delta / distance;
+    for (var step = 0.0; step < distance; step += 12) {
+      final segmentEnd = min(step + 6, distance);
+      canvas.drawLine(
+        from + direction * step,
+        from + direction * segmentEnd,
+        paint,
+      );
+    }
+  }
+
   void _drawCashier(Canvas canvas, Rect market, int workerIndex) {
     final center = _point(
       market,
@@ -717,6 +1091,10 @@ class MarketPainter extends CustomPainter {
     switch (role) {
       case StaffRole.stocker:
         if (game.stockerCarried > 0) {
+          final target = game.stockerTargetDepartment;
+          final targetDefinition = target == null
+              ? null
+              : DepartmentCatalog.find(target);
           final box = RRect.fromRectAndRadius(
             Rect.fromCenter(
               center: bodyCenter + const Offset(15, 4),
@@ -725,7 +1103,10 @@ class MarketPainter extends CustomPainter {
             ),
             const Radius.circular(3),
           );
-          canvas.drawRRect(box, Paint()..color = const Color(0xFFF6A623));
+          canvas.drawRRect(
+            box,
+            Paint()..color = targetDefinition?.color ?? const Color(0xFFF6A623),
+          );
           canvas.drawLine(
             bodyCenter + const Offset(8, 1),
             bodyCenter + const Offset(22, 1),
@@ -738,7 +1119,14 @@ class MarketPainter extends CustomPainter {
           final bubble = switch (status) {
             StaffStatus.waitingForStock => '📦?',
             StaffStatus.waitingForShelf => '✓',
-            _ => game.stockerCarried > 0 ? '📦' : '…',
+            _ =>
+              game.stockerCarried > 0
+                  ? DepartmentCatalog.find(
+                          game.stockerTargetDepartment ??
+                              DepartmentType.generalGoods,
+                        )?.emoji ??
+                        '📦'
+                  : '…',
           };
           _bubble(canvas, bodyCenter - const Offset(15, 39), bubble);
         }
@@ -972,6 +1360,9 @@ class MarketPainter extends CustomPainter {
     );
 
     if (game.carried > 0) {
+      final carriedDefinition = DepartmentCatalog.find(
+        game.carriedDepartment ?? DepartmentType.generalGoods,
+      );
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(
@@ -981,7 +1372,7 @@ class MarketPainter extends CustomPainter {
           ),
           const Radius.circular(6),
         ),
-        Paint()..color = const Color(0xFFF6A623),
+        Paint()..color = carriedDefinition?.color ?? const Color(0xFFF6A623),
       );
       _text(
         canvas,
@@ -990,6 +1381,12 @@ class MarketPainter extends CustomPainter {
         fontSize: 12,
         color: Colors.white,
         weight: FontWeight.w900,
+      );
+      _text(
+        canvas,
+        carriedDefinition?.emoji ?? '📦',
+        bodyCenter + const Offset(30, -8),
+        fontSize: 10,
       );
     }
   }

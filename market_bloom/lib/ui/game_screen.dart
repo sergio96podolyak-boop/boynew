@@ -225,6 +225,36 @@ class _GameScreenState extends State<GameScreen>
                                       painter: MarketPainter(
                                         game: game,
                                         animationTime: _animationTime,
+                                        departmentLabels: {
+                                          for (final type
+                                              in DepartmentType.values)
+                                            type: switch (type) {
+                                              DepartmentType.generalGoods =>
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).departmentGeneralGoods,
+                                              DepartmentType.bakery =>
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).departmentBakery,
+                                              DepartmentType.produce =>
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).departmentProduce,
+                                              DepartmentType.refrigerated =>
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).departmentRefrigerated,
+                                              DepartmentType.beauty =>
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).departmentBeauty,
+                                              DepartmentType.electronics =>
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).departmentElectronics,
+                                            },
+                                        },
                                         storageLabel: AppLocalizations.of(
                                           context,
                                         ).storage.toUpperCase(),

@@ -19,11 +19,11 @@ class GameController extends ChangeNotifier {
        _now = now ?? DateTime.now;
 
   static const stockZone = Offset(0.16, 0.79);
-  static const shelfZone = Offset(0.43, 0.47);
+  static const shelfZone = Offset(0.35, 0.51);
   static const checkoutZone = Offset(0.77, 0.25);
   static const bakeryZone = Offset(0.78, 0.76);
   static const stockerPickupZone = Offset(0.24, 0.73);
-  static const stockerShelfZone = Offset(0.56, 0.53);
+  static const stockerShelfZone = shelfZone;
   static const entrance = Offset(0.5, 0.04);
   static const exit = Offset(0.62, -0.08);
 
@@ -77,6 +77,9 @@ class GameController extends ChangeNotifier {
   double _bakeryProductionTimer = 0;
   double _bakeryCollectTimer = 0;
   int _stockerLoad = 0;
+  DepartmentType? _stockerDepartment;
+  DepartmentType? _carriedDepartment;
+  DepartmentType _selectedRestockDepartment = DepartmentType.generalGoods;
   double _saveTimer = 0;
   double _historyTimer = 0;
   int _customerId = 0;
@@ -98,6 +101,8 @@ class GameController extends ChangeNotifier {
   final List<DepartmentState> _departments = <DepartmentState>[];
   final List<InventoryDelivery> _pendingDeliveries = <InventoryDelivery>[];
   final Map<String, int> _inventoryByCategory = <String, int>{};
+  final Map<DepartmentType, int> _departmentShelfStock =
+      <DepartmentType, int>{};
   double _staffTimer = 0;
   double _deliveryTimer = 0;
   DateTime? _lastEmergencyStockAt;
@@ -116,7 +121,8 @@ class GameController extends ChangeNotifier {
 
   int get bagCapacity => 3 + bagLevel;
   int get shelfCapacity => 4 + shelfLevel * 2;
-  int get storageCapacity => 20 + shelfLevel * 4;
+  int get storageCapacity =>
+      20 + shelfLevel * 4 + max(0, activeDepartmentCount - 1) * 8;
   int get itemPrice => 4 + priceLevel * 2;
   double get playerSpeed => 0.22 + speedLevel * 0.018;
   int get storeLevel =>
@@ -128,6 +134,26 @@ class GameController extends ChangeNotifier {
   Offset? get movementTarget => _movementTarget;
   bool get bakeryUnlocked => isDepartmentUnlocked(DepartmentType.bakery);
   int get stockerCarried => _stockerLoad;
+  DepartmentType? get stockerTargetDepartment =>
+      _stockerLoad > 0 ? _stockerDepartment : _nextRestockDepartment();
+  DepartmentType? get carriedDepartment =>
+      carried > 0 ? _carriedDepartment ?? DepartmentType.generalGoods : null;
+  DepartmentType get selectedRestockDepartment => _selectedRestockDepartment;
+  List<DepartmentType> get unlockedDepartments =>
+      DepartmentType.values.where(isDepartmentUnlocked).toList(growable: false);
+  int get activeDepartmentCount =>
+      DepartmentType.values.where(isDepartmentUnlocked).length;
+  int get totalShelfInventory => DepartmentType.values.fold<int>(
+    0,
+    (total, type) => total + departmentStock(type),
+  );
+  int get departmentSalesBonus => DepartmentType.values
+      .where(isDepartmentUnlocked)
+      .fold<int>(
+        0,
+        (total, type) =>
+            total + (DepartmentCatalog.find(type)?.priceBonus ?? 0),
+      );
   double get bakeryProductionSeconds {
     final bakerPower = staffProductivity(StaffRole.baker);
     return max(
@@ -184,7 +210,7 @@ class GameController extends ChangeNotifier {
   bool get canClaimEmergencyStock {
     if (coins >= GameBalance.quickRestockCost ||
         carried > 0 ||
-        shelfStock > 0 ||
+        totalShelfInventory > 0 ||
         totalStoredInventory > 0 ||
         _pendingDeliveries.isNotEmpty) {
       return false;
@@ -217,6 +243,103 @@ class GameController extends ChangeNotifier {
   int get pendingDeliveryCount => _pendingDeliveries.length;
   List<DepartmentState> get departments =>
       List<DepartmentState>.unmodifiable(_departments);
+
+  Offset departmentZone(DepartmentType type) =>
+      DepartmentCatalog.find(type)?.displayZone ?? shelfZone;
+
+  String departmentCategory(DepartmentType type) =>
+      DepartmentCatalog.find(type)?.category ?? 'General';
+
+  int departmentStock(DepartmentType type) =>
+      type == DepartmentType.generalGoods
+      ? max(0, shelfStock)
+      : max(0, _departmentShelfStock[type] ?? 0);
+
+  int departmentCapacity(DepartmentType type) {
+    if (type == DepartmentType.generalGoods) {
+      return shelfCapacity;
+    }
+    final definition = DepartmentCatalog.find(type);
+    final level = max(1, _departmentFor(type)?.level ?? 1);
+    return max(1, (definition?.baseShelfCapacity ?? 4) + (level - 1) * 2);
+  }
+
+  int departmentStorage(DepartmentType type) =>
+      inventoryFor(departmentCategory(type));
+
+  int departmentItemPrice(DepartmentType type) {
+    final definition = DepartmentCatalog.find(type);
+    final level = max(1, _departmentFor(type)?.level ?? 1);
+    return itemPrice + (definition?.priceBonus ?? 0) + max(0, level - 1) * 2;
+  }
+
+  int departmentUpgradeCost(DepartmentType type) {
+    final definition = DepartmentCatalog.find(type);
+    final level = max(1, _departmentFor(type)?.level ?? 1);
+    return 110 + level * 85 + (definition?.unlockCost ?? 0) ~/ 8;
+  }
+
+  bool hasPendingDepartmentDelivery(DepartmentType type) {
+    final category = departmentCategory(type).toLowerCase();
+    return _pendingDeliveries.any(
+      (delivery) => delivery.category.toLowerCase() == category,
+    );
+  }
+
+  bool canOrderDepartmentStock(DepartmentType type) {
+    final definition = DepartmentCatalog.find(type);
+    if (definition == null ||
+        !isDepartmentUnlocked(type) ||
+        hasPendingDepartmentDelivery(type) ||
+        coins < definition.orderCost) {
+      return false;
+    }
+    final pendingQuantity = _pendingDeliveries.fold<int>(
+      0,
+      (sum, delivery) => sum + delivery.quantity,
+    );
+    return totalStoredInventory + pendingQuantity + definition.orderQuantity <=
+        storageCapacity;
+  }
+
+  InventoryDelivery? placeDepartmentOrder(DepartmentType type) {
+    final definition = DepartmentCatalog.find(type);
+    if (definition == null || !canOrderDepartmentStock(type)) {
+      return null;
+    }
+    return placeInventoryOrder(
+      definition.category,
+      definition.orderQuantity,
+      cost: definition.orderCost,
+    );
+  }
+
+  bool selectRestockDepartment(DepartmentType type) {
+    if (!isDepartmentUnlocked(type)) {
+      return false;
+    }
+    _selectedRestockDepartment = type;
+    _markDirty(immediate: true);
+    notifyListeners();
+    return true;
+  }
+
+  bool upgradeDepartment(DepartmentType type) {
+    final state = _departmentFor(type);
+    if (state == null ||
+        !state.unlocked ||
+        state.level >= 10 ||
+        coins < departmentUpgradeCost(type)) {
+      return false;
+    }
+    coins -= departmentUpgradeCost(type);
+    state.level++;
+    upgradesBought++;
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    notifyListeners();
+    return true;
+  }
 
   String? storePrice(StoreProduct product) => monetization.priceFor(product);
 
@@ -313,21 +436,27 @@ class GameController extends ChangeNotifier {
 
   String get interactionHint {
     if (_near(playerPosition, stockZone, 0.13)) {
-      if (inventoryFor('General') <= 0) {
+      final pickup = _manualPickupDepartment();
+      if (pickup == null) {
         return 'Storage is empty — order more stock';
       }
       return carried >= bagCapacity
-          ? 'Bag full — head to the shelf'
-          : 'Collecting products from storage';
+          ? 'Bag full — head to ${departmentCategory(carriedDepartment!)}'
+          : 'Collecting ${departmentCategory(pickup)} from storage';
     }
-    if (_near(playerPosition, shelfZone, 0.14)) {
-      if (carried == 0) {
-        return 'Your bag is empty';
+    for (final type in unlockedDepartments) {
+      if (_near(playerPosition, departmentZone(type), 0.13)) {
+        if (carried == 0) {
+          return '${departmentCategory(type)} display';
+        }
+        if (carriedDepartment != type) {
+          return 'This crate belongs in ${departmentCategory(carriedDepartment!)}';
+        }
+        if (departmentStock(type) >= departmentCapacity(type)) {
+          return 'The ${departmentCategory(type)} display is full';
+        }
+        return 'Stocking ${departmentCategory(type)}';
       }
-      if (shelfStock >= shelfCapacity) {
-        return 'The shelf is full';
-      }
-      return 'Stocking products on the shelf';
     }
     if (_near(playerPosition, checkoutZone, 0.13)) {
       return 'Customers pay here';
@@ -475,11 +604,13 @@ class GameController extends ChangeNotifier {
 
       if (_near(playerPosition, bakeryZone, 0.13) &&
           bakeryReadyStock > 0 &&
-          carried < bagCapacity) {
+          carried < bagCapacity &&
+          (carried == 0 || carriedDepartment == DepartmentType.bakery)) {
         _bakeryCollectTimer += dt;
         if (_bakeryCollectTimer >= GameBalance.bakeryCollectionSeconds) {
           _bakeryCollectTimer = 0;
           bakeryReadyStock--;
+          _carriedDepartment = DepartmentType.bakery;
           carried++;
           totalActions++;
         }
@@ -491,14 +622,21 @@ class GameController extends ChangeNotifier {
       _bakeryCollectTimer = 0;
     }
 
+    final pickupDepartment = carried > 0
+        ? carriedDepartment
+        : _manualPickupDepartment();
     if (_near(playerPosition, stockZone, 0.13) &&
+        pickupDepartment != null &&
         carried < bagCapacity &&
-        inventoryFor('General') > 0) {
+        departmentStorage(pickupDepartment) > 0 &&
+        (carried == 0 || carriedDepartment == pickupDepartment)) {
       _stockActionTimer += dt;
       if (_stockActionTimer >=
           max(0.18, 0.42 - max(0, restockLevel - 1) * 0.025)) {
         _stockActionTimer = 0;
-        _inventoryByCategory['General'] = inventoryFor('General') - 1;
+        final category = departmentCategory(pickupDepartment);
+        _inventoryByCategory[category] = inventoryFor(category) - 1;
+        _carriedDepartment = pickupDepartment;
         carried++;
         totalActions++;
       }
@@ -506,15 +644,19 @@ class GameController extends ChangeNotifier {
       _stockActionTimer = 0;
     }
 
-    if (_near(playerPosition, shelfZone, 0.14) &&
-        carried > 0 &&
-        shelfStock < shelfCapacity) {
+    final carriedType = carriedDepartment;
+    if (carriedType != null &&
+        _near(playerPosition, departmentZone(carriedType), 0.13) &&
+        departmentStock(carriedType) < departmentCapacity(carriedType)) {
       _shelfActionTimer += dt;
       if (_shelfActionTimer >=
           max(0.12, 0.28 - max(0, restockLevel - 1) * 0.02)) {
         _shelfActionTimer = 0;
         carried--;
-        shelfStock++;
+        _setDepartmentStock(carriedType, departmentStock(carriedType) + 1);
+        if (carried == 0) {
+          _carriedDepartment = null;
+        }
         stockedTotal++;
         totalActions++;
       }
@@ -537,10 +679,67 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  void _setDepartmentStock(DepartmentType type, int value) {
+    final clamped = value.clamp(0, departmentCapacity(type));
+    if (type == DepartmentType.generalGoods) {
+      shelfStock = clamped;
+      return;
+    }
+    _departmentShelfStock[type] = clamped;
+  }
+
+  DepartmentType? _manualPickupDepartment() {
+    final selected = _selectedRestockDepartment;
+    if (isDepartmentUnlocked(selected) &&
+        departmentStorage(selected) > 0 &&
+        departmentStock(selected) < departmentCapacity(selected)) {
+      return selected;
+    }
+    return _nextRestockDepartment();
+  }
+
+  DepartmentType? _nextRestockDepartment() {
+    final candidates = unlockedDepartments
+        .where(
+          (type) =>
+              departmentStorage(type) > 0 &&
+              departmentStock(type) < departmentCapacity(type),
+        )
+        .toList();
+    if (candidates.isEmpty) {
+      return null;
+    }
+    candidates.sort((left, right) {
+      final leftRatio = departmentStock(left) / departmentCapacity(left);
+      final rightRatio = departmentStock(right) / departmentCapacity(right);
+      final ratioComparison = leftRatio.compareTo(rightRatio);
+      return ratioComparison != 0
+          ? ratioComparison
+          : left.index.compareTo(right.index);
+    });
+    return candidates.first;
+  }
+
+  bool get _allDepartmentShelvesFull => unlockedDepartments.every(
+    (type) => departmentStock(type) >= departmentCapacity(type),
+  );
+
+  bool get _hasRestockableInventory => unlockedDepartments.any(
+    (type) =>
+        departmentStorage(type) > 0 &&
+        departmentStock(type) < departmentCapacity(type),
+  );
+
   void _updateStocker(double dt) {
     if (!isStaffHired(StaffRole.stocker)) {
+      if (_stockerLoad > 0) {
+        final type = _stockerDepartment ?? DepartmentType.generalGoods;
+        final category = departmentCategory(type);
+        _inventoryByCategory[category] = inventoryFor(category) + _stockerLoad;
+      }
       stockerPosition = stockerPickupZone;
       _stockerLoad = 0;
+      _stockerDepartment = null;
       return;
     }
 
@@ -553,24 +752,35 @@ class GameController extends ChangeNotifier {
         max(0, restockLevel - 1) * 0.004;
 
     if (_stockerLoad > 0) {
+      final targetDepartment =
+          _stockerDepartment ?? DepartmentType.generalGoods;
       stockerPosition = _moveStaffToward(
         stockerPosition,
-        stockerShelfZone,
+        departmentZone(targetDepartment),
         speed,
         dt,
       );
-      if (_near(stockerPosition, stockerShelfZone, 0.018)) {
-        final delivered = min(_stockerLoad, shelfCapacity - shelfStock);
+      if (_near(stockerPosition, departmentZone(targetDepartment), 0.018)) {
+        final delivered = min(
+          _stockerLoad,
+          departmentCapacity(targetDepartment) -
+              departmentStock(targetDepartment),
+        );
         if (delivered > 0) {
-          shelfStock += delivered;
+          _setDepartmentStock(
+            targetDepartment,
+            departmentStock(targetDepartment) + delivered,
+          );
           stockedTotal += delivered;
           totalActions += delivered;
         }
         final remainder = _stockerLoad - delivered;
         if (remainder > 0) {
-          _inventoryByCategory['General'] = inventoryFor('General') + remainder;
+          final category = departmentCategory(targetDepartment);
+          _inventoryByCategory[category] = inventoryFor(category) + remainder;
         }
         _stockerLoad = 0;
+        _stockerDepartment = null;
       }
       return;
     }
@@ -581,18 +791,24 @@ class GameController extends ChangeNotifier {
       speed,
       dt,
     );
+    final targetDepartment = _nextRestockDepartment();
     if (!_near(stockerPosition, stockerPickupZone, 0.018) ||
-        inventoryFor('General') <= 0 ||
-        shelfStock >= shelfCapacity) {
+        targetDepartment == null) {
       return;
     }
 
     final loadCapacity = max(1, stockerLevel * max(1, stockerWorkers)).toInt();
+    final category = departmentCategory(targetDepartment);
     _stockerLoad = min(
       loadCapacity,
-      min(inventoryFor('General'), shelfCapacity - shelfStock),
+      min(
+        inventoryFor(category),
+        departmentCapacity(targetDepartment) -
+            departmentStock(targetDepartment),
+      ),
     );
-    _inventoryByCategory['General'] = inventoryFor('General') - _stockerLoad;
+    _stockerDepartment = targetDepartment;
+    _inventoryByCategory[category] = inventoryFor(category) - _stockerLoad;
   }
 
   Offset _moveStaffToward(
@@ -625,16 +841,7 @@ class GameController extends ChangeNotifier {
 
     for (final customer in customers) {
       if (customer.phase == CustomerPhase.shopping) {
-        customer.phaseTime += dt;
-        if (shelfStock > 0 && customer.phaseTime >= 0.7) {
-          shelfStock--;
-          customer.hasProduct = true;
-          customer.phase = CustomerPhase.checkout;
-          customer.phaseTime = 0;
-          if (!_checkoutQueue.contains(customer)) {
-            _checkoutQueue.add(customer);
-          }
-        }
+        _updateCustomerShopping(customer, dt);
       } else if (customer.phase == CustomerPhase.checkout &&
           !_checkoutQueue.contains(customer)) {
         _checkoutQueue.add(customer);
@@ -674,8 +881,12 @@ class GameController extends ChangeNotifier {
 
       switch (customer.phase) {
         case CustomerPhase.entering:
-          _moveCustomer(customer, shelfZone + const Offset(0.0, -0.11), dt);
-          if (_near(customer.position, shelfZone, 0.13)) {
+          final firstDepartment =
+              customer.currentDepartment ?? DepartmentType.generalGoods;
+          final firstTarget =
+              departmentZone(firstDepartment) + const Offset(0, -0.10);
+          _moveCustomer(customer, firstTarget, dt);
+          if (_near(customer.position, firstTarget, 0.05)) {
             customer.phase = CustomerPhase.shopping;
             customer.phaseTime = 0;
           }
@@ -704,8 +915,10 @@ class GameController extends ChangeNotifier {
               ? cashierCheckoutSeconds
               : max(0.45, GameBalance.baseCheckoutSeconds - storeLevel * 0.04);
           if (customer.phaseTime >= checkoutSeconds) {
-            coins += itemPrice;
-            totalCoinsEarned += itemPrice;
+            final tip = customer.satisfaction >= 0.82 ? customer.tipValue : 0;
+            final saleValue = max(itemPrice, customer.basketValue) + tip;
+            coins += saleValue;
+            totalCoinsEarned += saleValue;
             totalSales++;
             totalActions++;
             customer.phase = CustomerPhase.leaving;
@@ -725,6 +938,67 @@ class GameController extends ChangeNotifier {
     customers.removeWhere(removed.contains);
   }
 
+  void _updateCustomerShopping(MarketCustomer customer, double dt) {
+    final department = customer.currentDepartment;
+    if (department == null) {
+      _finishCustomerShopping(customer);
+      return;
+    }
+
+    final target = departmentZone(department) + const Offset(0, -0.10);
+    _moveCustomer(customer, target, dt);
+    if (!_near(customer.position, target, 0.05)) {
+      return;
+    }
+
+    customer.phaseTime += dt;
+    if (departmentStock(department) > 0 && customer.phaseTime >= 0.65) {
+      _setDepartmentStock(department, departmentStock(department) - 1);
+      final state = _departmentFor(department);
+      if (state != null) {
+        state.itemsSold++;
+      }
+      customer
+        ..hasProduct = true
+        ..basketValue += departmentItemPrice(department)
+        ..shoppingIndex = customer.shoppingIndex + 1
+        ..phaseTime = 0
+        ..emotion = 'happy';
+      if (customer.currentDepartment == null) {
+        _finishCustomerShopping(customer);
+      }
+      return;
+    }
+
+    if (departmentStock(department) == 0) {
+      customer
+        ..patience = max(0, customer.patience - dt)
+        ..satisfaction = max(0.2, customer.satisfaction - dt * 0.08)
+        ..emotion = 'worried';
+      if (customer.phaseTime >= 1.4) {
+        customer.missedItems++;
+        customer.shoppingIndex++;
+        customer.phaseTime = 0;
+        if (customer.currentDepartment == null) {
+          _finishCustomerShopping(customer);
+        }
+      }
+    }
+  }
+
+  void _finishCustomerShopping(MarketCustomer customer) {
+    customer.phaseTime = 0;
+    if (!customer.hasProduct) {
+      customer.phase = CustomerPhase.leaving;
+      customer.emotion = 'sad';
+      return;
+    }
+    customer.phase = CustomerPhase.checkout;
+    if (!_checkoutQueue.contains(customer)) {
+      _checkoutQueue.add(customer);
+    }
+  }
+
   void _spawnCustomer() {
     const palette = [
       Color(0xFF7957D5),
@@ -733,6 +1007,14 @@ class GameController extends ChangeNotifier {
       Color(0xFFF2B134),
       Color(0xFF2A9D8F),
     ];
+    final availableDepartments = unlockedDepartments.toList()..shuffle(_random);
+    final desiredDepartments = min(
+      availableDepartments.length,
+      1 + storeLevel ~/ 4,
+    );
+    final shoppingList = availableDepartments
+        .take(max(1, desiredDepartments))
+        .toList(growable: false);
     final customer = MarketCustomer(
       id: _customerId++,
       position: entrance + Offset((_random.nextDouble() - 0.5) * 0.08, 0),
@@ -741,8 +1023,9 @@ class GameController extends ChangeNotifier {
       satisfaction: 0.95 + _random.nextDouble() * 0.05,
       isVip: _random.nextDouble() < 0.16,
       tipValue: _random.nextBool() ? 2 : 0,
-      basketCount: 1 + (_random.nextInt(3)),
+      basketCount: shoppingList.length,
       emotion: _random.nextDouble() < 0.3 ? 'happy' : 'neutral',
+      shoppingList: shoppingList,
     );
     customers.add(customer);
   }
@@ -1018,6 +1301,8 @@ class GameController extends ChangeNotifier {
       } else {
         previous.level = max(previous.level, department.level);
         previous.unlocked = previous.unlocked || department.unlocked;
+        previous.activated = previous.activated || department.activated;
+        previous.itemsSold = max(previous.itemsSold, department.itemsSold);
       }
     }
     _departments
@@ -1030,9 +1315,13 @@ class GameController extends ChangeNotifier {
                 type: type,
                 level: type == DepartmentType.generalGoods ? 1 : 0,
                 unlocked: type == DepartmentType.generalGoods,
+                activated: false,
               ),
         ),
       );
+    for (final type in DepartmentType.values) {
+      _departmentShelfStock.putIfAbsent(type, () => 0);
+    }
     if (!_restoredInventoryPresent) {
       _inventoryByCategory['General'] = GameBalance.starterStorageStock;
     }
@@ -1133,9 +1422,10 @@ class GameController extends ChangeNotifier {
       StaffRole.stocker =>
         _stockerLoad > 0
             ? StaffStatus.stocking
-            : shelfStock >= shelfCapacity
+            : (_allDepartmentShelvesFull ||
+                  (shelfStock >= shelfCapacity && !_hasRestockableInventory))
             ? StaffStatus.waitingForShelf
-            : inventoryFor('General') <= 0
+            : !_hasRestockableInventory
             ? StaffStatus.waitingForStock
             : StaffStatus.stocking,
       StaffRole.cleaner =>
@@ -1265,14 +1555,43 @@ class GameController extends ChangeNotifier {
       return false;
     }
     coins -= definition.unlockCost;
-    state
-      ..unlocked = true
-      ..level = max(1, state.level);
-    _departmentUnlocks.add(type);
+    _activateDepartment(state, announce: true);
     totalActions++;
     _afterProgressChanged(immediate: true);
     notifyListeners();
     return true;
+  }
+
+  void _activateDepartment(DepartmentState state, {required bool announce}) {
+    final definition = DepartmentCatalog.find(state.type);
+    if (definition == null) {
+      return;
+    }
+    final wasUnlocked = state.unlocked;
+    state
+      ..unlocked = true
+      ..level = max(1, state.level);
+    if (!state.activated) {
+      state.activated = true;
+      _setDepartmentStock(
+        state.type,
+        max(
+          departmentStock(state.type),
+          min(definition.starterShelfStock, departmentCapacity(state.type)),
+        ),
+      );
+      final availableStorage = max(0, storageCapacity - totalStoredInventory);
+      if (state.type != DepartmentType.generalGoods &&
+          availableStorage > 0 &&
+          definition.starterStorageStock > 0) {
+        _inventoryByCategory[definition.category] =
+            inventoryFor(definition.category) +
+            min(availableStorage, definition.starterStorageStock);
+      }
+    }
+    if (announce && !wasUnlocked) {
+      _departmentUnlocks.add(state.type);
+    }
   }
 
   DepartmentType? takeDepartmentUnlock() {
@@ -1291,6 +1610,7 @@ class GameController extends ChangeNotifier {
   void _applyStaffAutomation() {
     final cleanerLevel = staffLevel(StaffRole.cleaner);
     final cleanerWorkers = staffWorkerCount(StaffRole.cleaner);
+    final bakerWorkers = staffWorkerCount(StaffRole.baker);
     final managerPower = staffProductivity(StaffRole.manager);
 
     if (isStaffHired(StaffRole.cleaner) &&
@@ -1308,6 +1628,24 @@ class GameController extends ChangeNotifier {
             break;
           }
         }
+      }
+    }
+
+    if (isStaffHired(StaffRole.baker) &&
+        bakeryUnlocked &&
+        bakeryReadyStock > 0) {
+      final room =
+          departmentCapacity(DepartmentType.bakery) -
+          departmentStock(DepartmentType.bakery);
+      final displayed = min(room, min(bakeryReadyStock, max(1, bakerWorkers)));
+      if (displayed > 0) {
+        bakeryReadyStock -= displayed;
+        _setDepartmentStock(
+          DepartmentType.bakery,
+          departmentStock(DepartmentType.bakery) + displayed,
+        );
+        stockedTotal += displayed;
+        totalActions += displayed;
       }
     }
 
@@ -1378,17 +1716,20 @@ class GameController extends ChangeNotifier {
 
   Map<String, dynamic> _saveSnapshot() {
     return <String, dynamic>{
-      'version': 5,
+      'version': 6,
       'savedAt': _now().toIso8601String(),
       'coins': coins,
       'gems': gems,
       'carried': carried,
+      'carriedDepartment': carriedDepartment?.name,
+      'selectedRestockDepartment': _selectedRestockDepartment.name,
       'shelfStock': shelfStock,
       'bakeryReadyStock': bakeryReadyStock,
       'bakeryActivated': _bakeryActivated,
       'stockerX': stockerPosition.dx,
       'stockerY': stockerPosition.dy,
       'stockerLoad': _stockerLoad,
+      'stockerDepartment': _stockerDepartment?.name,
       'totalSales': totalSales,
       'totalCoinsEarned': totalCoinsEarned,
       'stockedTotal': stockedTotal,
@@ -1450,6 +1791,9 @@ class GameController extends ChangeNotifier {
               'type': item.type.name,
               'level': item.level,
               'unlocked': item.unlocked,
+              'activated': item.activated,
+              'itemsSold': item.itemsSold,
+              'shelfStock': departmentStock(item.type),
             },
           )
           .toList(growable: false),
@@ -1510,10 +1854,14 @@ class GameController extends ChangeNotifier {
     _staff.clear();
     _departments.clear();
     _inventoryByCategory.clear();
+    _departmentShelfStock.clear();
     _pendingDeliveries.clear();
     _checkoutQueue.clear();
     stockerPosition = stockerPickupZone;
     _stockerLoad = 0;
+    _stockerDepartment = null;
+    _carriedDepartment = null;
+    _selectedRestockDepartment = DepartmentType.generalGoods;
     _restoredInventoryPresent = false;
     _lastEmergencyStockAt = null;
     _bakeryActivated = false;
@@ -1651,6 +1999,16 @@ class GameController extends ChangeNotifier {
     coins = _readIntAny(saved, const ['coins', 'balance'], 25);
     gems = _readIntAny(saved, const ['gems', 'premiumCurrency'], 3);
     carried = _readIntAny(saved, const ['carried', 'bagStock'], 0);
+    _carriedDepartment = _enumByName(
+      DepartmentType.values,
+      saved['carriedDepartment'],
+    );
+    _selectedRestockDepartment =
+        _enumByName(
+          DepartmentType.values,
+          saved['selectedRestockDepartment'],
+        ) ??
+        DepartmentType.generalGoods;
     shelfStock = _readIntAny(saved, const ['shelfStock', 'stock'], 0);
     bakeryReadyStock = _readIntAny(
       saved,
@@ -1674,6 +2032,10 @@ class GameController extends ChangeNotifier {
       const ['stockerLoad', 'stockerCarried'],
       0,
       maximum: 100,
+    );
+    _stockerDepartment = _enumByName(
+      DepartmentType.values,
+      saved['stockerDepartment'],
     );
     totalSales = _readIntAny(saved, const ['totalSales', 'sales'], 0);
     totalCoinsEarned = _readIntAny(saved, const [
@@ -1820,6 +2182,7 @@ class GameController extends ChangeNotifier {
     }
 
     _departments.clear();
+    _departmentShelfStock.clear();
     final restoredDepartments = saved['departments'];
     if (restoredDepartments is List) {
       final departmentByType = <DepartmentType, DepartmentState>{};
@@ -1839,6 +2202,12 @@ class GameController extends ChangeNotifier {
             'unlocked',
             'isUnlocked',
           ], false),
+          activated: _readBoolAny(itemMap, const ['activated'], false),
+          itemsSold: _readIntAny(itemMap, const ['itemsSold'], 0),
+        );
+        _departmentShelfStock[type] = max(
+          _departmentShelfStock[type] ?? 0,
+          _readIntAny(itemMap, const ['shelfStock'], 0),
         );
         final previous = departmentByType[type];
         if (previous == null) {
@@ -1846,6 +2215,8 @@ class GameController extends ChangeNotifier {
         } else {
           previous.level = max(previous.level, restored.level);
           previous.unlocked = previous.unlocked || restored.unlocked;
+          previous.activated = previous.activated || restored.activated;
+          previous.itemsSold = max(previous.itemsSold, restored.itemsSold);
         }
       }
       _departments.addAll(departmentByType.values);
@@ -1932,9 +2303,17 @@ class GameController extends ChangeNotifier {
     }
 
     if (!isStaffHired(StaffRole.stocker) && _stockerLoad > 0) {
-      _inventoryByCategory['General'] = inventoryFor('General') + _stockerLoad;
+      final type = _stockerDepartment ?? DepartmentType.generalGoods;
+      final category = departmentCategory(type);
+      _inventoryByCategory[category] = inventoryFor(category) + _stockerLoad;
       _stockerLoad = 0;
+      _stockerDepartment = null;
       stockerPosition = stockerPickupZone;
+    }
+    if (_stockerLoad > 0 &&
+        (_stockerDepartment == null ||
+            !isDepartmentUnlocked(_stockerDepartment!))) {
+      _stockerDepartment = DepartmentType.generalGoods;
     }
     _stockerLoad = _stockerLoad.clamp(0, storageCapacity);
     stockerPosition = Offset(
@@ -1961,7 +2340,24 @@ class GameController extends ChangeNotifier {
     }
 
     carried = carried.clamp(0, bagCapacity);
+    if (carried == 0) {
+      _carriedDepartment = null;
+    } else if (_carriedDepartment == null ||
+        !isDepartmentUnlocked(_carriedDepartment!)) {
+      _carriedDepartment = DepartmentType.generalGoods;
+    }
+    if (!isDepartmentUnlocked(_selectedRestockDepartment)) {
+      _selectedRestockDepartment = DepartmentType.generalGoods;
+    }
     shelfStock = shelfStock.clamp(0, shelfCapacity);
+    for (final type in DepartmentType.values) {
+      if (type == DepartmentType.generalGoods) {
+        continue;
+      }
+      _departmentShelfStock[type] = departmentStock(
+        type,
+      ).clamp(0, departmentCapacity(type));
+    }
     bakeryReadyStock = bakeryReadyStock.clamp(
       0,
       GameBalance.bakeryReadyCapacity,
@@ -1992,20 +2388,15 @@ class GameController extends ChangeNotifier {
         continue;
       }
       if (department.type == DepartmentType.generalGoods) {
-        department
-          ..unlocked = true
-          ..level = max(1, department.level);
+        _activateDepartment(department, announce: false);
         continue;
       }
       if (!department.unlocked &&
           definition.autoUnlock &&
           level >= definition.unlockLevel) {
-        department
-          ..unlocked = true
-          ..level = max(1, department.level);
-        if (announce) {
-          _departmentUnlocks.add(department.type);
-        }
+        _activateDepartment(department, announce: announce);
+      } else if (department.unlocked && !department.activated) {
+        _activateDepartment(department, announce: false);
       }
     }
     if (bakeryUnlocked && !_bakeryActivated) {

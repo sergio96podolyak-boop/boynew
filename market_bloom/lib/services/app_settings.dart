@@ -8,8 +8,11 @@ enum ControlMode { directTouch, joystick, leftJoystick }
 /// Uses the same SharedPreferencesAsync backend as [GameStorage] so settings
 /// survive restarts and share the existing storage architecture.
 class AppSettings extends ChangeNotifier {
-  AppSettings({SharedPreferencesAsync? preferences})
-    : _preferences = preferences;
+  factory AppSettings({SharedPreferencesAsync? preferences}) {
+    return AppSettings._(preferences);
+  }
+
+  AppSettings._(this._preferences);
 
   SharedPreferencesAsync? _preferences;
 
