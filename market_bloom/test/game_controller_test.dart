@@ -58,6 +58,38 @@ void main() {
     expect(game.paused, isFalse);
   });
 
+  test('shift progress persists across restart', () async {
+    game.shiftNumber = 3;
+    game.shiftElapsedSeconds = 31;
+    game.shiftSales = 2;
+    game.shiftRevenue = 18;
+    game.shiftMissedSales = 1;
+    await game.save();
+
+    final restored = GameController(
+      storage: storage,
+      monetization: PreviewMonetizationService(),
+    );
+    await restored.initialize();
+
+    expect(restored.shiftNumber, 3);
+    expect(restored.shiftElapsedSeconds, 31);
+    expect(restored.shiftSales, 2);
+    expect(restored.shiftRevenue, 18);
+    expect(restored.shiftMissedSales, 1);
+  });
+
+  test('fast checkout event is optional and rewards only once', () {
+    game.shiftElapsedSeconds = 19;
+    game.debugSetPlayerPosition(GameController.checkoutZone);
+    final startingCoins = game.coins;
+
+    expect(game.activeMarketEvent, MarketEventType.fastCheckout);
+    expect(game.claimFastCheckoutBonus(), isTrue);
+    expect(game.coins, startingCoins + 8);
+    expect(game.claimFastCheckoutBonus(), isFalse);
+  });
+
   test('checkout queue uses separated FIFO slots', () {
     for (var index = 0; index < 3; index++) {
       final customer =

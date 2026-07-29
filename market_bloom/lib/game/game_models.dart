@@ -7,6 +7,8 @@ enum CustomerPhase { entering, shopping, checkout, paying, leaving }
 /// Short mobile-friendly operating cycle for the market floor.
 enum ShiftPhase { preparation, open, rush, closing, summary }
 
+enum MarketEventType { none, rushHour, vipCustomer, fastCheckout }
+
 class ShiftSummary {
   const ShiftSummary({
     required this.shiftNumber,

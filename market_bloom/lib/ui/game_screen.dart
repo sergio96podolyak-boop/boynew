@@ -324,6 +324,30 @@ class _GameScreenState extends State<GameScreen>
                                       onUpgrade: _showUpgrades,
                                     ),
                                   ),
+                                if (game.fastCheckoutActive)
+                                  Positioned(
+                                    top: 70,
+                                    left: 22,
+                                    right: 22,
+                                    child: _FastCheckoutBanner(
+                                      claimed: game.fastCheckoutClaimed,
+                                      onClaim: () {
+                                        if (game.claimFastCheckoutBonus()) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).fastCheckoutBonus,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -700,6 +724,46 @@ class _SummaryMetric extends StatelessWidget {
             style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FastCheckoutBanner extends StatelessWidget {
+  const _FastCheckoutBanner({required this.claimed, required this.onClaim});
+
+  final bool claimed;
+  final VoidCallback onClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: const Color(0xFFFFF3D7),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.bolt_rounded, color: Color(0xFFE08D19)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${loc.fastCheckout} · ${loc.fastCheckoutBonus}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: claimed ? null : onClaim,
+              child: Text(claimed ? loc.claimed : loc.claimBonus),
+            ),
+          ],
+        ),
       ),
     );
   }

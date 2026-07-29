@@ -657,6 +657,14 @@ class AppLocalizations {
 
   String get claimMission => _t('claimMission');
 
+  String get vipCustomer => _t('vipCustomer');
+
+  String get fastCheckout => _t('fastCheckout');
+
+  String get fastCheckoutBonus => _t('fastCheckoutBonus');
+
+  String get claimBonus => _t('claimBonus');
+
   String get itemsStocked => _t('itemsStocked');
 
   String get upgradesCount => _t("upgradesCount");
@@ -1060,6 +1068,10 @@ class AppLocalizations {
     'claimed': 'Claimed',
     'missionReward': 'Reward',
     'claimMission': 'Claim mission',
+    'vipCustomer': 'VIP customer in store',
+    'fastCheckout': 'Fast checkout moment',
+    'fastCheckoutBonus': 'Earn a small bonus at checkout',
+    'claimBonus': 'Claim bonus',
     'itemsStocked': 'ITEMS STOCKED',
     'upgradesCount': 'UPGRADES',
     'achievementUnlocked': 'ACHIEVEMENT UNLOCKED',
@@ -1417,6 +1429,10 @@ class AppLocalizations {
     'claimed': 'נאספה',
     'missionReward': 'פרס',
     'claimMission': 'אסוף משימה',
+    'vipCustomer': 'לקוח VIP בחנות',
+    'fastCheckout': 'רגע קופה מהירה',
+    'fastCheckoutBonus': 'קבל בונוס קטן בקופה',
+    'claimBonus': 'אסוף בונוס',
     'itemsStocked': 'פריטים נמוסים',
     'upgradesCount': 'שדרוגים',
     'achievementUnlocked': 'הישג נפתח',
@@ -1776,6 +1792,10 @@ class AppLocalizations {
     'claimed': 'تم الاستلام',
     'missionReward': 'المكافأة',
     'claimMission': 'استلام المهمة',
+    'vipCustomer': 'عميل VIP في المتجر',
+    'fastCheckout': 'لحظة الدفع السريع',
+    'fastCheckoutBonus': 'احصل على مكافأة صغيرة عند الدفع',
+    'claimBonus': 'استلام المكافأة',
     'itemsStocked': 'منتجات مضافة',
     'upgradesCount': 'تحديثات',
     'achievementUnlocked': 'إنجاز مفتوح',

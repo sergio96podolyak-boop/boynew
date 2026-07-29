@@ -1514,6 +1514,21 @@ class MarketPainter extends CustomPainter {
         Paint()..color = const Color(0xFFF6A623),
       );
     }
+    if (customer.isVip) {
+      canvas.drawCircle(
+        center + const Offset(15, -27),
+        8,
+        Paint()..color = const Color(0xFFFFD95A),
+      );
+      _text(
+        canvas,
+        '★',
+        center + const Offset(15, -27),
+        color: const Color(0xFF8A5B17),
+        fontSize: 9,
+        weight: FontWeight.w900,
+      );
+    }
     if (customer.phase == CustomerPhase.shopping && game.shelfStock == 0) {
       _bubble(canvas, center - const Offset(18, 45), '📦?');
     }

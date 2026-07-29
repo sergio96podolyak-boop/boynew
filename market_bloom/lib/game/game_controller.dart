@@ -75,6 +75,7 @@ class GameController extends ChangeNotifier {
   int shiftRevenue = 0;
   int shiftMissedSales = 0;
   bool shiftMissionClaimed = false;
+  bool fastCheckoutClaimed = false;
   DateTime? _dailyMissionClaimedOn;
   ShiftSummary? pendingShiftSummary;
 
@@ -209,6 +210,24 @@ class GameController extends ChangeNotifier {
   }
 
   bool get rushActive => shiftPhase == ShiftPhase.rush;
+
+  MarketEventType get activeMarketEvent {
+    if (rushActive) {
+      return MarketEventType.rushHour;
+    }
+    if (customers.any(
+      (customer) => customer.isVip && customer.phase != CustomerPhase.leaving,
+    )) {
+      return MarketEventType.vipCustomer;
+    }
+    if (shiftElapsedSeconds >= 18 && shiftElapsedSeconds < 24) {
+      return MarketEventType.fastCheckout;
+    }
+    return MarketEventType.none;
+  }
+
+  bool get fastCheckoutActive =>
+      activeMarketEvent == MarketEventType.fastCheckout;
 
   int get shiftMissionTarget => 5;
   int get shiftMissionProgress => min(shiftMissionTarget, shiftSales);
@@ -666,6 +685,7 @@ class GameController extends ChangeNotifier {
     shiftRevenue = 0;
     shiftMissedSales = 0;
     shiftMissionClaimed = false;
+    fastCheckoutClaimed = false;
     pendingShiftSummary = null;
     paused = false;
     _markDirty(immediate: true);
@@ -692,6 +712,21 @@ class GameController extends ChangeNotifier {
     _dailyMissionClaimedOn = _now();
     coins += 15;
     totalCoinsEarned += 15;
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    notifyListeners();
+    return true;
+  }
+
+  bool claimFastCheckoutBonus() {
+    if (!fastCheckoutActive ||
+        fastCheckoutClaimed ||
+        !_near(playerPosition, checkoutZone, 0.13)) {
+      return false;
+    }
+    fastCheckoutClaimed = true;
+    coins += 8;
+    totalCoinsEarned += 8;
     totalActions++;
     _afterProgressChanged(immediate: true);
     notifyListeners();
@@ -1151,14 +1186,19 @@ class GameController extends ChangeNotifier {
     final shoppingList = availableDepartments
         .take(max(1, desiredDepartments))
         .toList(growable: false);
+    final vip = _random.nextDouble() < 0.16;
     final customer = MarketCustomer(
       id: _customerId++,
       position: entrance + Offset((_random.nextDouble() - 0.5) * 0.08, 0),
       color: palette[_random.nextInt(palette.length)],
       patience: 7.4 + _random.nextDouble() * 1.4,
       satisfaction: 0.95 + _random.nextDouble() * 0.05,
-      isVip: _random.nextDouble() < 0.16,
-      tipValue: _random.nextBool() ? 2 : 0,
+      isVip: vip,
+      tipValue: vip
+          ? 5
+          : _random.nextBool()
+          ? 2
+          : 0,
       basketCount: shoppingList.length,
       emotion: _random.nextDouble() < 0.3 ? 'happy' : 'neutral',
       shoppingList: shoppingList,
@@ -1873,6 +1913,7 @@ class GameController extends ChangeNotifier {
       'shiftRevenue': shiftRevenue,
       'shiftMissedSales': shiftMissedSales,
       'shiftMissionClaimed': shiftMissionClaimed,
+      'fastCheckoutClaimed': fastCheckoutClaimed,
       'dailyMissionClaimedOn': _dailyMissionClaimedOn?.toIso8601String(),
       'totalCoinsEarned': totalCoinsEarned,
       'stockedTotal': stockedTotal,
@@ -2195,6 +2236,9 @@ class GameController extends ChangeNotifier {
     );
     shiftMissionClaimed = _readBoolAny(saved, const [
       'shiftMissionClaimed',
+    ], false);
+    fastCheckoutClaimed = _readBoolAny(saved, const [
+      'fastCheckoutClaimed',
     ], false);
     _dailyMissionClaimedOn = _readDateAny(saved, const [
       'dailyMissionClaimedOn',
