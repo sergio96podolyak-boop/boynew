@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../game/game_controller.dart';
 import '../../game/meta_models.dart';
+import '../../services/app_localizations.dart';
 import '../../services/share_service.dart';
 import '../../services/sfx/sfx_manager.dart';
 import 'pressable_scale.dart';
@@ -322,28 +323,29 @@ class _StatsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     final cards = <({IconData icon, String label, String value, Color color})>[
       (
         icon: Icons.timer_rounded,
-        label: 'PLAY TIME',
+        label: loc.playTime,
         value: _formatDuration(game.totalPlayTime),
         color: const Color(0xFF5B8DEF),
       ),
       (
         icon: Icons.touch_app_rounded,
-        label: 'ACTIONS',
+        label: loc.actions,
         value: _formatNumber(game.totalActions),
         color: const Color(0xFF8B66D8),
       ),
       (
         icon: Icons.monetization_on_rounded,
-        label: 'BEST BALANCE',
+        label: loc.bestBalance,
         value: _formatNumber(game.highestBalance),
         color: const Color(0xFFF6A623),
       ),
       (
         icon: Icons.workspace_premium_rounded,
-        label: 'HIGH SCORE',
+        label: loc.highScore,
         value: _formatNumber(game.highestScore),
         color: const Color(0xFFE85D75),
       ),
@@ -375,8 +377,8 @@ class _StatsTab extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'PERFORMANCE HISTORY',
+              Text(
+                loc.performanceHistory,
                 style: TextStyle(
                   color: Color(0xFF315F4A),
                   fontSize: 12,
@@ -386,7 +388,7 @@ class _StatsTab extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                '${game.performanceHistory.length} saved snapshots · score over time',
+                '${game.performanceHistory.length} ${loc.savedSnapshots} · ${loc.scoreOverTime}',
                 style: const TextStyle(color: Color(0xFF7A7F7B), fontSize: 11),
               ),
               const SizedBox(height: 10),
@@ -395,9 +397,9 @@ class _StatsTab extends StatelessWidget {
                 child: CustomPaint(
                   painter: _HistoryChartPainter(game.performanceHistory),
                   child: game.performanceHistory.length < 2
-                      ? const Center(
+                      ? Center(
                           child: Text(
-                            'Keep playing — your performance chart is building.',
+                            loc.keepPlayingChart,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Color(0xFF7A7F7B),
@@ -416,21 +418,21 @@ class _StatsTab extends StatelessWidget {
           children: [
             Expanded(
               child: _MiniMetric(
-                label: 'CUSTOMERS',
+                label: loc.customers,
                 value: '${game.totalSales}',
               ),
             ),
             const SizedBox(width: 9),
             Expanded(
               child: _MiniMetric(
-                label: 'ITEMS STOCKED',
+                label: loc.itemsStocked,
                 value: '${game.stockedTotal}',
               ),
             ),
             const SizedBox(width: 9),
             Expanded(
               child: _MiniMetric(
-                label: 'UPGRADES',
+                label: loc.upgradesCount,
                 value: '${game.upgradesBought}',
               ),
             ),
@@ -536,18 +538,19 @@ class _LeaderboardTab extends StatelessWidget {
   Future<void> _submit(BuildContext context) async {
     unawaited(SfxManager.instance.click());
     final controller = TextEditingController(text: 'Player');
+    final loc = AppLocalizations.of(context);
     final nickname = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Post your score'),
+        title: Text(loc.postYourScore),
         content: TextField(
           controller: controller,
           autofocus: true,
           maxLength: 20,
           textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Nickname',
-            hintText: 'Enter your player name',
+          decoration: InputDecoration(
+            labelText: loc.nickname,
+            hintText: loc.enterYourPlayerName,
             border: OutlineInputBorder(),
           ),
           onSubmitted: (value) => Navigator.of(dialogContext).pop(value.trim()),
@@ -555,12 +558,12 @@ class _LeaderboardTab extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            child: Text(loc.cancel),
           ),
           FilledButton(
             onPressed: () =>
                 Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('POST SCORE'),
+            child: Text(loc.post),
           ),
         ],
       ),
@@ -575,7 +578,9 @@ class _LeaderboardTab extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '${entry.nickname} joined the leaderboard with ${_formatNumber(entry.score)} points!',
+          loc.joinedLeaderboard
+              .replaceFirst('{nickname}', entry.nickname)
+              .replaceFirst('{score}', _formatNumber(entry.score)),
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -623,8 +628,8 @@ class _LeaderboardTab extends StatelessWidget {
           ),
           child: Column(
             children: [
-              const Text(
-                'YOUR CURRENT BUSINESS SCORE',
+              Text(
+                AppLocalizations.of(context).yourCurrentBusinessScore,
                 style: TextStyle(
                   color: Color(0xFFCDEDDD),
                   fontSize: 10,
@@ -654,7 +659,7 @@ class _LeaderboardTab extends StatelessWidget {
                           foregroundColor: const Color(0xFF294B3A),
                         ),
                         icon: const Icon(Icons.leaderboard_rounded),
-                        label: const Text('POST SCORE'),
+                        label: Text(AppLocalizations.of(context).postScore),
                       ),
                     ),
                   ),
@@ -669,7 +674,7 @@ class _LeaderboardTab extends StatelessWidget {
                           side: const BorderSide(color: Color(0xFFAEE0C5)),
                         ),
                         icon: const Icon(Icons.ios_share_rounded),
-                        label: const Text('CHALLENGE'),
+                        label: Text(AppLocalizations.of(context).challenge),
                       ),
                     ),
                   ),
@@ -681,14 +686,14 @@ class _LeaderboardTab extends StatelessWidget {
         const SizedBox(height: 13),
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'LOCAL TOP 10',
+                AppLocalizations.of(context).localTop10,
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
             Text(
-              'Saved on this device',
+              AppLocalizations.of(context).savedOnThisDevice,
               style: Theme.of(
                 context,
               ).textTheme.labelSmall?.copyWith(color: const Color(0xFF7A7E7A)),
@@ -827,24 +832,23 @@ class _SettingsTab extends StatelessWidget {
 
   Future<void> _reset(BuildContext context) async {
     unawaited(SfxManager.instance.click());
+    final loc = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Reset all progress?'),
-        content: const Text(
-          'This permanently removes coins, inventory, upgrades, achievements, stats, streaks, and local leaderboard entries from this device.',
-        ),
+        title: Text(loc.resetProgress),
+        content: Text(loc.resetConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('CANCEL'),
+            child: Text(loc.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFC94355),
             ),
-            child: const Text('RESET PROGRESS'),
+            child: Text(loc.reset),
           ),
         ],
       ),
@@ -862,6 +866,7 @@ class _SettingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(0, 5, 0, 18),
       children: [
@@ -871,7 +876,7 @@ class _SettingsTab extends StatelessWidget {
             color: const Color(0xFFE8F5EE),
             borderRadius: BorderRadius.circular(18),
           ),
-          child: const Row(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.cloud_done_rounded, color: Color(0xFF2C8D60)),
@@ -881,14 +886,14 @@ class _SettingsTab extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'AUTO-SAVE IS ON',
+                      loc.autoSaveOn,
                       style: TextStyle(
                         color: Color(0xFF256A4B),
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     Text(
-                      'Progress, inventory, achievements, and stats are saved securely on this device.',
+                      loc.autoSaveDesc,
                       style: TextStyle(color: Color(0xFF5B7466), fontSize: 12),
                     ),
                   ],
@@ -900,8 +905,8 @@ class _SettingsTab extends StatelessWidget {
         const SizedBox(height: 12),
         _SettingsTile(
           icon: game.muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-          title: 'Sound effects',
-          subtitle: 'Clicks, successes, and milestone cues',
+          title: loc.soundEffects,
+          subtitle: loc.soundEffectsDesc,
           trailing: Switch(
             value: !game.muted,
             onChanged: (enabled) => unawaited(_setMuted(!enabled)),
@@ -910,21 +915,21 @@ class _SettingsTab extends StatelessWidget {
         const SizedBox(height: 9),
         _SettingsTile(
           icon: Icons.school_rounded,
-          title: 'Quick tutorial',
-          subtitle: 'Replay the three-step beginner guide',
+          title: loc.quickTutorial,
+          subtitle: loc.replayTutorial,
           trailing: FilledButton(
             onPressed: () {
               unawaited(SfxManager.instance.click());
               Navigator.of(context).pop();
               onReplayTutorial();
             },
-            child: const Text('REPLAY'),
+            child: Text(loc.replay),
           ),
         ),
         const SizedBox(height: 9),
         _SettingsTile(
           icon: Icons.local_fire_department_rounded,
-          title: 'Daily streak',
+          title: loc.dailyStreak,
           subtitle:
               '${game.dailyBonus.currentStreak} days · best ${game.dailyBonus.longestStreak}',
           trailing: Text(
@@ -941,7 +946,7 @@ class _SettingsTab extends StatelessWidget {
             side: const BorderSide(color: Color(0xFFE5A9B1)),
           ),
           icon: const Icon(Icons.restart_alt_rounded),
-          label: const Text('RESET PROGRESS'),
+          label: Text(loc.reset),
         ),
       ],
     );

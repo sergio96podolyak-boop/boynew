@@ -22,6 +22,7 @@ class AppSettings extends ChangeNotifier {
   }
 
   static const _languageKey = 'pomarket.settings.language';
+  static const _systemLanguageCode = 'system';
   static const _soundKey = 'pomarket.settings.sound';
   static const _reducedMotionKey = 'pomarket.settings.reducedMotion';
   static const _controlModeKey = 'pomarket.settings.controlMode';
@@ -35,6 +36,9 @@ class AppSettings extends ChangeNotifier {
 
   /// The manually selected language, or `null` for system default.
   Locale? get language => _language;
+
+  /// True only after an explicit System language choice has been loaded.
+  bool get followsSystemLanguage => _loaded && _language == null;
 
   /// Whether sound effects are enabled (defaults to true).
   bool get soundEnabled => _soundEnabled ?? true;
@@ -56,9 +60,18 @@ class AppSettings extends ChangeNotifier {
   /// Loads all settings from persistent storage.
   Future<void> load() async {
     final languageCode = await _prefs.getString(_languageKey);
-    _language = languageCode != null && languageCode.isNotEmpty
-        ? Locale(languageCode)
-        : null;
+    if (languageCode == _systemLanguageCode) {
+      _language = null;
+    } else if (languageCode == 'en' ||
+        languageCode == 'he' ||
+        languageCode == 'ar') {
+      _language = Locale(languageCode!);
+    } else {
+      // Old installs had no key and therefore followed the device locale.
+      // Migrate that ambiguous state to the product's stable English default.
+      _language = const Locale('en');
+      await _prefs.setString(_languageKey, 'en');
+    }
     _soundEnabled = await _prefs.getBool(_soundKey) ?? true;
     _reducedMotion = await _prefs.getBool(_reducedMotionKey) ?? false;
     _controlMode = await _prefs.getString(_controlModeKey);
@@ -69,7 +82,7 @@ class AppSettings extends ChangeNotifier {
   /// Sets the language. Pass `null` to use the system default.
   Future<void> setLanguage(Locale? locale) async {
     if (locale == null) {
-      await _prefs.remove(_languageKey);
+      await _prefs.setString(_languageKey, _systemLanguageCode);
     } else {
       await _prefs.setString(_languageKey, locale.languageCode);
     }

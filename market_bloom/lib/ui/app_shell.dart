@@ -74,7 +74,10 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context);
-    final isWide = MediaQuery.sizeOf(context).width >= 600;
+    final viewport = MediaQuery.sizeOf(context);
+    // A short landscape viewport cannot fit the full labelled rail. Treat it
+    // like a phone layout so navigation remains reachable without overflow.
+    final isWide = viewport.width >= 600 && viewport.height >= 560;
     return Scaffold(
       body: Column(
         children: [

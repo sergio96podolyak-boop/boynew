@@ -67,7 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _LanguageChip(
                         label: loc.systemDefault,
-                        selected: settings.language == null,
+                        selected: settings.followsSystemLanguage,
                         onTap: () => settings.setLanguage(null),
                       ),
                       _LanguageChip(

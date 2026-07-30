@@ -95,10 +95,19 @@ class _UpgradeTile extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     Text(
-                      '${_localizedSubtitle(loc, offer)} · ${loc.level} ${offer.level}',
+                      '${loc.level} ${offer.level}/10',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      '${_localizedSubtitle(loc, offer)} → ${_localizedNextSubtitle(loc, offer)}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -143,5 +152,39 @@ class _UpgradeTile extends StatelessWidget {
       ),
       UpgradeType.restock => loc.keepShelvesFilled,
     };
+  }
+
+  String _localizedNextSubtitle(
+    AppLocalizations loc,
+    UpgradeOffer currentOffer,
+  ) {
+    final nextLevel = currentOffer.level + 1;
+    return switch (currentOffer.type) {
+      UpgradeType.bag => loc.carryProducts.replaceFirst(
+        '{capacity}',
+        '${3 + nextLevel}',
+      ),
+      UpgradeType.shelf => '${loc.capacity}: ${4 + nextLevel * 2}',
+      UpgradeType.price => loc.profitPerSale.replaceFirst(
+        '{value}',
+        '${4 + nextLevel * 2}',
+      ),
+      UpgradeType.speed => loc.movementSpeed.replaceFirst(
+        '{value}',
+        '${nextLevel * 8}',
+      ),
+      UpgradeType.checkout => loc.serviceTime.replaceFirst(
+        '{value}',
+        _nextCheckoutSeconds(currentOffer),
+      ),
+      UpgradeType.restock => loc.keepShelvesFilled,
+    };
+  }
+
+  String _nextCheckoutSeconds(UpgradeOffer offer) {
+    final current = double.tryParse(offer.subtitle.split('s').first) ?? 1;
+    return current > 0.38
+        ? (current - 0.09).clamp(0.38, 9.99).toStringAsFixed(2)
+        : '0.38';
   }
 }

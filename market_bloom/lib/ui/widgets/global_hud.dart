@@ -30,8 +30,10 @@ class GlobalHud extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxWidth < 360;
+            final compactBrand =
+                constraints.maxWidth >= 430 && constraints.maxWidth < 500;
             final tight = constraints.maxWidth < 430;
-            final showSubtitle = constraints.maxWidth >= 350;
+            final showSubtitle = constraints.maxWidth >= 350 && !compactBrand;
 
             return AnimatedBuilder(
               animation: game,
@@ -53,8 +55,8 @@ class GlobalHud extends StatelessWidget {
                             child: Row(
                               children: [
                                 Container(
-                                  width: compact ? 34 : 40,
-                                  height: compact ? 34 : 40,
+                                  width: compactBrand ? 34 : 40,
+                                  height: compactBrand ? 34 : 40,
                                   decoration: BoxDecoration(
                                     color: const Color(0xFF38B879),
                                     borderRadius: BorderRadius.circular(12),
@@ -62,10 +64,10 @@ class GlobalHud extends StatelessWidget {
                                   child: Icon(
                                     Icons.storefront_rounded,
                                     color: Colors.white,
-                                    size: compact ? 20 : 23,
+                                    size: compactBrand ? 20 : 23,
                                   ),
                                 ),
-                                if (!compact) ...[
+                                if (!compactBrand) ...[
                                   const SizedBox(width: 8),
                                   Flexible(
                                     child: Column(

@@ -403,6 +403,58 @@ class AppLocalizations {
 
   String get watchAndEarn => _t('watchAndEarn');
 
+  String get freeBonus => _t('freeBonus');
+
+  String get freeBonusSubtitle => _t('freeBonusSubtitle');
+
+  String get rewardCenterTitle => _t('rewardCenterTitle');
+
+  String get optionalAdDescription => _t('optionalAdDescription');
+
+  String get mobileFeaturePreview => _t('mobileFeaturePreview');
+
+  String get watchAndReceive => _t('watchAndReceive');
+
+  String get rewardUnavailable => _t('rewardUnavailable');
+
+  String get rewardCooldown => _t('rewardCooldown');
+
+  String get dailyLimitReached => _t('dailyLimitReached');
+
+  String get rewardPreviewUnavailable => _t('rewardPreviewUnavailable');
+
+  String get rewardDismissed => _t('rewardDismissed');
+
+  String get rewardFailed => _t('rewardFailed');
+
+  String get rewardClaimsToday => _t('rewardClaimsToday');
+
+  String get rewardCoinsTitle => _t('rewardCoinsTitle');
+
+  String get rewardCoinsBenefit => _t('rewardCoinsBenefit');
+
+  String get rewardOfflineTitle => _t('rewardOfflineTitle');
+
+  String get rewardOfflineBenefit => _t('rewardOfflineBenefit');
+
+  String get rewardEmergencyTitle => _t('rewardEmergencyTitle');
+
+  String get rewardEmergencyBenefit => _t('rewardEmergencyBenefit');
+
+  String get starterOffers => _t('starterOffers');
+
+  String get coinPacks => _t('coinPacks');
+
+  String get gemPacks => _t('gemPacks');
+
+  String get emergencySupplies => _t('emergencySupplies');
+
+  String get permanentBenefits => _t('permanentBenefits');
+
+  String get removeAdsCategory => _t('removeAdsCategory');
+
+  String get mobileStoreAvailability => _t('mobileStoreAvailability');
+
   String get noAds => _t('noAds');
 
   String get oneTimePurchase => _t('oneTimePurchase');
@@ -937,6 +989,35 @@ class AppLocalizations {
     'shopTitle': 'Shop',
     'rewardedBonus': 'Rewarded Bonus',
     'watchAndEarn': 'Watch & Earn',
+    'freeBonus': 'Free Bonus',
+    'freeBonusSubtitle': 'Watch ad • Choose reward',
+    'rewardCenterTitle': 'Reward Center',
+    'optionalAdDescription':
+        'Watch an optional video and receive the selected reward after the video is completed.',
+    'mobileFeaturePreview': 'Mobile feature preview',
+    'watchAndReceive': 'Watch and receive',
+    'rewardUnavailable': 'Unavailable',
+    'rewardCooldown': 'Ready after {time}',
+    'dailyLimitReached': 'Daily limit reached',
+    'rewardPreviewUnavailable':
+        'Rewarded ads are unavailable in this Web preview. No reward is granted.',
+    'rewardDismissed':
+        'No reward was granted because the video was not completed.',
+    'rewardFailed': 'The optional video could not be completed.',
+    'rewardClaimsToday': 'Rewards today',
+    'rewardCoinsTitle': 'Coin boost',
+    'rewardCoinsBenefit': '+{value} coins',
+    'rewardOfflineTitle': 'Double offline earnings',
+    'rewardOfflineBenefit': '{value} coins instead of {base}',
+    'rewardEmergencyTitle': 'Emergency stock',
+    'rewardEmergencyBenefit': '+{value} products',
+    'starterOffers': 'Starter Offers',
+    'coinPacks': 'Coin Packs',
+    'gemPacks': 'Gem Packs',
+    'emergencySupplies': 'Emergency Supplies',
+    'permanentBenefits': 'Permanent Benefits',
+    'removeAdsCategory': 'Remove Ads',
+    'mobileStoreAvailability': 'Available in the mobile store version.',
     'noAds': 'No Ads',
     'oneTimePurchase': 'One-time purchase',
     'owned': 'Owned',
@@ -1302,6 +1383,34 @@ class AppLocalizations {
     'shopTitle': 'חנות',
     'rewardedBonus': 'בונוס מתגמול',
     'watchAndEarn': 'צפה והרוון',
+    'freeBonus': 'בונוס חינם',
+    'freeBonusSubtitle': 'צפו בפרסומת • בחרו פרס',
+    'rewardCenterTitle': 'מרכז הפרסים',
+    'optionalAdDescription':
+        'צפו בסרטון אופציונלי וקבלו את הפרס שבחרתם לאחר השלמת הצפייה.',
+    'mobileFeaturePreview': 'תצוגה מקדימה של תכונה בנייד',
+    'watchAndReceive': 'צפו וקבלו',
+    'rewardUnavailable': 'לא זמין',
+    'rewardCooldown': 'זמין בעוד {time}',
+    'dailyLimitReached': 'הגעתם למגבלה היומית',
+    'rewardPreviewUnavailable':
+        'פרסומות מתגמלות אינן זמינות בתצוגת Web זו. לא ניתן פרס.',
+    'rewardDismissed': 'לא ניתן פרס כי הצפייה לא הושלמה.',
+    'rewardFailed': 'לא ניתן היה להשלים את הסרטון האופציונלי.',
+    'rewardClaimsToday': 'פרסים היום',
+    'rewardCoinsTitle': 'חיזוק מטבעות',
+    'rewardCoinsBenefit': '+{value} מטבעות',
+    'rewardOfflineTitle': 'הכפלת רווחים שהצטברו',
+    'rewardOfflineBenefit': '{value} מטבעות במקום {base}',
+    'rewardEmergencyTitle': 'מלאי חירום',
+    'rewardEmergencyBenefit': '+{value} מוצרים',
+    'starterOffers': 'הצעות פתיחה',
+    'coinPacks': 'חבילות מטבעות',
+    'gemPacks': 'חבילות אבני חן',
+    'emergencySupplies': 'אספקת חירום',
+    'permanentBenefits': 'הטבות קבועות',
+    'removeAdsCategory': 'הסרת פרסומות',
+    'mobileStoreAvailability': 'זמין בגרסת חנות המובייל.',
     'noAds': 'בלי פרסומות',
     'oneTimePurchase': 'רכישה חד פעמית',
     'owned': 'בבעלות',
@@ -1665,6 +1774,34 @@ class AppLocalizations {
     'shopTitle': 'المتجر',
     'rewardedBonus': 'مكافأة مكافأة',
     'watchAndEarn': 'شاهد واكسب',
+    'freeBonus': 'مكافأة مجانية',
+    'freeBonusSubtitle': 'شاهد إعلانًا • اختر مكافأة',
+    'rewardCenterTitle': 'مركز المكافآت',
+    'optionalAdDescription':
+        'شاهد فيديو اختياريًا واحصل على المكافأة التي اخترتها بعد إكمال المشاهدة.',
+    'mobileFeaturePreview': 'معاينة ميزة الهاتف المحمول',
+    'watchAndReceive': 'شاهد واحصل',
+    'rewardUnavailable': 'غير متاح',
+    'rewardCooldown': 'متاح بعد {time}',
+    'dailyLimitReached': 'تم بلوغ الحد اليومي',
+    'rewardPreviewUnavailable':
+        'الإعلانات بمكافأة غير متاحة في معاينة الويب. لن تُمنح مكافأة.',
+    'rewardDismissed': 'لم تُمنح مكافأة لأن المشاهدة لم تكتمل.',
+    'rewardFailed': 'تعذر إكمال الفيديو الاختياري.',
+    'rewardClaimsToday': 'المكافآت اليوم',
+    'rewardCoinsTitle': 'تعزيز العملات',
+    'rewardCoinsBenefit': '+{value} عملة',
+    'rewardOfflineTitle': 'مضاعفة الأرباح غير المتصلة',
+    'rewardOfflineBenefit': '{value} عملة بدلًا من {base}',
+    'rewardEmergencyTitle': 'مخزون الطوارئ',
+    'rewardEmergencyBenefit': '+{value} منتجات',
+    'starterOffers': 'عروض البداية',
+    'coinPacks': 'حزم العملات',
+    'gemPacks': 'حزم الجواهر',
+    'emergencySupplies': 'إمدادات الطوارئ',
+    'permanentBenefits': 'مزايا دائمة',
+    'removeAdsCategory': 'إزالة الإعلانات',
+    'mobileStoreAvailability': 'متاح في إصدار متجر الهاتف المحمول.',
     'noAds': 'بدون إعلانات',
     'oneTimePurchase': 'شراء مرة واحدة',
     'owned': 'مملوك',

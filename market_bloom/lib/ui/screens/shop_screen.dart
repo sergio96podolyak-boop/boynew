@@ -34,7 +34,7 @@ class ShopScreen extends StatelessWidget {
             Text(
               controller.storePurchasesAvailable
                   ? loc.secureStorePurchases
-                  : loc.previewModeDesc,
+                  : '${loc.previewModeDesc} ${loc.mobileStoreAvailability}',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
@@ -44,13 +44,13 @@ class ShopScreen extends StatelessWidget {
             _StoreCard(
               icon: Icons.ondemand_video_rounded,
               color: const Color(0xFFE85D75),
-              title: loc.rewardedBonus,
+              title: loc.freeBonus,
               subtitle:
-                  '${loc.watchAndEarn} — ${loc.coinsEarned.replaceFirst('{value}', '${controller.instantAdReward}')}',
+                  '${loc.freeBonusSubtitle} — ${loc.rewardCoinsBenefit.replaceFirst('{value}', '${controller.instantAdReward}')}',
               buttonLabel: controller.rewardInProgress
                   ? loc.loading
                   : !controller.rewardedAdsAvailable
-                  ? loc.unavailable
+                  ? loc.mobileFeaturePreview
                   : rewardCooldown > Duration.zero
                   ? loc.retryIn.replaceFirst(
                       '{seconds}',
@@ -81,6 +81,8 @@ class ShopScreen extends StatelessWidget {
                     },
             ),
             const SizedBox(height: 12),
+            _ShopSectionLabel(label: loc.permanentBenefits),
+            const SizedBox(height: 4),
             _StoreCard(
               icon: Icons.block_rounded,
               color: const Color(0xFF5B8DEF),
@@ -98,6 +100,8 @@ class ShopScreen extends StatelessWidget {
                   : () => _purchase(context, StoreProduct.noAds),
             ),
             const SizedBox(height: 12),
+            _ShopSectionLabel(label: loc.starterOffers),
+            const SizedBox(height: 4),
             _StoreCard(
               icon: Icons.rocket_launch_rounded,
               color: const Color(0xFFF6A623),
@@ -113,6 +117,8 @@ class ShopScreen extends StatelessWidget {
                   : () => _purchase(context, StoreProduct.starterPack),
             ),
             const SizedBox(height: 12),
+            _ShopSectionLabel(label: loc.coinPacks),
+            const SizedBox(height: 4),
             _StoreCard(
               icon: Icons.monetization_on_rounded,
               color: const Color(0xFF38B879),
@@ -128,6 +134,8 @@ class ShopScreen extends StatelessWidget {
                   : () => _purchase(context, StoreProduct.coinPack),
             ),
             const SizedBox(height: 12),
+            _ShopSectionLabel(label: loc.gemPacks),
+            const SizedBox(height: 4),
             _StoreCard(
               icon: Icons.diamond_rounded,
               color: const Color(0xFF8B66D8),
@@ -143,6 +151,8 @@ class ShopScreen extends StatelessWidget {
                   : () => _purchase(context, StoreProduct.gemPack),
             ),
             const SizedBox(height: 12),
+            _ShopSectionLabel(label: loc.emergencySupplies),
+            const SizedBox(height: 4),
             _StoreCard(
               icon: Icons.inventory_2_rounded,
               color: const Color(0xFF5B8DEF),
@@ -156,6 +166,16 @@ class ShopScreen extends StatelessWidget {
                       controller.storePurchaseInProgress
                   ? null
                   : () => _purchase(context, StoreProduct.emergencySupply),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed:
+                  controller.storePurchasesAvailable &&
+                      !controller.storePurchaseInProgress
+                  ? () => _restore(context)
+                  : null,
+              icon: const Icon(Icons.restore_rounded),
+              label: Text(loc.restorePurchases),
             ),
           ],
         ),
@@ -175,6 +195,24 @@ class ShopScreen extends StatelessWidget {
               : controller.lastPurchaseState == PurchaseState.cancelled
               ? loc.purchaseCancelled
               : loc.purchaseFailed,
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _restore(BuildContext context) async {
+    final restored = await controller.restoreStorePurchases();
+    if (!context.mounted) return;
+    final loc = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          restored
+              ? loc.restorePurchasesSuccess
+              : controller.storePurchasesAvailable
+              ? loc.restorePurchasesNone
+              : loc.restorePurchasesUnavailable,
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -208,6 +246,28 @@ class _PreviewBadge extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShopSectionLabel extends StatelessWidget {
+  const _ShopSectionLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: 4, top: 4),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF315F4A),
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.4,
         ),
       ),
     );

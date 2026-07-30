@@ -128,6 +128,101 @@ void main() {
     expect(find.text('Bigger Bag'), findsOneWidget);
   });
 
+  testWidgets(
+    'market layout stays inside the viewport in all responsive modes',
+    (tester) async {
+      final layouts = <({Size size, String language})>[
+        (size: const Size(320, 568), language: 'en'),
+        (size: const Size(360, 640), language: 'en'),
+        (size: const Size(390, 844), language: 'en'),
+        (size: const Size(375, 667), language: 'en'),
+        (size: const Size(393, 852), language: 'he'),
+        (size: const Size(430, 932), language: 'en'),
+        (size: const Size(667, 375), language: 'ar'),
+        (size: const Size(768, 700), language: 'en'),
+        (size: const Size(1024, 768), language: 'he'),
+        (size: const Size(1366, 768), language: 'ar'),
+      ];
+      addTearDown(binding.platformDispatcher.clearTextScaleFactorTestValue);
+
+      for (final layout in layouts) {
+        tester.view.physicalSize = layout.size;
+        tester.view.devicePixelRatio = 1;
+        binding.platformDispatcher.textScaleFactorTestValue =
+            layout.size == const Size(393, 852) ? 1.3 : 1;
+        final settings = _testSettings();
+        await settings.setLanguage(Locale(layout.language));
+        final controller = GameController(
+          storage: MemoryGameStorage(),
+          monetization: PreviewMonetizationService(),
+        );
+        await controller.initialize();
+        controller.completeOnboarding();
+        controller.acknowledgeDailyBonus();
+
+        await tester.pumpWidget(
+          PoMarketApp(
+            controller: controller,
+            settings: settings,
+            showSplash: false,
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+
+        final objectiveRect = tester.getRect(
+          find.byKey(const ValueKey('objective-strip')),
+        );
+        final boardRect = tester.getRect(
+          find.byKey(const ValueKey('market-board')),
+        );
+        final viewportRect = tester.getRect(
+          find.byKey(const ValueKey('market-page-viewport')),
+        );
+        final dockRect = tester.getRect(
+          find.byKey(const ValueKey('bottom-action-dock')),
+        );
+        final actionRect = tester.getRect(
+          find.byKey(const ValueKey('quick-reward-action')),
+        );
+        expect(objectiveRect.bottom, lessThanOrEqualTo(boardRect.top));
+        expect(objectiveRect.overlaps(boardRect), isFalse);
+        expect(dockRect.bottom, lessThanOrEqualTo(viewportRect.bottom));
+        expect(dockRect.overlaps(boardRect), isFalse);
+        expect(dockRect.left, greaterThanOrEqualTo(viewportRect.left));
+        expect(dockRect.right, lessThanOrEqualTo(viewportRect.right));
+        expect(
+          actionRect.height,
+          greaterThanOrEqualTo(layout.size.width < 600 ? 52 : 44),
+        );
+        expect(find.byKey(const ValueKey('movement-hint')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('quick-upgrades-action')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('quick-reward-action')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const ValueKey('quick-shop-action')), findsOneWidget);
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'layout ${layout.size} / ${layout.language}',
+        );
+
+        if (layout.size.width == 320) {
+          await tester.tapAt(objectiveRect.center);
+          expect(controller.movementTarget, isNull);
+          await tester.tap(find.byKey(const ValueKey('quick-shop-action')));
+          expect(controller.movementTarget, isNull);
+        }
+      }
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    },
+  );
+
   testWidgets('shows the branded opening screen before entering the game', (
     tester,
   ) async {
@@ -154,6 +249,80 @@ void main() {
     expect(find.text('PoMarket'), findsOneWidget);
     expect(find.text('BUILD. STOCK. GROW.'), findsOneWidget);
     expect(find.text('OPENING YOUR STORE'), findsOneWidget);
+  });
+
+  testWidgets('Free Bonus opens a truthful Web Reward Center', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+    final beforeCoins = controller.coins;
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: _testSettings(),
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    await tester.tap(find.byKey(const ValueKey('quick-reward-action')));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('Reward Center'), findsOneWidget);
+    expect(find.textContaining('optional video'), findsOneWidget);
+    expect(find.textContaining('Mobile feature preview'), findsOneWidget);
+    expect(controller.coins, beforeCoins);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('explicit System language follows the platform locale', (
+    tester,
+  ) async {
+    binding.platformDispatcher.localeTestValue = const Locale('ar');
+    binding.platformDispatcher.localesTestValue = const [Locale('ar')];
+    addTearDown(binding.platformDispatcher.clearLocalesTestValue);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final settings = _testSettings();
+    await settings.setLanguage(null);
+    await settings.load();
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+    controller.completeOnboarding();
+    controller.acknowledgeDailyBonus();
+
+    await tester.pumpWidget(
+      PoMarketApp(
+        controller: controller,
+        settings: settings,
+        showSplash: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(
+      Directionality.of(tester.element(find.byType(GlobalHud))),
+      TextDirection.rtl,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('renders PoMarket brand after splash', (tester) async {

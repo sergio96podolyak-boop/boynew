@@ -96,7 +96,9 @@ class PoMarketApp extends StatelessWidget {
     return AnimatedBuilder(
       animation: settings,
       builder: (context, _) {
-        final locale = settings.language;
+        final locale = settings.isLoaded
+            ? settings.language
+            : const Locale('en');
 
         return MaterialApp(
           title: 'PoMarket',

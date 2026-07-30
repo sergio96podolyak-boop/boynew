@@ -305,6 +305,8 @@ class GameController extends ChangeNotifier {
   bool get isMonetizationPreview => monetization.isPreview;
   bool get storePurchasesAvailable => monetization.storeAvailable;
   bool get rewardedAdsAvailable => monetization.rewardedAdsAvailable;
+  int get rewardClaimsToday => _rewardClaimsToday;
+  int get rewardDailyLimit => MonetizationPolicy.rewardedDailyLimit;
   int get businessScore =>
       totalCoinsEarned +
       totalSales * 25 +
