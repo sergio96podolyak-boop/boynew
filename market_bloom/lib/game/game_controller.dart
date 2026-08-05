@@ -31,12 +31,51 @@ class GameController extends ChangeNotifier {
   final MonetizationService monetization;
   final Random _random;
   final DateTime Function() _now;
+  final ChangeNotifier _sceneNotifier = ChangeNotifier();
+  final ChangeNotifier uiUpdateNotifier = ChangeNotifier();
 
   Offset playerPosition = const Offset(0.5, 0.72);
   Offset stockerPosition = stockerPickupZone;
   Offset movement = Offset.zero;
   Offset? _movementTarget;
   final List<MarketCustomer> customers = [];
+  final List<FloatingTextEffect> floatingEffects = [];
+  int comboCount = 0;
+  double comboTimer = 0.0;
+
+  void spawnFloatingText(
+    String text,
+    Offset position,
+    Color color, {
+    double fontSize = 16,
+    bool isEmoji = false,
+  }) {
+    floatingEffects.add(
+      FloatingTextEffect(
+        text: text,
+        position: position,
+        color: color,
+        fontSize: fontSize,
+        isEmoji: isEmoji,
+      ),
+    );
+    if (floatingEffects.length > 30) {
+      floatingEffects.removeAt(0);
+    }
+  }
+
+  void registerComboAction(Offset pos) {
+    comboCount++;
+    comboTimer = 3.5;
+    if (comboCount > 1) {
+      spawnFloatingText(
+        '🔥 ${comboCount}x COMBO!',
+        pos,
+        const Color(0xFFFF9F1C),
+        fontSize: 18,
+      );
+    }
+  }
 
   int coins = 25;
   int gems = 3;
@@ -146,6 +185,12 @@ class GameController extends ChangeNotifier {
   int get salesIntoLevel => totalSales % GameBalance.salesPerStoreLevel;
   double get levelProgress => salesIntoLevel / GameBalance.salesPerStoreLevel;
   Offset? get movementTarget => _movementTarget;
+
+  /// Notifies for simulation frames that only need a visual scene repaint.
+  ///
+  /// GameController listeners remain reserved for discrete UI state changes
+  /// so HUDs, menus, and offstage destinations do not rebuild every frame.
+  Listenable get scene => _sceneNotifier;
   bool get bakeryUnlocked => isDepartmentUnlocked(DepartmentType.bakery);
   int get stockerCarried => _stockerLoad;
   DepartmentType? get stockerTargetDepartment =>
@@ -628,13 +673,30 @@ class GameController extends ChangeNotifier {
 
     final safeDt = min(dt, 0.05);
     final actionsBefore = totalActions;
-    final salesBefore = totalSales;
+    final phaseBefore = shiftPhase;
     _updateShift(safeDt);
     _updatePlayer(safeDt);
     _updateStations(safeDt);
     _updateCustomers(safeDt);
     totalPlaySeconds += safeDt;
     _dirty = true;
+
+    if (floatingEffects.isNotEmpty) {
+      for (var i = floatingEffects.length - 1; i >= 0; i--) {
+        final effect = floatingEffects[i];
+        effect.elapsed += safeDt;
+        if (effect.isExpired) {
+          floatingEffects.removeAt(i);
+        }
+      }
+    }
+
+    if (comboTimer > 0) {
+      comboTimer -= safeDt;
+      if (comboTimer <= 0) {
+        comboCount = 0;
+      }
+    }
 
     _customerSpawnTimer -= safeDt * (rushActive ? 1.35 : 1);
     if (_customerSpawnTimer <= 0 && customers.length < customerCapacity) {
@@ -648,7 +710,7 @@ class GameController extends ChangeNotifier {
       _historyTimer = 0;
       _recordPerformanceSample(force: true);
     }
-    if (actionsBefore != totalActions || salesBefore != totalSales) {
+    if (actionsBefore != totalActions) {
       _afterProgressChanged();
     }
     if (_saveTimer >= 5) {
@@ -657,7 +719,16 @@ class GameController extends ChangeNotifier {
         unawaited(save());
       }
     }
-    notifyListeners();
+    // Keep per-frame animation on a paint-only channel. Normal controller
+    // listeners are notified only when UI-visible state actually changes.
+    _sceneNotifier.notifyListeners();
+
+    // Most state changes are covered by the _afterProgressChanged call
+    // earlier in the tick. This handles the remaining state changes that
+    // can occur without an "action".
+    if (phaseBefore != shiftPhase) {
+      notifyListeners();
+    }
   }
 
   void _updateShift(double dt) {
@@ -716,7 +787,7 @@ class GameController extends ChangeNotifier {
     totalCoinsEarned += 15;
     totalActions++;
     _afterProgressChanged(immediate: true);
-    notifyListeners();
+
     return true;
   }
 
@@ -731,7 +802,7 @@ class GameController extends ChangeNotifier {
     totalCoinsEarned += 8;
     totalActions++;
     _afterProgressChanged(immediate: true);
-    notifyListeners();
+
     return true;
   }
 
@@ -1093,6 +1164,15 @@ class GameController extends ChangeNotifier {
             shiftSales++;
             shiftRevenue += saleValue;
             totalActions++;
+            if (customer.checkoutOperator == CheckoutOperator.player) {
+              registerComboAction(customer.position);
+            }
+            spawnFloatingText(
+              '+$saleValue\$${customer.isVip ? " ⭐" : ""}',
+              customer.position,
+              customer.isVip ? const Color(0xFFFFD700) : const Color(0xFF4CAF50),
+              fontSize: customer.isVip ? 20 : 16,
+            );
             customer.phase = CustomerPhase.leaving;
             customer.phaseTime = 0;
             customer.checkoutOperator = null;
@@ -1247,7 +1327,7 @@ class GameController extends ChangeNotifier {
     upgradesBought++;
     totalActions++;
     _afterProgressChanged();
-    notifyListeners();
+
     return true;
   }
 
@@ -1274,7 +1354,7 @@ class GameController extends ChangeNotifier {
     questBaseline = totalSales;
     totalActions++;
     _afterProgressChanged();
-    notifyListeners();
+
   }
 
   Future<bool> claimInstantAdReward() async {
@@ -1283,8 +1363,17 @@ class GameController extends ChangeNotifier {
       return false;
     }
     rewardInProgress = true;
-    notifyListeners();
-    final completed = await monetization.showRewardedAd(placement);
+    final wasPaused = paused;
+    paused = true;
+
+    var completed = false;
+    try {
+      completed = await monetization.showRewardedAd(placement);
+    } catch (_) {
+      completed = false;
+    } finally {
+      paused = wasPaused;
+    }
     if (completed) {
       _recordRewardClaim(placement);
       coins += instantAdReward;
@@ -1294,7 +1383,7 @@ class GameController extends ChangeNotifier {
     }
     rewardInProgress = false;
     await save();
-    notifyListeners();
+
     return completed;
   }
 
@@ -1309,11 +1398,20 @@ class GameController extends ChangeNotifier {
         return false;
       }
       rewardInProgress = true;
-      notifyListeners();
-      final completed = await monetization.showRewardedAd(placement);
+      final wasPaused = paused;
+      paused = true;
+  
+      var completed = false;
+      try {
+        completed = await monetization.showRewardedAd(placement);
+      } catch (_) {
+        completed = false;
+      } finally {
+        paused = wasPaused;
+      }
       rewardInProgress = false;
       if (!completed) {
-        notifyListeners();
+    
         return false;
       }
       _recordRewardClaim(placement);
@@ -1326,7 +1424,7 @@ class GameController extends ChangeNotifier {
     totalActions++;
     _afterProgressChanged(immediate: true);
     await save();
-    notifyListeners();
+
     return true;
   }
 
@@ -1370,7 +1468,18 @@ class GameController extends ChangeNotifier {
                 MonetizationPolicy.interstitialAfterRewardCooldown)) {
       return false;
     }
-    final shown = await monetization.showInterstitial(placement);
+    final wasPaused = paused;
+    paused = true;
+
+    var shown = false;
+    try {
+      shown = await monetization.showInterstitial(placement);
+    } catch (_) {
+      shown = false;
+    } finally {
+      paused = wasPaused;
+  
+    }
     if (!shown) {
       return false;
     }
@@ -1388,7 +1497,7 @@ class GameController extends ChangeNotifier {
     }
     storePurchaseInProgress = true;
     lastPurchaseState = PurchaseState.pending;
-    notifyListeners();
+
     final result = await monetization.purchase(product);
     final purchased = _deliverVerifiedPurchase(result);
     lastPurchaseState = purchased
@@ -1398,7 +1507,7 @@ class GameController extends ChangeNotifier {
         : PurchaseState.failed;
     storePurchaseInProgress = false;
     await save();
-    notifyListeners();
+
     return purchased;
   }
 
@@ -1408,7 +1517,7 @@ class GameController extends ChangeNotifier {
     }
     storePurchaseInProgress = true;
     lastPurchaseState = PurchaseState.pending;
-    notifyListeners();
+
     final restored = await monetization.restorePurchases();
     var delivered = false;
     for (final result in restored) {
@@ -1419,7 +1528,7 @@ class GameController extends ChangeNotifier {
         : PurchaseState.failed;
     storePurchaseInProgress = false;
     await save();
-    notifyListeners();
+
     return delivered;
   }
 
@@ -1517,7 +1626,7 @@ class GameController extends ChangeNotifier {
     member.workerCount = 1;
     totalActions++;
     _afterProgressChanged();
-    notifyListeners();
+
     return true;
   }
 
@@ -1530,7 +1639,7 @@ class GameController extends ChangeNotifier {
     member.level++;
     totalActions++;
     _afterProgressChanged();
-    notifyListeners();
+
     return true;
   }
 
@@ -1547,7 +1656,7 @@ class GameController extends ChangeNotifier {
     member.workerCount++;
     totalActions++;
     _afterProgressChanged();
-    notifyListeners();
+
     return true;
   }
 
@@ -1664,7 +1773,7 @@ class GameController extends ChangeNotifier {
     _pendingDeliveries.add(delivery);
     totalActions++;
     _afterProgressChanged();
-    notifyListeners();
+
     return delivery;
   }
 
@@ -1701,7 +1810,7 @@ class GameController extends ChangeNotifier {
         inventoryFor(delivery.category) + delivery.quantity;
     totalActions++;
     _afterProgressChanged();
-    notifyListeners();
+
     return true;
   }
 
@@ -1714,7 +1823,7 @@ class GameController extends ChangeNotifier {
     _lastEmergencyStockAt = _now();
     totalActions++;
     _afterProgressChanged(immediate: true);
-    notifyListeners();
+
     return true;
   }
 
@@ -1736,7 +1845,7 @@ class GameController extends ChangeNotifier {
     _activateDepartment(state, announce: true);
     totalActions++;
     _afterProgressChanged(immediate: true);
-    notifyListeners();
+
     return true;
   }
 
@@ -1848,7 +1957,6 @@ class GameController extends ChangeNotifier {
     if (_pendingDeliveries.any((item) => item.completed)) {
       _pendingDeliveries.removeWhere((item) => item.completed);
       _afterProgressChanged();
-      notifyListeners();
     }
   }
 
@@ -2069,7 +2177,7 @@ class GameController extends ChangeNotifier {
     _recordPerformanceSample(force: true);
     _updateHighs();
     _evaluateAchievements();
-    notifyListeners();
+
     await save();
   }
 
@@ -2079,7 +2187,7 @@ class GameController extends ChangeNotifier {
     }
     muted = value;
     _markDirty(immediate: true);
-    notifyListeners();
+
   }
 
   void completeOnboarding() {
@@ -2088,14 +2196,14 @@ class GameController extends ChangeNotifier {
     }
     onboardingComplete = true;
     _markDirty(immediate: true);
-    notifyListeners();
+
   }
 
   void replayOnboarding() {
     _tutorialReplayRequested = true;
     onboardingComplete = false;
     _markDirty(immediate: true);
-    notifyListeners();
+
   }
 
   bool takeTutorialReplayRequest() {
@@ -2111,7 +2219,7 @@ class GameController extends ChangeNotifier {
       return;
     }
     pendingDailyBonus = null;
-    notifyListeners();
+
   }
 
   AchievementDefinition? takeAchievementUnlock() {
@@ -2145,7 +2253,7 @@ class GameController extends ChangeNotifier {
     _recordPerformanceSample(force: true);
     totalActions++;
     _markDirty(immediate: true);
-    notifyListeners();
+
     return entry;
   }
 
@@ -2166,7 +2274,7 @@ class GameController extends ChangeNotifier {
       upgradesBought = max(0, purchasedUpgrades);
     }
     _afterProgressChanged(immediate: true);
-    notifyListeners();
+
   }
 
   @visibleForTesting
@@ -2177,6 +2285,7 @@ class GameController extends ChangeNotifier {
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _sceneNotifier.dispose();
     monetization.dispose();
     super.dispose();
   }
@@ -2712,6 +2821,7 @@ class GameController extends ChangeNotifier {
     _updateHighs();
     _evaluateAchievements();
     _markDirty(immediate: immediate);
+    notifyListeners();
   }
 
   void _updateHighs() {

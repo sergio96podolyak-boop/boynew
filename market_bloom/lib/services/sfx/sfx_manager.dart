@@ -43,6 +43,24 @@ final class SfxManager {
 
   Future<void> error() => _play(SfxCue.error);
 
+  /// Start (or cross-fade to) ambient music for [phase].
+  ///
+  /// Silently ignored when muted or when the backend has failed.
+  Future<void> playAmbient(MusicPhase phase) async {
+    if (_muted || _disposed || _backendFailed) {
+      return;
+    }
+    await _safely(() => _backend.playAmbient(phase));
+  }
+
+  /// Fade out and stop ambient music.
+  Future<void> stopAmbient() async {
+    if (_disposed || _backendFailed) {
+      return;
+    }
+    await _safely(_backend.stopAmbient);
+  }
+
   Future<void> _play(SfxCue cue) async {
     if (_muted || _disposed || _backendFailed || _isThrottled(cue)) {
       return;

@@ -7,7 +7,16 @@ enum CustomerPhase { entering, shopping, checkout, paying, leaving }
 /// Short mobile-friendly operating cycle for the market floor.
 enum ShiftPhase { preparation, open, rush, closing, summary }
 
-enum MarketEventType { none, rushHour, vipCustomer, fastCheckout }
+enum MarketEventType {
+  none,
+  rushHour,
+  vipCustomer,
+  fastCheckout,
+  heatwave,
+  rainyDay,
+  inspectorVisit,
+  flashSale,
+}
 
 class ShiftSummary {
   const ShiftSummary({
@@ -464,3 +473,27 @@ abstract final class DepartmentCatalog {
 
   static DepartmentDefinition? find(DepartmentType type) => byType[type];
 }
+
+class FloatingTextEffect {
+  FloatingTextEffect({
+    required this.text,
+    required this.position,
+    required this.color,
+    this.fontSize = 16,
+    this.lifetime = 1.2,
+    this.isEmoji = false,
+  });
+
+  final String text;
+  Offset position;
+  final Color color;
+  final double fontSize;
+  final double lifetime;
+  final bool isEmoji;
+  double elapsed = 0;
+
+  bool get isExpired => elapsed >= lifetime;
+  double get opacity => (1.0 - (elapsed / lifetime)).clamp(0.0, 1.0);
+  Offset get currentPosition => Offset(position.dx, position.dy - (elapsed * 25));
+}
+

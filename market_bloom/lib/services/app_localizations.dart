@@ -454,6 +454,7 @@ class AppLocalizations {
   String get removeAdsCategory => _t('removeAdsCategory');
 
   String get mobileStoreAvailability => _t('mobileStoreAvailability');
+  String get comingSoon => _t('comingSoon');
 
   String get noAds => _t('noAds');
 
@@ -1018,6 +1019,7 @@ class AppLocalizations {
     'permanentBenefits': 'Permanent Benefits',
     'removeAdsCategory': 'Remove Ads',
     'mobileStoreAvailability': 'Available in the mobile store version.',
+    'comingSoon': 'Coming soon',
     'noAds': 'No Ads',
     'oneTimePurchase': 'One-time purchase',
     'owned': 'Owned',
@@ -1411,6 +1413,7 @@ class AppLocalizations {
     'permanentBenefits': 'הטבות קבועות',
     'removeAdsCategory': 'הסרת פרסומות',
     'mobileStoreAvailability': 'זמין בגרסת חנות המובייל.',
+    'comingSoon': 'בקרוב',
     'noAds': 'בלי פרסומות',
     'oneTimePurchase': 'רכישה חד פעמית',
     'owned': 'בבעלות',
@@ -1802,6 +1805,7 @@ class AppLocalizations {
     'permanentBenefits': 'مزايا دائمة',
     'removeAdsCategory': 'إزالة الإعلانات',
     'mobileStoreAvailability': 'متاح في إصدار متجر الهاتف المحمول.',
+    'comingSoon': 'قريبًا',
     'noAds': 'بدون إعلانات',
     'oneTimePurchase': 'شراء مرة واحدة',
     'owned': 'مملوك',

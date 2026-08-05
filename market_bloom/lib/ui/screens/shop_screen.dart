@@ -90,8 +90,10 @@ class ShopScreen extends StatelessWidget {
               subtitle: controller.adsRemoved ? loc.owned : loc.oneTimePurchase,
               buttonLabel: controller.adsRemoved
                   ? loc.owned
-                  : controller.storePrice(StoreProduct.noAds) ??
-                        loc.setupRequired,
+                  : controller.storePurchasesAvailable
+                  ? controller.storePrice(StoreProduct.noAds) ??
+                        loc.setupRequired
+                  : loc.comingSoon,
               onTap:
                   !controller.storePurchasesAvailable ||
                       controller.adsRemoved ||
@@ -107,9 +109,10 @@ class ShopScreen extends StatelessWidget {
               color: const Color(0xFFF6A623),
               title: loc.starterPack,
               subtitle: loc.starterPackDesc,
-              buttonLabel:
-                  controller.storePrice(StoreProduct.starterPack) ??
-                  loc.previewPrice2,
+              buttonLabel: controller.storePurchasesAvailable
+                  ? controller.storePrice(StoreProduct.starterPack) ??
+                        loc.setupRequired
+                  : loc.comingSoon,
               onTap:
                   !controller.storePurchasesAvailable ||
                       controller.storePurchaseInProgress
@@ -124,9 +127,10 @@ class ShopScreen extends StatelessWidget {
               color: const Color(0xFF38B879),
               title: loc.coinPack,
               subtitle: loc.coinPackDesc,
-              buttonLabel:
-                  controller.storePrice(StoreProduct.coinPack) ??
-                  loc.previewPrice,
+              buttonLabel: controller.storePurchasesAvailable
+                  ? controller.storePrice(StoreProduct.coinPack) ??
+                        loc.setupRequired
+                  : loc.comingSoon,
               onTap:
                   !controller.storePurchasesAvailable ||
                       controller.storePurchaseInProgress
@@ -141,9 +145,10 @@ class ShopScreen extends StatelessWidget {
               color: const Color(0xFF8B66D8),
               title: loc.gemPack,
               subtitle: loc.gemPackDesc,
-              buttonLabel:
-                  controller.storePrice(StoreProduct.gemPack) ??
-                  loc.previewPrice,
+              buttonLabel: controller.storePurchasesAvailable
+                  ? controller.storePrice(StoreProduct.gemPack) ??
+                        loc.setupRequired
+                  : loc.comingSoon,
               onTap:
                   !controller.storePurchasesAvailable ||
                       controller.storePurchaseInProgress
@@ -158,9 +163,10 @@ class ShopScreen extends StatelessWidget {
               color: const Color(0xFF5B8DEF),
               title: loc.emergencySupplyPack,
               subtitle: loc.emergencySupplyPackDesc,
-              buttonLabel:
-                  controller.storePrice(StoreProduct.emergencySupply) ??
-                  loc.previewPrice2,
+              buttonLabel: controller.storePurchasesAvailable
+                  ? controller.storePrice(StoreProduct.emergencySupply) ??
+                        loc.setupRequired
+                  : loc.comingSoon,
               onTap:
                   !controller.storePurchasesAvailable ||
                       controller.storePurchaseInProgress

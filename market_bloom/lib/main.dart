@@ -51,10 +51,13 @@ Future<void> _prepareGame(
   MonetizationService monetization,
   AppSettings settings,
 ) async {
+  // Start monetization services in the background. We don't wait for these.
+  _initializeMonetization(monetization);
+
+  // These are essential for the game to start.
   await Future.wait<void>([
     controller.initialize(),
     settings.load(),
-    _initializeMonetization(monetization),
   ]);
 }
 

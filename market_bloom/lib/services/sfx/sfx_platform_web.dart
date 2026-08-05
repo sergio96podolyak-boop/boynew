@@ -16,6 +16,30 @@ final class _WebAudioSfxBackend implements SfxBackend {
   bool _muted = false;
   bool _disposed = false;
 
+  // ── Ambient music state ───────────────────────────────────────────────────
+  MusicPhase _currentPhase = MusicPhase.silent;
+  final List<_AmbientVoice> _ambientVoices = <_AmbientVoice>[];
+  Timer? _ambientNoteTimer;
+
+  // Melody sequences per phase (MIDI note numbers).
+  static const Map<MusicPhase, List<double>> _melodies = <MusicPhase, List<double>>{
+    MusicPhase.preparation: <double>[261.63, 293.66, 329.63, 349.23], // C4 D4 E4 F4 — gentle
+    MusicPhase.open: <double>[349.23, 392.00, 440.00, 493.88],        // F4 G4 A4 B4 — upbeat
+    MusicPhase.rush: <double>[523.25, 587.33, 659.25, 698.46],        // C5 D5 E5 F5 — energetic
+    MusicPhase.closing: <double>[220.00, 246.94, 261.63, 246.94],     // A3 B3 C4 B3 — calm
+    MusicPhase.silent: <double>[],
+  };
+
+  static const Map<MusicPhase, double> _tempoSeconds = <MusicPhase, double>{
+    MusicPhase.preparation: 1.10,
+    MusicPhase.open: 0.72,
+    MusicPhase.rush: 0.44,
+    MusicPhase.closing: 1.40,
+    MusicPhase.silent: 0,
+  };
+
+  int _melodyIndex = 0;
+
   @override
   Future<void> play(SfxCue cue) async {
     if (_muted || _disposed) {
@@ -149,6 +173,97 @@ final class _WebAudioSfxBackend implements SfxBackend {
   }
 
   @override
+  Future<void> playAmbient(MusicPhase phase) async {
+    if (_disposed || phase == _currentPhase) {
+      return;
+    }
+
+    _ambientNoteTimer?.cancel();
+    _ambientNoteTimer = null;
+    _stopAmbientVoices();
+
+    _currentPhase = phase;
+    _melodyIndex = 0;
+
+    if (_muted || phase == MusicPhase.silent) {
+      return;
+    }
+
+    final tempo = _tempoSeconds[phase] ?? 1.0;
+    final melody = _melodies[phase] ?? <double>[];
+    if (melody.isEmpty) {
+      return;
+    }
+
+    // Play the first note immediately then schedule subsequent ones.
+    await _playAmbientNote(melody[_melodyIndex % melody.length]);
+    _melodyIndex++;
+
+    _ambientNoteTimer = Timer.periodic(
+      Duration(milliseconds: (tempo * 1000).round()),
+      (_) async {
+        if (_muted || _disposed || _currentPhase == MusicPhase.silent) {
+          return;
+        }
+        final m = _melodies[_currentPhase] ?? <double>[];
+        if (m.isEmpty) {
+          return;
+        }
+        await _playAmbientNote(m[_melodyIndex % m.length]);
+        _melodyIndex++;
+      },
+    );
+  }
+
+  Future<void> _playAmbientNote(double frequency) async {
+    final context = _context ??= _AudioContext();
+    if (context.state == 'suspended') {
+      await context.resume().toDart;
+    }
+    if (_muted || _disposed || context.state == 'closed') {
+      return;
+    }
+
+    final now = context.currentTime;
+    // Short, soft sine tone — like a music-box pluck.
+    _scheduleTone(
+      context,
+      startsAt: now,
+      frequency: frequency,
+      endingFrequency: frequency * 0.992,
+      duration: 0.35,
+      gain: 0.018,
+      wave: 'sine',
+    );
+
+    // Subtle sub-bass pad for warmth.
+    _scheduleTone(
+      context,
+      startsAt: now,
+      frequency: frequency * 0.5,
+      endingFrequency: frequency * 0.498,
+      duration: 0.55,
+      gain: 0.010,
+      wave: 'triangle',
+    );
+  }
+
+  @override
+  Future<void> stopAmbient() async {
+    _ambientNoteTimer?.cancel();
+    _ambientNoteTimer = null;
+    _stopAmbientVoices();
+    _currentPhase = MusicPhase.silent;
+  }
+
+  void _stopAmbientVoices() {
+    for (final v in List<_AmbientVoice>.of(_ambientVoices)) {
+      v.release();
+    }
+    _ambientVoices.clear();
+  }
+
+  @override
   Future<void> setMuted(bool muted) async {
     _muted = muted;
     if (!muted) {
@@ -156,6 +271,10 @@ final class _WebAudioSfxBackend implements SfxBackend {
     }
 
     _releaseVoices();
+    _ambientNoteTimer?.cancel();
+    _ambientNoteTimer = null;
+    _stopAmbientVoices();
+
     final context = _context;
     if (context != null && context.state == 'running') {
       await context.suspend().toDart;
@@ -168,7 +287,10 @@ final class _WebAudioSfxBackend implements SfxBackend {
       return;
     }
     _disposed = true;
+    _ambientNoteTimer?.cancel();
+    _ambientNoteTimer = null;
     _releaseVoices();
+    _stopAmbientVoices();
 
     final context = _context;
     _context = null;
@@ -184,6 +306,33 @@ final class _WebAudioSfxBackend implements SfxBackend {
     _voices.clear();
   }
 }
+
+final class _AmbientVoice {
+  _AmbientVoice({required this.oscillator, required this.gainNode});
+
+  final _OscillatorNode oscillator;
+  final _GainNode gainNode;
+  bool _released = false;
+
+  void release() {
+    if (_released) {
+      return;
+    }
+    _released = true;
+    try {
+      oscillator.stop();
+    } on Object {
+      // Already stopped.
+    }
+    try {
+      oscillator.disconnect();
+      gainNode.disconnect();
+    } on Object {
+      // Context may have closed.
+    }
+  }
+}
+
 
 final class _ActiveVoice {
   _ActiveVoice({

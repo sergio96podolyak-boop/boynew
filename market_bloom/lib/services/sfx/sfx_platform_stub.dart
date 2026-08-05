@@ -7,6 +7,12 @@ final class _SilentSfxBackend implements SfxBackend {
   Future<void> play(SfxCue cue) async {}
 
   @override
+  Future<void> playAmbient(MusicPhase phase) async {}
+
+  @override
+  Future<void> stopAmbient() async {}
+
+  @override
   Future<void> setMuted(bool muted) async {}
 
   @override

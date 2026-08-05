@@ -35,6 +35,20 @@ void main() {
     expect(game.stockedTotal, game.bagCapacity);
   });
 
+  test('game loop repaints the scene without rebuilding unrelated UI', () {
+    var uiNotifications = 0;
+    var sceneNotifications = 0;
+    game.addListener(() => uiNotifications++);
+    game.scene.addListener(() => sceneNotifications++);
+
+    game.tick(0.01);
+    game.tick(0.01);
+    game.tick(0.01);
+
+    expect(sceneNotifications, 3);
+    expect(uiNotifications, 0);
+  });
+
   test('shift lifecycle exposes rush, summary, and restart state', () {
     expect(game.shiftPhase, ShiftPhase.preparation);
     _advance(game, GameController.shiftRushStartSeconds + 0.1);

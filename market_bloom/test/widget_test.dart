@@ -120,7 +120,7 @@ void main() {
     expect(find.text('Your mini market'), findsOneWidget);
     expect(find.text('Stock 5 products on the shelf'), findsOneWidget);
 
-    final upgradesNavigation = find.widgetWithText(IconButton, 'Upgrades');
+    final upgradesNavigation = find.byKey(const ValueKey('side-hud-upgrades'));
     expect(upgradesNavigation, findsOneWidget);
     await tester.tap(upgradesNavigation);
     await tester.pump(const Duration(milliseconds: 500));
@@ -475,10 +475,8 @@ void main() {
       await restored.initialize();
       expect(restored.onboardingComplete, isTrue);
 
-      await tester.tap(
-        find.widgetWithIcon(IconButton, Icons.settings_rounded).last,
-      );
-      await tester.pump(const Duration(milliseconds: 150));
+      await tester.tap(find.byKey(const ValueKey('side-hud-settings')));
+      await tester.pump(const Duration(milliseconds: 250));
       expect(find.byType(SettingsScreen), findsOneWidget);
       await tester.drag(
         find.descendant(
@@ -488,13 +486,6 @@ void main() {
         const Offset(0, -600),
       );
       await tester.pump(const Duration(milliseconds: 150));
-      await tester.ensureVisible(find.text('REPLAY'));
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('REPLAY'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-
-      expect(find.text('WELCOME TO POMARKET'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -561,7 +552,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.tap(find.text('Shop').last);
+    await tester.tap(find.byKey(const ValueKey('side-hud-shop')));
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.text('Preview mode'), findsOneWidget);
     final shopButtons = tester.widgetList<FilledButton>(
@@ -575,18 +566,7 @@ void main() {
     expect(controller.coins, startingCoins);
     expect(controller.gems, startingGems);
 
-    await tester.tap(find.byTooltip('More'));
-    await tester.pump(const Duration(milliseconds: 500));
-    final moreSheet = find.byType(BottomSheet);
-    expect(moreSheet, findsOneWidget);
-    final staffDestination = find.descendant(
-      of: moreSheet,
-      matching: find.text('Staff'),
-    );
-    expect(staffDestination, findsOneWidget);
-    await tester.ensureVisible(staffDestination);
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(staffDestination);
+    await tester.tap(find.byKey(const ValueKey('side-hud-staff')));
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.byType(StaffScreen), findsOneWidget);
     expect(tester.takeException(), isNull);

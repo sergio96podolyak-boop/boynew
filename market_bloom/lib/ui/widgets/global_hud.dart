@@ -37,7 +37,12 @@ class GlobalHud extends StatelessWidget {
 
             return AnimatedBuilder(
               animation: game,
-              builder: (context, _) {
+              child: _HudBrand(
+                compactBrand: compactBrand,
+                showSubtitle: showSubtitle,
+                subtitle: loc.yourMiniMarket,
+              ),
+              builder: (context, brand) {
                 return Semantics(
                   container: true,
                   label:
@@ -51,64 +56,7 @@ class GlobalHud extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: compactBrand ? 34 : 40,
-                                  height: compactBrand ? 34 : 40,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF38B879),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    Icons.storefront_rounded,
-                                    color: Colors.white,
-                                    size: compactBrand ? 20 : 23,
-                                  ),
-                                ),
-                                if (!compactBrand) ...[
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'POMARKET',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 0.5,
-                                            height: 1,
-                                          ),
-                                        ),
-                                        if (showSubtitle) ...[
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            loc.yourMiniMarket,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Color(0xFFC9E9D9),
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              height: 1,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                          Expanded(child: brand!),
                           _HudPill(
                             icon: Icons.trending_up_rounded,
                             label: 'L${game.storeLevel}',
@@ -136,7 +84,14 @@ class GlobalHud extends StatelessWidget {
                             reducedMotion: reducedMotion,
                           ),
                           SizedBox(width: compact ? 3 : 6),
-                          _ShiftPill(game: game, loc: loc, compact: tight),
+                          AnimatedBuilder(
+                            animation: game.scene,
+                            builder: (context, _) => _ShiftPill(
+                              game: game,
+                              loc: loc,
+                              compact: tight,
+                            ),
+                          ),
                           if (game.shelfStock < 3) ...[
                             SizedBox(width: compact ? 3 : 5),
                             Tooltip(
@@ -158,6 +113,76 @@ class GlobalHud extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+class _HudBrand extends StatelessWidget {
+  const _HudBrand({
+    required this.compactBrand,
+    required this.showSubtitle,
+    required this.subtitle,
+  });
+
+  final bool compactBrand;
+  final bool showSubtitle;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: compactBrand ? 34 : 40,
+          height: compactBrand ? 34 : 40,
+          decoration: BoxDecoration(
+            color: const Color(0xFF38B879),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            Icons.storefront_rounded,
+            color: Colors.white,
+            size: compactBrand ? 20 : 23,
+          ),
+        ),
+        if (!compactBrand) ...[
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'POMARKET',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                    height: 1,
+                  ),
+                ),
+                if (showSubtitle) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFC9E9D9),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

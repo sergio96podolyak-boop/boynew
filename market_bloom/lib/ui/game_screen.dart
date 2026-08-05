@@ -9,6 +9,7 @@ import '../game/meta_models.dart';
 import '../services/app_localizations.dart';
 import '../services/app_settings.dart';
 import '../services/monetization_service.dart';
+import '../services/sfx/sfx_backend.dart';
 import '../services/sfx/sfx_manager.dart';
 import 'market_painter.dart';
 import 'widgets/celebration_overlay.dart';
@@ -34,7 +35,6 @@ class _GameScreenState extends State<GameScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final Ticker _ticker;
   Duration _previousElapsed = Duration.zero;
-  double _animationTime = 0;
   bool _offlineSheetShown = false;
   bool _startupFlowStarted = false;
   bool _onboardingDialogOpen = false;
@@ -44,6 +44,8 @@ class _GameScreenState extends State<GameScreen>
 
   GameController get game => widget.controller;
   AppSettings get settings => widget.settings;
+  ShiftPhase? _lastAmbientPhase;
+
 
   @override
   void initState() {
@@ -61,9 +63,26 @@ class _GameScreenState extends State<GameScreen>
   void _onTick(Duration elapsed) {
     final dt = (elapsed - _previousElapsed).inMicroseconds / 1000000;
     _previousElapsed = elapsed;
-    _animationTime = elapsed.inMilliseconds / 1000;
     game.tick(dt);
+    _syncAmbientMusic();
   }
+
+  void _syncAmbientMusic() {
+    final phase = game.shiftPhase;
+    if (phase == _lastAmbientPhase) {
+      return;
+    }
+    _lastAmbientPhase = phase;
+    final musicPhase = switch (phase) {
+      ShiftPhase.preparation => MusicPhase.preparation,
+      ShiftPhase.open => MusicPhase.open,
+      ShiftPhase.rush => MusicPhase.rush,
+      ShiftPhase.closing => MusicPhase.closing,
+      ShiftPhase.summary => MusicPhase.silent,
+    };
+    unawaited(SfxManager.instance.playAmbient(musicPhase));
+  }
+
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -183,6 +202,7 @@ class _GameScreenState extends State<GameScreen>
   @override
   void dispose() {
     unawaited(game.save());
+    unawaited(SfxManager.instance.stopAmbient());
     game.removeListener(_onGameChanged);
     _achievementToastTimer?.cancel();
     _celebration.dispose();
@@ -190,6 +210,7 @@ class _GameScreenState extends State<GameScreen>
     _ticker.dispose();
     super.dispose();
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -235,130 +256,192 @@ class _GameScreenState extends State<GameScreen>
                           ),
                         ),
                         Expanded(
-                          child: Container(
-                            key: const ValueKey('market-board'),
-                            margin: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: RepaintBoundary(
-                                    child: CustomPaint(
-                                      painter: MarketPainter(
-                                        game: game,
-                                        animationTime: _animationTime,
-                                        departmentLabels: {
-                                          for (final type
-                                              in DepartmentType.values)
-                                            type: switch (type) {
-                                              DepartmentType.generalGoods =>
-                                                AppLocalizations.of(
-                                                  context,
-                                                ).departmentGeneralGoods,
-                                              DepartmentType.bakery =>
-                                                AppLocalizations.of(
-                                                  context,
-                                                ).departmentBakery,
-                                              DepartmentType.produce =>
-                                                AppLocalizations.of(
-                                                  context,
-                                                ).departmentProduce,
-                                              DepartmentType.refrigerated =>
-                                                AppLocalizations.of(
-                                                  context,
-                                                ).departmentRefrigerated,
-                                              DepartmentType.beauty =>
-                                                AppLocalizations.of(
-                                                  context,
-                                                ).departmentBeauty,
-                                              DepartmentType.electronics =>
-                                                AppLocalizations.of(
-                                                  context,
-                                                ).departmentElectronics,
-                                            },
-                                        },
-                                        storageLabel: AppLocalizations.of(
-                                          context,
-                                        ).storage.toUpperCase(),
-                                        shelfLabel: AppLocalizations.of(
-                                          context,
-                                        ).shelfStock.toUpperCase(),
-                                        checkoutLabel: AppLocalizations.of(
-                                          context,
-                                        ).assignmentCheckout.toUpperCase(),
-                                        bakeryLabel: AppLocalizations.of(
-                                          context,
-                                        ).departmentBakery.toUpperCase(),
-                                        bakeryReadyLabel:
-                                            AppLocalizations.of(context)
-                                                .bakeryReady
-                                                .replaceFirst(
-                                                  '{current}',
-                                                  '${game.bakeryReadyStock}',
-                                                )
-                                                .replaceFirst(
-                                                  '{capacity}',
-                                                  '${GameBalance.bakeryReadyCapacity}',
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final availableRatio =
+                                  constraints.maxWidth / constraints.maxHeight;
+                              final boardAspectRatio =
+                                  availableRatio.clamp(0.60, 1.08);
+                              return Center(
+                                child: AspectRatio(
+                                  aspectRatio: boardAspectRatio,
+                                  child: Container(
+                                    key: const ValueKey('market-board'),
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                          Positioned.fill(
+                                            child: RepaintBoundary(
+                                              child: CustomPaint(
+                                                painter: MarketPainter(
+                                                  game: game,
+                                                  departmentLabels: {
+                                                    for (final type
+                                                        in DepartmentType.values)
+                                                      type: switch (type) {
+                                                        DepartmentType.generalGoods =>
+                                                          AppLocalizations.of(
+                                                            context,
+                                                          ).departmentGeneralGoods,
+                                                        DepartmentType.bakery =>
+                                                          AppLocalizations.of(
+                                                            context,
+                                                          ).departmentBakery,
+                                                        DepartmentType.produce =>
+                                                          AppLocalizations.of(
+                                                            context,
+                                                          ).departmentProduce,
+                                                        DepartmentType.refrigerated =>
+                                                          AppLocalizations.of(
+                                                            context,
+                                                          ).departmentRefrigerated,
+                                                        DepartmentType.beauty =>
+                                                          AppLocalizations.of(
+                                                            context,
+                                                          ).departmentBeauty,
+                                                        DepartmentType.electronics =>
+                                                          AppLocalizations.of(
+                                                            context,
+                                                          ).departmentElectronics,
+                                                      },
+                                                  },
+                                                  storageLabel:
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      ).storage.toUpperCase(),
+                                                  shelfLabel:
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      ).shelfStock.toUpperCase(),
+                                                  checkoutLabel:
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      ).assignmentCheckout.toUpperCase(),
+                                                  bakeryLabel:
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      ).departmentBakery.toUpperCase(),
+                                                  bakeryReadyLabel:
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      ).bakeryReady.replaceFirst(
+                                                        '{current}',
+                                                        '${game.bakeryReadyStock}',
+                                                      ).replaceFirst(
+                                                        '{capacity}',
+                                                        '${GameBalance.bakeryReadyCapacity}',
+                                                      ),
+                                                  bakeryLockedLabel:
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      ).unlockAtLevel.replaceFirst(
+                                                        '{level}',
+                                                        '${GameBalance.bakeryUnlockLevel}',
+                                                      ),
+                                                  textDirection:
+                                                      Directionality.of(context),
                                                 ),
-                                        bakeryLockedLabel:
-                                            AppLocalizations.of(
-                                              context,
-                                            ).unlockAtLevel.replaceFirst(
-                                              '{level}',
-                                              '${GameBalance.bakeryUnlockLevel}',
+                                              ),
                                             ),
-                                        textDirection: Directionality.of(
-                                          context,
-                                        ),
+                                          ),
+                                          Positioned.fill(
+                                            child: TouchMovement(
+                                              game: game,
+                                              onTap: () {},
+                                              controlMode: settings.controlMode,
+                                            ),
+                                          ),
+                                          if (game.pendingShiftSummary != null)
+                                            Positioned(
+                                              left: 16,
+                                              right: 16,
+                                              bottom: 12,
+                                              child: _ShiftSummaryCard(
+                                                summary: game.pendingShiftSummary!,
+                                                onContinue: game.startNextShift,
+                                                onUpgrade: _showUpgrades,
+                                              ),
+                                            ),
+                                          if (game.fastCheckoutActive)
+                                            Positioned(
+                                              top: 70,
+                                              left: 22,
+                                              right: 22,
+                                              child: _FastCheckoutBanner(
+                                                claimed: game.fastCheckoutClaimed,
+                                                onClaim: () {
+                                                  if (game.claimFastCheckoutBonus()) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          AppLocalizations.of(
+                                                            context,
+                                                          ).fastCheckoutBonus,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                              ),
+                                            ),
+                                          if (game.comboCount > 1)
+                                            Positioned(
+                                              top: 14,
+                                              right: 14,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 6,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  gradient: const LinearGradient(
+                                                    colors: [
+                                                      Color(0xFFFF9F1C),
+                                                      Color(0xFFFF4040),
+                                                    ],
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(20),
+                                                  boxShadow: const [
+                                                    BoxShadow(
+                                                      color: Color(0x66FF4040),
+                                                      blurRadius: 8,
+                                                      offset: Offset(0, 3),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.local_fire_department_rounded,
+                                                      color: Colors.white,
+                                                      size: 20,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      '${game.comboCount}x COMBO!',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.w900,
+                                                        fontSize: 14,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   ),
-                                ),
-                                Positioned.fill(
-                                  child: TouchMovement(
-                                    game: game,
-                                    onTap: () {},
-                                    controlMode: settings.controlMode,
-                                  ),
-                                ),
-                                if (game.pendingShiftSummary != null)
-                                  Positioned(
-                                    left: 16,
-                                    right: 16,
-                                    bottom: 12,
-                                    child: _ShiftSummaryCard(
-                                      summary: game.pendingShiftSummary!,
-                                      onContinue: game.startNextShift,
-                                      onUpgrade: _showUpgrades,
-                                    ),
-                                  ),
-                                if (game.fastCheckoutActive)
-                                  Positioned(
-                                    top: 70,
-                                    left: 22,
-                                    right: 22,
-                                    child: _FastCheckoutBanner(
-                                      claimed: game.fastCheckoutClaimed,
-                                      onClaim: () {
-                                        if (game.claimFastCheckoutBonus()) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                AppLocalizations.of(
-                                                  context,
-                                                ).fastCheckoutBonus,
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      },
-                                    ),
-                                  ),
-                              ],
+                                );
+                              },
                             ),
                           ),
-                        ),
                         _ControlDeck(
                           game: game,
                           settings: settings,
@@ -448,12 +531,9 @@ class _GameScreenState extends State<GameScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: FractionallySizedBox(
-          heightFactor: 0.88,
-          child: _RewardCenter(game: game, onReward: _claimRewardPlacement),
-        ),
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: 0.88,
+        child: _RewardCenter(game: game, onReward: _claimRewardPlacement),
       ),
     );
   }
@@ -1057,9 +1137,13 @@ class _SummaryMetric extends StatelessWidget {
         children: [
           Icon(icon, size: 15, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 5),
-          Text(
-            '$label $value',
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+          Flexible(
+            child: Text(
+              '$label $value',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+            ),
           ),
         ],
       ),
@@ -1376,9 +1460,10 @@ class _ControlDeck extends StatelessWidget {
                 height: actionHeight,
                 child: Row(
                   children: [
-                    Expanded(
-                      child: SizedBox.expand(
+                    Flexible(
+                      child: SizedBox(
                         key: const ValueKey('quick-upgrades-action'),
+                        height: actionHeight,
                         child: _RoundAction(
                           label: loc.upgrades,
                           icon: Icons.upgrade_rounded,
@@ -1388,9 +1473,10 @@ class _ControlDeck extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Expanded(
-                      child: SizedBox.expand(
+                    Flexible(
+                      child: SizedBox(
                         key: const ValueKey('quick-reward-action'),
+                        height: actionHeight,
                         child: _RoundAction(
                           label: game.rewardInProgress
                               ? loc.loading
@@ -1402,9 +1488,10 @@ class _ControlDeck extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Expanded(
-                      child: SizedBox.expand(
+                    Flexible(
+                      child: SizedBox(
                         key: const ValueKey('quick-shop-action'),
+                        height: actionHeight,
                         child: _RoundAction(
                           label: loc.shop,
                           icon: Icons.shopping_bag_rounded,
@@ -1478,6 +1565,7 @@ class _QuickStockAction extends StatelessWidget {
         : emergency
         ? '${loc.emergencyStock} +${GameBalance.emergencyStockQuantity}'
         : loc.quickRestock;
+    final actionKey = pending ? const ValueKey('quick-restock-action-pending') : const ValueKey('quick-restock-action');
     final color = emergency ? const Color(0xFF38B879) : const Color(0xFFF6A623);
 
     void activate() {
@@ -1506,7 +1594,7 @@ class _QuickStockAction extends StatelessWidget {
         ? Icons.inventory_2_rounded
         : Icons.add_shopping_cart_rounded;
     return SizedBox(
-      key: const ValueKey('quick-restock-action'),
+      key: actionKey,
       width: double.infinity,
       height: 28,
       child: FilledButton.icon(
@@ -1623,38 +1711,44 @@ class _RoundAction extends StatelessWidget {
       label: label,
       child: PressableScale(
         enabled: onTap != null,
-        child: Material(
-          color: onTap == null ? color.withValues(alpha: 0.35) : color,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: onTap == null
-                ? null
-                : () {
-                    unawaited(SfxManager.instance.click());
-                    onTap!();
-                  },
+        child: SizedBox.expand(
+          child: Material(
+            color: onTap == null ? color.withValues(alpha: 0.35) : color,
             borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 7),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: Colors.white, size: 16),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
+            child: InkWell(
+              onTap: onTap == null
+                  ? null
+                  : () {
+                      unawaited(SfxManager.instance.click());
+                      onTap!();
+                    },
+              borderRadius: BorderRadius.circular(12),
+              child: Align(
+                alignment: Alignment.center,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 7),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(icon, color: Colors.white, size: 16),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -2187,7 +2281,9 @@ class _ShopProductTile extends StatelessWidget {
       StoreProduct.emergencySupply => loc.emergencySupplyPackDesc,
       StoreProduct.starterPack => loc.starterPackDesc,
     };
-    final price = game.storePrice(product) ?? loc.previewMode;
+    final price = game.storePurchasesAvailable
+        ? game.storePrice(product) ?? loc.setupRequired
+        : loc.comingSoon;
     final icon = switch (product) {
       StoreProduct.noAds => Icons.block_rounded,
       StoreProduct.coinPack => Icons.monetization_on_rounded,
@@ -2534,20 +2630,29 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF6),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x44315F4A),
-            blurRadius: 28,
-            offset: Offset(0, 13),
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.only(bottom: 8),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFCF6),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x44315F4A),
+                blurRadius: 28,
+                offset: Offset(0, 13),
+              ),
+            ],
           ),
-        ],
+          child: child,
+        ),
       ),
-      child: child,
     );
   }
 }

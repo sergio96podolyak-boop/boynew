@@ -1,6 +1,25 @@
+import 'dart:async';
 import 'dart:convert';
-
+import 'package:flutter/foundation.dart'; // Import for compute
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Top-level function for jsonDecode to be used with compute
+Future<Map<String, dynamic>?> _decodeAndCastJson(String rawJson) async {
+  try {
+    final decoded = jsonDecode(rawJson);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+  } on FormatException {
+    // A damaged save should never prevent the game from opening.
+  }
+  return null;
+}
+
+// Top-level function for jsonEncode to be used with compute
+String _encodeJson(Map<String, dynamic> data) {
+  return jsonEncode(data);
+}
 
 abstract interface class GameStorage {
   Future<Map<String, dynamic>?> load();
@@ -19,42 +38,100 @@ class SharedPreferencesGameStorage implements GameStorage {
   static const _startupTimeout = Duration(seconds: 2);
   final SharedPreferencesAsync _preferences;
 
-  @override
-  Future<Map<String, dynamic>?> load() async {
-    final currentRaw = await _preferences
-        .getString(_saveKey)
-        .timeout(_startupTimeout);
-    final raw =
-        currentRaw ??
-        await _preferences.getString(_legacySaveKey).timeout(_startupTimeout);
-    if (raw == null || raw.isEmpty) {
+  Future<String?> _readString(String key) async {
+    try {
+      return await _preferences.getString(key).timeout(_startupTimeout);
+    } on TimeoutException {
+      return null;
+    } on Object catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'PoMarket storage',
+          context: ErrorDescription('while reading saved progress from storage'),
+        ),
+      );
       return null;
     }
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) {
-        if (currentRaw == null) {
-          await _preferences.setString(_saveKey, raw);
-          await _preferences.remove(_legacySaveKey);
-        }
-        return decoded;
-      }
-    } on FormatException {
-      // A damaged save should never prevent the game from opening.
-    }
-    return null;
   }
 
   @override
-  Future<void> save(Map<String, dynamic> data) {
-    return _preferences.setString(_saveKey, jsonEncode(data));
+  Future<Map<String, dynamic>?> load() async {
+    try {
+      final currentRaw = await _readString(_saveKey);
+      final raw = currentRaw ?? await _readString(_legacySaveKey);
+      if (raw == null || raw.isEmpty) {
+        return null;
+      }
+
+      final decoded = await compute(_decodeAndCastJson, raw);
+      if (decoded != null) {
+        if (currentRaw == null) {
+          // If loaded from legacy, save to new key and remove legacy.
+          // Any storage failure here should never block startup.
+          try {
+            await _preferences.setString(_saveKey, raw);
+            await _preferences.remove(_legacySaveKey);
+          } on Object catch (error, stackTrace) {
+            FlutterError.reportError(
+              FlutterErrorDetails(
+                exception: error,
+                stack: stackTrace,
+                library: 'PoMarket storage',
+                context: ErrorDescription('while migrating saved progress'),
+              ),
+            );
+          }
+        }
+        return decoded;
+      }
+      return null;
+    } on Object catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'PoMarket storage',
+          context: ErrorDescription('while loading saved progress'),
+        ),
+      );
+      return null;
+    }
+  }
+
+  @override
+  Future<void> save(Map<String, dynamic> data) async {
+    try {
+      final encoded = await compute(_encodeJson, data);
+      await _preferences.setString(_saveKey, encoded);
+    } on Object catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'PoMarket storage',
+          context: ErrorDescription('while saving progress'),
+        ),
+      );
+    }
   }
 
   @override
   Future<void> clear() async {
-    await _preferences.remove(_saveKey);
-    await _preferences.remove(_legacySaveKey);
+    try {
+      await _preferences.remove(_saveKey);
+      await _preferences.remove(_legacySaveKey);
+    } on Object catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'PoMarket storage',
+          context: ErrorDescription('while clearing saved progress'),
+        ),
+      );
+    }
   }
 }
 
