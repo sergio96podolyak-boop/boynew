@@ -17,6 +17,7 @@ import uuid
 import requests
 from copy import deepcopy
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import TradingConfig
@@ -65,6 +66,9 @@ class ExecutionAgent:
         # Live client (initialized lazily)
         self._client = None
         self._leverage_set: set = set()
+        # Once the legacy conditional-order endpoint returns -4120 the account
+        # requires the Algo Order API — stop wasting a rejected call per order.
+        self._legacy_conditional_unsupported: bool = False
 
         # Slippage/latency tracking
         self._last_slippage: float = 0.0
@@ -90,6 +94,7 @@ class ExecutionAgent:
                 self.config.api_key,
                 self.config.api_secret,
             )
+            self._client.sync_server_time()
             logger.info("Binance live client initialized")
             # Preload exchange filters
             self._load_exchange_filters()
@@ -156,9 +161,13 @@ class ExecutionAgent:
         if filters and "step_size" in filters:
             step = filters["step_size"]
             if step > 0:
+                step_d = Decimal(str(step))
+                qty_d = Decimal(str(quantity))
+                rounded = (qty_d / step_d).to_integral_value(
+                    rounding=ROUND_DOWN
+                ) * step_d
                 precision = max(0, int(round(-math.log10(step))))
-                quantity = math.floor(quantity / step) * step
-                quantity = round(quantity, precision)
+                quantity = round(float(rounded), precision)
         elif filters and "quantity_precision" in filters:
             precision = filters["quantity_precision"]
             quantity = math.floor(quantity * 10**precision) / 10**precision
@@ -170,9 +179,45 @@ class ExecutionAgent:
         if filters and "tick_size" in filters:
             tick = filters["tick_size"]
             if tick > 0:
+                tick_d = Decimal(str(tick))
+                price_d = Decimal(str(price))
+                rounded = (price_d / tick_d).to_integral_value(
+                    rounding=ROUND_HALF_UP
+                ) * tick_d
                 precision = max(0, int(round(-math.log10(tick))))
-                price = round(round(price / tick) * tick, precision)
+                price = round(float(rounded), precision)
         return price
+
+    @staticmethod
+    def _decimal_str(value: float) -> str:
+        """Format numeric API params without scientific notation."""
+        return f"{float(value):.12f}".rstrip("0").rstrip(".")
+
+    def _price_param_str(self, symbol: str, price: float) -> str:
+        """Format a price exactly on the exchange tick grid for API params."""
+        filters = self._exchange_filters.get(symbol)
+        tick = filters.get("tick_size") if filters else None
+        if tick is not None and float(tick) > 0:
+            tick_d = Decimal(str(tick))
+            price_d = Decimal(str(price))
+            rounded = (price_d / tick_d).to_integral_value(
+                rounding=ROUND_HALF_UP
+            ) * tick_d
+            out = format(rounded.normalize(), "f")
+            return out.rstrip("0").rstrip(".") if "." in out else out
+        return self._decimal_str(price)
+
+    @staticmethod
+    def _order_quantity(order: Dict[str, Any], fallback: float) -> float:
+        """Best-effort quantity actually accepted by Binance for a submitted order."""
+        for key in ("executedQty", "origQty", "submittedQuantity"):
+            try:
+                qty = float(order.get(key, 0) or 0)
+            except (TypeError, ValueError):
+                qty = 0.0
+            if qty > 0:
+                return qty
+        return fallback
 
     def _tick_size(self, symbol: str, entry: float) -> float:
         """Effective tick for SL/TP (exchange filter or conservative fallback)."""
@@ -239,11 +284,11 @@ class ExecutionAgent:
     # Low-level Order Placement & Fill Resolution
     # ========================================================================
 
-    def set_leverage(self, symbol: str, leverage: int = None) -> bool:
+    def set_leverage(self, symbol: str, leverage: int = None, *, force: bool = False) -> bool:
         """Set leverage for a futures symbol."""
         if self._client is None:
             return False
-        if symbol in self._leverage_set:
+        if symbol in self._leverage_set and not force:
             return True
 
         lev = leverage or self.config.leverage
@@ -287,6 +332,7 @@ class ExecutionAgent:
                 type="MARKET",
                 quantity=rounded_qty,
             )
+            order.setdefault("submittedQuantity", self._decimal_str(rounded_qty))
             latency_ms = (time.perf_counter() - t0) * 1000.0
             logger.info(
                 "Order latency: %.0fms (symbol=%s side=%s qty=%.6f)",
@@ -296,7 +342,7 @@ class ExecutionAgent:
             # CRITICAL FIX: Binance often returns avgPrice="0" for MARKET orders
             avg_price = float(order.get("avgPrice", 0) or 0)
             if avg_price == 0.0:
-                order = self._fetch_filled_price(symbol, order, side, quantity)
+                order = self._fetch_filled_price(symbol, order, side, rounded_qty)
 
             return order
         except Exception as exc:
@@ -391,6 +437,7 @@ class ExecutionAgent:
                 quantity=rounded_qty,
                 reduceOnly=True,
             )
+            order.setdefault("submittedQuantity", self._decimal_str(rounded_qty))
             latency_ms = (time.perf_counter() - t0) * 1000.0
             logger.info(
                 "reduceOnly order: %.0fms (symbol=%s side=%s qty=%.6f)",
@@ -398,11 +445,285 @@ class ExecutionAgent:
             )
             avg_price = float(order.get("avgPrice", 0) or 0)
             if avg_price == 0.0:
-                order = self._fetch_filled_price(symbol, order, side, quantity)
+                order = self._fetch_filled_price(symbol, order, side, rounded_qty)
             return order
         except Exception as exc:
             logger.error("reduceOnly order failed (%s %s): %s", side, symbol, exc)
             return None
+
+    def _emergency_close_unprotected(
+        self,
+        symbol: str,
+        direction: str,
+        quantity: float,
+    ) -> bool:
+        """
+        Close a just-opened live position if exchange-side SL placement failed.
+
+        This is deliberately reduceOnly: if Binance has already closed the
+        position elsewhere, it must not open a new one in the opposite direction.
+        """
+        close_side = "SELL" if direction == "LONG" else "BUY"
+        order = self._place_reduce_only_order(symbol, close_side, quantity)
+        if order is None:
+            logger.critical(
+                "EMERGENCY CLOSE FAILED for unprotected %s %s qty=%.8f",
+                direction,
+                symbol,
+                quantity,
+            )
+            return False
+
+        self._cancel_symbol_orders(symbol)
+        logger.critical(
+            "Emergency closed unprotected %s %s qty=%.8f after SL placement failed",
+            direction,
+            symbol,
+            quantity,
+        )
+        if self.repository:
+            self.repository.log_event(
+                "LIVE_PROTECTION_FAILED",
+                (
+                    f"Emergency closed unprotected {direction} {symbol} "
+                    f"qty={quantity:.8f} after SL placement failed"
+                ),
+                "CRITICAL",
+            )
+        return True
+
+    def place_protective_orders(
+        self,
+        symbol: str,
+        direction: str,
+        sl: float,
+        tp: float,
+    ) -> Dict[str, Optional[int]]:
+        """
+        Place exchange-side STOP_MARKET (SL) and TAKE_PROFIT_MARKET (TP) orders.
+
+        These rest on Binance and trigger even if the bot process is stopped,
+        crashed, or disconnected — the in-loop SL/TP monitor is only a backup.
+        Both use closePosition=true: they close the whole position when hit and
+        can never open a new one, so a leftover order is harmless. We still
+        cancel them on close (see _cancel_symbol_orders) to keep the book clean.
+
+        Returns {'sl_order_id': int|None, 'tp_order_id': int|None}.
+        SL failure is logged CRITICAL — that is the position's safety net.
+        """
+        result: Dict[str, Optional[int]] = {"sl_order_id": None, "tp_order_id": None}
+        if self._client is None:
+            return result
+
+        # Closing side is opposite the position direction
+        close_side = "SELL" if direction == "LONG" else "BUY"
+        sl_price = self._round_price(symbol, sl)
+        tp_price = self._round_price(symbol, tp)
+
+        # Clear any stale conditional orders for this symbol first
+        self._cancel_symbol_orders(symbol)
+
+        # Stop-loss (the critical safety net)
+        sl_order = self._place_protective_close_order(
+            symbol=symbol,
+            close_side=close_side,
+            order_type="STOP_MARKET",
+            trigger_price=sl_price,
+            label="sl",
+        )
+        if sl_order:
+            result["sl_order_id"] = sl_order.get("algoId") or sl_order.get("orderId")
+            logger.info(
+                "Protective SL placed: %s %s STOP_MARKET @ %s (id=%s)",
+                symbol, close_side, sl_price, result["sl_order_id"],
+            )
+        else:
+            logger.critical(
+                "FAILED to place protective STOP_MARKET for %s @ %s: "
+                "position is NOT protected on the exchange (in-loop monitor only)",
+                symbol, sl_price,
+            )
+
+        # Take-profit
+        tp_order = self._place_protective_close_order(
+            symbol=symbol,
+            close_side=close_side,
+            order_type="TAKE_PROFIT_MARKET",
+            trigger_price=tp_price,
+            label="tp",
+        )
+        if tp_order:
+            result["tp_order_id"] = tp_order.get("algoId") or tp_order.get("orderId")
+            logger.info(
+                "Protective TP placed: %s %s TAKE_PROFIT_MARKET @ %s (id=%s)",
+                symbol, close_side, tp_price, result["tp_order_id"],
+            )
+        else:
+            logger.warning(
+                "Failed to place protective TAKE_PROFIT_MARKET for %s @ %s",
+                symbol, tp_price,
+            )
+
+        return result
+
+    def _place_protective_close_order(
+        self,
+        *,
+        symbol: str,
+        close_side: str,
+        order_type: str,
+        trigger_price: float,
+        label: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Place a close-all conditional order.
+
+        Binance moved USD-M Futures TP/SL conditionals to the Algo Order API for
+        some accounts. Try that endpoint first, then fall back to the legacy
+        order endpoint for older environments.
+        """
+        if self._client is None:
+            return None
+
+        trigger = self._price_param_str(symbol, trigger_price)
+        algo_params = {
+            "algoType": "CONDITIONAL",
+            "symbol": symbol,
+            "side": close_side,
+            "type": order_type,
+            "triggerPrice": trigger,
+            "closePosition": "true",
+            "workingType": "MARK_PRICE",
+            "newOrderRespType": "ACK",
+        }
+
+        algo_exc: Optional[Exception] = None
+        for attempt in range(3):
+            # Fresh id per attempt so a retry is never rejected as a duplicate
+            algo_params["clientAlgoId"] = (
+                f"boynew_{label}_{symbol}_{uuid.uuid4().hex[:10]}"[:36]
+            )
+            try:
+                return self._client._request_futures_api(
+                    "post",
+                    "algoOrder",
+                    signed=True,
+                    data=algo_params,
+                )
+            except Exception as exc:
+                algo_exc = exc
+                code = getattr(exc, "code", None)
+                if code == -4509 and attempt < 2:
+                    # -4509 "TIF GTE can only be used with open positions":
+                    # the just-opened position hasn't propagated to the Algo
+                    # API yet — wait for it and retry.
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                if code == -2021:
+                    # Price is already beyond the trigger; no resting
+                    # conditional can exist. The legacy endpoint would reject
+                    # it too — return so the caller closes at market instead.
+                    logger.warning(
+                        "Protective %s for %s @ %s would trigger immediately "
+                        "(price already beyond trigger)",
+                        order_type, symbol, trigger,
+                    )
+                    return None
+                break
+
+        if self._legacy_conditional_unsupported:
+            logger.error(
+                "Algo protective %s failed for %s @ %s: %s "
+                "(legacy endpoint already known unsupported on this account)",
+                order_type, symbol, trigger, algo_exc,
+            )
+            return None
+
+        logger.warning(
+            "Algo protective %s failed for %s @ %s: %s; trying legacy order endpoint",
+            order_type, symbol, trigger, algo_exc,
+        )
+        try:
+            return self._client.futures_create_order(
+                symbol=symbol,
+                side=close_side,
+                type=order_type,
+                stopPrice=trigger,
+                closePosition=True,
+                workingType="MARK_PRICE",
+            )
+        except Exception as legacy_exc:
+            if getattr(legacy_exc, "code", None) == -4120:
+                self._legacy_conditional_unsupported = True
+            logger.error(
+                "Legacy protective %s failed for %s @ %s: %s",
+                order_type, symbol, trigger, legacy_exc,
+            )
+            return None
+
+    def _cancel_symbol_orders(self, symbol: str) -> None:
+        """Cancel all open (incl. conditional SL/TP) orders for a symbol. Best-effort."""
+        if self._client is None:
+            return
+        try:
+            self._client.futures_cancel_all_open_orders(symbol=symbol)
+            logger.debug("Cancelled all open orders for %s", symbol)
+        except Exception as exc:
+            logger.warning("Failed to cancel open orders for %s: %s", symbol, exc)
+        try:
+            self._client._request_futures_api(
+                "delete",
+                "algoOpenOrders",
+                signed=True,
+                data={"symbol": symbol},
+            )
+            logger.debug("Cancelled all algo open orders for %s", symbol)
+        except Exception as exc:
+            logger.warning("Failed to cancel algo open orders for %s: %s", symbol, exc)
+
+    def get_protective_orders(self, symbol: str) -> Dict[str, int]:
+        """
+        Count exchange-side SL/TP orders for a symbol.
+
+        Returns {"sl": n, "tp": n, "total": n, "ok": 1|0}. If Binance order
+        queries fail, ok=0 so callers do not make unsafe repair decisions.
+        """
+        counts = {"sl": 0, "tp": 0, "total": 0, "ok": 0}
+        if self._client is None:
+            return counts
+
+        try:
+            regular_orders = self._client.futures_get_open_orders(symbol=symbol)
+        except Exception as exc:
+            logger.debug("Could not fetch regular open orders for %s: %s", symbol, exc)
+            return counts
+
+        algo_orders = []
+        try:
+            response = self._client._request_futures_api(
+                "get",
+                "openAlgoOrders",
+                signed=True,
+                data={"symbol": symbol, "algoType": "CONDITIONAL"},
+            )
+            if isinstance(response, list):
+                algo_orders = response
+            elif isinstance(response, dict):
+                algo_orders = response.get("orders", [])
+        except Exception as exc:
+            logger.debug("Could not fetch algo open orders for %s: %s", symbol, exc)
+            return counts
+
+        for order in regular_orders + algo_orders:
+            order_type = order.get("type") or order.get("orderType") or ""
+            if order_type == "STOP_MARKET":
+                counts["sl"] += 1
+            elif order_type == "TAKE_PROFIT_MARKET":
+                counts["tp"] += 1
+
+        counts["total"] = counts["sl"] + counts["tp"]
+        counts["ok"] = 1
+        return counts
 
     def get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch the current open position for a symbol from Binance."""
@@ -618,6 +939,18 @@ class ExecutionAgent:
                 )
             trade_dict["entry_price"] = filled_price
 
+            # Snap SL/TP to the actual fill and place exchange-side protective
+            # orders so the position survives a bot outage.
+            sl_price, tp_price = self.refine_sl_tp_prices(
+                symbol, side, filled_price, sl_price, tp_price
+            )
+            trade_dict["sl_price"] = sl_price
+            trade_dict["tp_price"] = tp_price
+            protective = self.place_protective_orders(symbol, side, sl_price, tp_price)
+            if not protective.get("sl_order_id"):
+                self._emergency_close_unprotected(symbol, side, quantity)
+                return None
+
             if self.repository:
                 trade_id = self.repository.insert_trade(trade_dict)
                 self.repository.log_event(
@@ -702,13 +1035,38 @@ class ExecutionAgent:
         qty = abs(float(pos_info.get("positionAmt", 0)))
         side = "SELL" if float(pos_info.get("positionAmt", 0)) > 0 else "BUY"
 
-        # Try normal close first, fall back to reduceOnly for small notionals
-        order = self.place_market_order(symbol, side, qty)
+        # Close with reduceOnly so an exit can never flip into a new position.
+        order = self._place_reduce_only_order(symbol, side, qty)
         if order is None:
-            # Notional too small — use reduceOnly to bypass MIN_NOTIONAL
-            order = self._place_reduce_only_order(symbol, side, qty)
+            order = self.place_market_order(symbol, side, qty)
         if order is None:
             return None
+
+        closed_qty = self._order_quantity(order, qty)
+        leftover_info = self.get_position(symbol)
+        if leftover_info is not None:
+            leftover_amt = float(leftover_info.get("positionAmt", 0) or 0)
+            if abs(leftover_amt) > 0:
+                cleanup_side = "SELL" if leftover_amt > 0 else "BUY"
+                cleanup_qty = abs(leftover_amt)
+                cleanup = self._place_reduce_only_order(symbol, cleanup_side, cleanup_qty)
+                if cleanup is not None:
+                    closed_qty += self._order_quantity(cleanup, cleanup_qty)
+                    logger.warning(
+                        "Cleaned residual live quantity for %s: qty=%.10f side=%s",
+                        symbol,
+                        cleanup_qty,
+                        cleanup_side,
+                    )
+                else:
+                    logger.critical(
+                        "Residual live quantity remains for %s after close: %.10f",
+                        symbol,
+                        leftover_amt,
+                    )
+
+        # Remove the resting exchange-side SL/TP orders left from the entry
+        self._cancel_symbol_orders(symbol)
 
         exit_price = float(order.get("avgPrice", 0) or 0)
         if exit_price == 0.0:
@@ -719,11 +1077,15 @@ class ExecutionAgent:
         is_long = (side == "SELL")
 
         if is_long:
-            pnl = (exit_price - entry_price) * qty
+            pnl = (exit_price - entry_price) * closed_qty
         else:
-            pnl = (entry_price - exit_price) * qty
+            pnl = (entry_price - exit_price) * closed_qty
 
-        pnl_pct = pnl / (entry_price * qty / self.config.leverage) if entry_price > 0 else 0.0
+        pnl_pct = (
+            pnl / (entry_price * closed_qty / self.config.leverage)
+            if entry_price > 0 and closed_qty > 0
+            else 0.0
+        )
 
         # Find trade_id from risk manager
         rm_pos = self.risk_mgr.open_positions.get(symbol) if self.risk_mgr else None
@@ -734,12 +1096,119 @@ class ExecutionAgent:
             "side": "LONG" if is_long else "SHORT",
             "entry_price": entry_price,
             "exit_price": exit_price,
-            "quantity": qty,
+            "quantity": closed_qty,
             "pnl": round(pnl, 6),
             "pnl_pct": round(pnl_pct, 6),
             "closed_at": datetime.now(timezone.utc).isoformat(),
             "close_reason": reason,
             "trade_id": trade_id,
+        }
+
+    def _reconcile_live_flat_position(
+        self,
+        symbol: str,
+        current_price: float,
+        reason: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Build a close result when Binance is already flat for a tracked position.
+
+        Exchange-side SL/TP can close a trade before the bot's loop asks for an
+        exit. In that case get_position() returns None, but the risk manager may
+        still hold the symbol. Reconcile from recent account fills so DB and
+        memory do not stay stale.
+        """
+        if self._client is None or self.risk_mgr is None:
+            return None
+
+        rm_pos = self.risk_mgr.open_positions.get(symbol)
+        if rm_pos is None:
+            return None
+
+        close_side = "SELL" if rm_pos.side == "LONG" else "BUY"
+        opened_at = rm_pos.opened_at
+        if opened_at.tzinfo is None:
+            opened_at = opened_at.replace(tzinfo=timezone.utc)
+        opened_ms = int(opened_at.timestamp() * 1000)
+        start_ms = max(0, opened_ms - 60_000)
+
+        close_fills: List[Dict[str, Any]] = []
+        try:
+            fills = self._client.futures_account_trades(
+                symbol=symbol,
+                startTime=start_ms,
+                limit=100,
+            )
+            for fill in fills:
+                fill_time = int(fill.get("time", 0) or 0)
+                if fill_time + 1000 < opened_ms:
+                    continue
+                if fill.get("side") == close_side:
+                    close_fills.append(fill)
+        except Exception as exc:
+            logger.warning("Could not fetch account fills for %s reconciliation: %s", symbol, exc)
+
+        qty = 0.0
+        exit_price = current_price if current_price > 0 else rm_pos.entry_price
+        pnl = 0.0
+        closed_at = datetime.now(timezone.utc).isoformat()
+
+        if close_fills:
+            qty = sum(float(f.get("qty", 0) or 0) for f in close_fills)
+            if qty > 0:
+                exit_price = (
+                    sum(float(f.get("price", 0) or 0) * float(f.get("qty", 0) or 0) for f in close_fills)
+                    / qty
+                )
+            pnl = sum(float(f.get("realizedPnl", 0) or 0) for f in close_fills)
+            last_time = max(int(f.get("time", 0) or 0) for f in close_fills)
+            if last_time > 0:
+                closed_at = datetime.fromtimestamp(last_time / 1000, tz=timezone.utc).isoformat()
+        else:
+            qty = rm_pos.quantity
+            if rm_pos.side == "LONG":
+                pnl = (exit_price - rm_pos.entry_price) * qty
+            else:
+                pnl = (rm_pos.entry_price - exit_price) * qty
+
+        if qty <= 0:
+            qty = rm_pos.quantity
+
+        margin = rm_pos.entry_price * qty / self.config.leverage if rm_pos.entry_price > 0 else 0.0
+        pnl_pct = pnl / margin if margin > 0 else 0.0
+        reconciled_reason = reason
+        profit_exit_reasons = {
+            "take_profit",
+            "profit_lock",
+            "scalp_take_profit",
+            "trailing_stop",
+        }
+        if pnl > 0 and reason == "stop_loss":
+            reconciled_reason = "take_profit"
+        elif pnl < 0 and reason in profit_exit_reasons:
+            reconciled_reason = "stop_loss"
+
+        self._cancel_symbol_orders(symbol)
+        logger.info(
+            "Reconciled already-flat live position %s: side=%s exit=%.6f pnl=%.6f reason=%s",
+            symbol,
+            rm_pos.side,
+            exit_price,
+            pnl,
+            reconciled_reason,
+        )
+
+        return {
+            "symbol": symbol,
+            "side": rm_pos.side,
+            "entry_price": rm_pos.entry_price,
+            "exit_price": exit_price,
+            "quantity": qty,
+            "pnl": round(pnl, 6),
+            "pnl_pct": round(pnl_pct, 6),
+            "closed_at": closed_at,
+            "close_reason": f"{reconciled_reason}_exchange_reconcile",
+            "trade_id": rm_pos.trade_id,
         }
 
     def update_positions(
@@ -939,6 +1408,9 @@ class ExecutionAgent:
                 logger.error("HFT market order failed for %s", symbol)
                 return None
 
+            actual_quantity = self._order_quantity(order, quantity)
+            trade_dict["quantity"] = actual_quantity
+
             # Get actual fill price
             filled_price = float(order.get("avgPrice", 0) or 0)
             if filled_price == 0.0:
@@ -970,23 +1442,31 @@ class ExecutionAgent:
             trade_dict["sl_price"] = sl
             trade_dict["tp_price"] = tp
 
+            # Place exchange-side SL/TP so the position is protected even if the
+            # bot stops running. The in-loop monitor remains as a backup.
+            protective = self.place_protective_orders(symbol, direction, sl, tp)
+            if not protective.get("sl_order_id"):
+                self._emergency_close_unprotected(symbol, direction, actual_quantity)
+                return None
+
             if self.repository:
                 trade_id = self.repository.insert_trade(trade_dict)
                 self.repository.log_event(
                     "HFT_OPEN",
                     (
-                        f"[LIVE-HFT] {direction} {symbol} qty={quantity:.6f} @ {filled_price:.6f} "
+                        f"[LIVE-HFT] {direction} {symbol} qty={actual_quantity:.6f} @ {filled_price:.6f} "
                         f"slip={self._last_slippage:.4%} lat={self._last_latency_ms:.0f}ms"
                     ),
                     "INFO",
                 )
 
+        position_quantity = float(trade_dict.get("quantity") or quantity)
         if self.risk_mgr:
             pos = Position(
                 symbol=symbol,
                 side=direction,
                 entry_price=trade_dict["entry_price"],
-                quantity=quantity,
+                quantity=position_quantity,
                 sl_price=trade_dict["sl_price"],
                 tp_price=trade_dict["tp_price"],
                 opened_at=datetime.now(timezone.utc),
@@ -998,7 +1478,7 @@ class ExecutionAgent:
         logger.info(
             "HFT opened %s: trade_id=%s symbol=%s side=%s qty=%.6f entry=%.6f sl=%.6f tp=%.6f",
             "PAPER" if self.config.paper_trading else "LIVE",
-            trade_id, symbol, direction, quantity,
+            trade_id, symbol, direction, position_quantity,
             trade_dict["entry_price"], sl, tp,
         )
         return trade_id
@@ -1030,8 +1510,11 @@ class ExecutionAgent:
             result = self._live_close_position(symbol, current_price, reason)
 
         if result is None:
-            logger.warning("HFT close: no position found for %s", symbol)
-            return None
+            if not self.config.paper_trading:
+                result = self._reconcile_live_flat_position(symbol, current_price, reason)
+            if result is None:
+                logger.warning("HFT close: no position found for %s", symbol)
+                return None
 
         trade_id = result.get("trade_id")
         if self.repository and trade_id:
@@ -1043,12 +1526,12 @@ class ExecutionAgent:
                     "pnl_pct": result["pnl_pct"],
                     "status": "closed",
                     "closed_at": result["closed_at"],
-                    "close_reason": reason,
+                    "close_reason": result.get("close_reason") or reason,
                 },
             )
             self.repository.log_event(
                 "HFT_CLOSE",
-                f"{result['side']} {symbol} @ {current_price:.6f} PnL={result['pnl']:.6f} ({result['pnl_pct']*100:.2f}%) reason={reason}",
+                f"{result['side']} {symbol} @ {result['exit_price']:.6f} PnL={result['pnl']:.6f} ({result['pnl_pct']*100:.2f}%) reason={result.get('close_reason') or reason}",
                 "INFO",
             )
 
@@ -1060,7 +1543,7 @@ class ExecutionAgent:
             "HFT closed %s: symbol=%s entry=%.6f exit=%.6f pnl=%.6f (%.2f%%) reason=%s",
             "PAPER" if self.config.paper_trading else "LIVE",
             symbol, result["entry_price"], result["exit_price"],
-            result["pnl"], result["pnl_pct"] * 100, reason,
+            result["pnl"], result["pnl_pct"] * 100, result.get("close_reason") or reason,
         )
         return result
 
@@ -1209,6 +1692,11 @@ class ExecutionAgent:
     # ========================================================================
     # Properties
     # ========================================================================
+
+    @property
+    def client(self):
+        """Underlying Binance client in live mode; None in paper mode."""
+        return self._client
 
     @property
     def paper_balance(self) -> float:

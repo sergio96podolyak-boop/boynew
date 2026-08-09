@@ -1,0 +1,3 @@
+#include "Generated.xcconfig"
+// Official Google sample App ID for debug builds only.
+GAD_APPLICATION_IDENTIFIER=ca-app-pub-3940256099942544~1458002511

@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "▶ הפעל בוט מסחר + דשבורד (paper)",
+      "type": "shell",
+      "command": "bash start.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "build", "isDefault": true },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true
+      },
+      "detail": "מפעיל את המנוע והדשבורד. השאר רץ ופתח localhost:8501. אל תסגור."
+    },
+    {
+      "label": "🔴 הפעל בוט מסחר — לייב (כסף אמיתי)",
+      "type": "shell",
+      "command": "bash start.sh --live",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true
+      },
+      "detail": "לייב — דורש מפתחות ב-.env ו-PAPER_TRADING=false. כסף אמיתי."
+    }
+  ]
+}

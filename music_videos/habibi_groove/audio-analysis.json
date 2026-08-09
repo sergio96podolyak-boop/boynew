@@ -1,0 +1,82 @@
+{
+  "duration_seconds": 183.0,
+  "sample_rate": 22050,
+  "estimated_bpm": 123.05,
+  "tempo_candidates": [
+    {
+      "bpm": 123.05,
+      "strength": 1.0
+    },
+    {
+      "bpm": 80.75,
+      "strength": 0.513
+    },
+    {
+      "bpm": 161.5,
+      "strength": 0.188
+    },
+    {
+      "bpm": 99.38,
+      "strength": 0.126
+    }
+  ],
+  "mean_rms_dbfs": -18.62,
+  "peak_sample_dbfs": 1.13,
+  "detected_beats": 368,
+  "strongest_beat_times": [
+    63.646,
+    64.621,
+    65.596,
+    66.595,
+    67.57,
+    69.544,
+    72.493,
+    80.364,
+    81.34,
+    82.338,
+    83.313,
+    83.801,
+    84.288,
+    85.287,
+    86.262,
+    87.237,
+    87.748,
+    88.236,
+    89.211,
+    94.134,
+    168.879,
+    169.877,
+    170.852,
+    176.75
+  ],
+  "section_boundaries": [
+    {
+      "time": 33,
+      "strength": 0.857
+    },
+    {
+      "time": 47,
+      "strength": 0.417
+    },
+    {
+      "time": 64,
+      "strength": 0.825
+    },
+    {
+      "time": 80,
+      "strength": 0.366
+    },
+    {
+      "time": 94,
+      "strength": 0.617
+    },
+    {
+      "time": 111,
+      "strength": 0.791
+    },
+    {
+      "time": 150,
+      "strength": 1.0
+    }
+  ]
+}

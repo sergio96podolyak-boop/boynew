@@ -1,20 +1,66 @@
 """
 python-binance Client wrapper: skip spot `ping()` on construction so startup
-does not fail hard when DNS is flaky or the network is briefly offline.
+does not fail hard when DNS is flaky or the network is briefly offline, and
+keep the local clock synced to Binance server time (fixes APIError -1021
+"Timestamp for this request is outside of the recvWindow").
 """
 
 from __future__ import annotations
 
+import logging
+import threading
+import time
 from typing import Any, Dict, Optional
 
 from binance.client import BaseClient, Client as BinanceClient
+from binance.exceptions import BinanceAPIException
+
+logger = logging.getLogger(__name__)
 
 
 class BinanceClientCompat(BinanceClient):
-    """Same as python-binance `Client`, but does not call `ping()` in `__init__`."""
+    """
+    Same as python-binance `Client`, but:
+      - does not call `ping()` in `__init__`
+      - on APIError -1021 (local clock drifted outside recvWindow) resyncs
+        `timestamp_offset` from the futures server clock and retries once
+    """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         BaseClient.__init__(self, *args, **kwargs)
+        self._time_sync_lock = threading.Lock()
+        self._last_time_sync: float = 0.0
+
+    def sync_server_time(self) -> None:
+        """Set `timestamp_offset` from the futures server clock. Best-effort."""
+        with self._time_sync_lock:
+            try:
+                server_ms = int(self.futures_time()["serverTime"])
+                self.timestamp_offset = server_ms - int(time.time() * 1000)
+                self._last_time_sync = time.monotonic()
+                logger.info(
+                    "Binance server time synced (offset %+d ms)", self.timestamp_offset
+                )
+            except Exception as exc:
+                logger.warning("Binance server time sync failed: %s", exc)
+
+    def _request(self, method, uri: str, signed: bool, force_params: bool = False, **kwargs):
+        try:
+            return super()._request(method, uri, signed, force_params, **kwargs)
+        except BinanceAPIException as exc:
+            if not (signed and exc.code == -1021):
+                raise
+            # The request was rejected before execution, so a retry is safe.
+            # The base client mutated the shared data dict with the stale
+            # timestamp/signature — strip them or the new signature would be
+            # computed over the old one and rejected as invalid.
+            data = kwargs.get("data")
+            if isinstance(data, dict):
+                data.pop("timestamp", None)
+                data.pop("signature", None)
+            logger.warning("Binance -1021 clock drift; resyncing time and retrying once")
+            self.sync_server_time()
+            return super()._request(method, uri, signed, force_params, **kwargs)
 
 
 def create_binance_client(

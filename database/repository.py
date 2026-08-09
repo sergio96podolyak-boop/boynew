@@ -89,12 +89,42 @@ class TradeRepository:
                 timestamp       TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS agent_activity (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent           TEXT NOT NULL,
+                action          TEXT NOT NULL,
+                detail          TEXT,
+                symbol          TEXT,
+                status          TEXT NOT NULL DEFAULT 'active',
+                severity        TEXT NOT NULL DEFAULT 'INFO',
+                loop_count      INTEGER,
+                timestamp       TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS decision_audit (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol          TEXT NOT NULL,
+                direction       TEXT NOT NULL,
+                approved        INTEGER NOT NULL,
+                original_score  REAL NOT NULL,
+                adjusted_score  REAL NOT NULL,
+                consensus       REAL NOT NULL,
+                size_multiplier REAL NOT NULL,
+                reasons_json    TEXT,
+                hard_blocks_json TEXT,
+                created_at      TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
             CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
             CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol);
             CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created_at);
             CREATE INDEX IF NOT EXISTS idx_snapshots_ts ON portfolio_snapshots(timestamp);
             CREATE INDEX IF NOT EXISTS idx_events_ts ON system_events(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_agent_activity_ts ON agent_activity(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_agent_activity_agent ON agent_activity(agent);
+            CREATE INDEX IF NOT EXISTS idx_decision_audit_ts ON decision_audit(created_at);
+            CREATE INDEX IF NOT EXISTS idx_decision_audit_symbol ON decision_audit(symbol);
         """)
         conn.commit()
 
@@ -171,6 +201,30 @@ class TradeRepository:
             "SELECT * FROM trades WHERE status = 'open' ORDER BY opened_at DESC"
         )
         return [dict(row) for row in cursor.fetchall()]
+
+    def cancel_open_paper_trades(self, reason: str = "paper_session_reset") -> int:
+        """
+        Mark open paper trades as cancelled at startup.
+
+        Paper positions live only in process memory; after the process stops,
+        leftover DB rows are stale and should not appear as real open exposure.
+        """
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute(
+            """
+            UPDATE trades
+            SET status = 'cancelled',
+                closed_at = COALESCE(closed_at, ?),
+                close_reason = COALESCE(close_reason, ?),
+                pnl = COALESCE(pnl, 0.0),
+                pnl_pct = COALESCE(pnl_pct, 0.0)
+            WHERE status = 'open'
+            """,
+            (now, reason),
+        )
+        conn.commit()
+        return int(cursor.rowcount or 0)
 
     def get_trade_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Return the most recent closed/cancelled trades."""
@@ -301,8 +355,229 @@ class TradeRepository:
         return [dict(row) for row in cursor.fetchall()]
 
     # -------------------------------------------------------------------------
+    # Agent activity methods (live "agent control center")
+    # -------------------------------------------------------------------------
+
+    def log_agent_activity(
+        self,
+        agent: str,
+        action: str,
+        detail: Optional[str] = None,
+        symbol: Optional[str] = None,
+        status: str = "active",
+        severity: str = "INFO",
+        loop_count: Optional[int] = None,
+    ) -> None:
+        """Record a single agent activity row for the live control-center view."""
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO agent_activity
+                (agent, action, detail, symbol, status, severity, loop_count, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (agent, action, detail, symbol, status, severity, loop_count, now),
+        )
+        conn.commit()
+
+    def get_recent_agent_activity(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return the most recent agent activity rows (newest first)."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT * FROM agent_activity ORDER BY id DESC LIMIT ?", (limit,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_agent_status_summary(self) -> List[Dict[str, Any]]:
+        """
+        Latest activity per agent plus a lifetime action count — one row per agent.
+        Powers the agent cards in the dashboard.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT a.agent, a.action, a.detail, a.symbol, a.status,
+                   a.severity, a.loop_count, a.timestamp, c.action_count
+            FROM agent_activity a
+            JOIN (
+                SELECT agent, MAX(id) AS max_id, COUNT(*) AS action_count
+                FROM agent_activity GROUP BY agent
+            ) c ON a.agent = c.agent AND a.id = c.max_id
+            ORDER BY a.timestamp DESC
+            """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def prune_agent_activity(self, keep: int = 3000) -> None:
+        """Trim the agent_activity table to the most recent `keep` rows."""
+        conn = self._get_conn()
+        conn.execute(
+            """
+            DELETE FROM agent_activity
+            WHERE id NOT IN (
+                SELECT id FROM agent_activity ORDER BY id DESC LIMIT ?
+            )
+            """,
+            (keep,),
+        )
+        conn.commit()
+
+    # -------------------------------------------------------------------------
+    # Decision audit methods
+    # -------------------------------------------------------------------------
+
+    def log_decision(self, decision: Dict[str, Any]) -> None:
+        """Persist a committee decision for audit/debugging."""
+        import json
+
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO decision_audit
+                (symbol, direction, approved, original_score, adjusted_score,
+                 consensus, size_multiplier, reasons_json, hard_blocks_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                decision.get("symbol", ""),
+                decision.get("direction", ""),
+                1 if decision.get("approved") else 0,
+                float(decision.get("original_score", 0.0) or 0.0),
+                float(decision.get("adjusted_score", 0.0) or 0.0),
+                float(decision.get("consensus", 0.0) or 0.0),
+                float(decision.get("size_multiplier", 1.0) or 1.0),
+                json.dumps(decision.get("reasons", []), ensure_ascii=False),
+                json.dumps(decision.get("hard_blocks", []), ensure_ascii=False),
+                now,
+            ),
+        )
+        conn.commit()
+
+    def get_recent_decisions(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return latest committee decisions, newest first."""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT * FROM decision_audit ORDER BY id DESC LIMIT ?", (limit,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    # -------------------------------------------------------------------------
     # Performance statistics
     # -------------------------------------------------------------------------
+
+    def get_symbol_stats(self, min_trades: int = 3, hours_back: int = 48) -> List[Dict[str, Any]]:
+        """
+        Per-symbol performance stats from recent closed trades.
+        Returns list of dicts with: symbol, trades, wins, losses, win_rate, total_pnl, avg_pnl
+        """
+        conn = self._get_conn()
+        cutoff = datetime.now(timezone.utc).isoformat()
+        # Use hours_back to filter
+        cursor = conn.execute(
+            """
+            SELECT symbol,
+                   COUNT(*)                          AS trades,
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) AS losses,
+                   ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
+                   ROUND(SUM(pnl), 6)                AS total_pnl,
+                   ROUND(AVG(pnl), 6)                AS avg_pnl,
+                   ROUND(AVG(pnl_pct), 4)            AS avg_pnl_pct
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            GROUP BY symbol
+            HAVING COUNT(*) >= ?
+            ORDER BY total_pnl ASC
+            """,
+            (hours_back, min_trades),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_close_reason_stats(self, hours_back: int = 48) -> List[Dict[str, Any]]:
+        """
+        Performance breakdown by close_reason (stop_loss, take_profit, fast_exit, etc).
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT close_reason,
+                   COUNT(*)                          AS trades,
+                   ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
+                   ROUND(SUM(pnl), 6)                AS total_pnl,
+                   ROUND(AVG(pnl), 6)                AS avg_pnl
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            GROUP BY close_reason
+            ORDER BY total_pnl ASC
+            """,
+            (hours_back,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_overall_recent_stats(self, hours_back: int = 24) -> Dict[str, Any]:
+        """
+        Aggregate stats for recent trades: total, wins, losses, win_rate, total_pnl.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT COUNT(*)                          AS total_trades,
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) AS losses,
+                   ROUND(SUM(pnl), 6)                AS total_pnl,
+                   ROUND(AVG(pnl), 6)                AS avg_pnl,
+                   ROUND(AVG(pnl_pct), 4)            AS avg_pnl_pct,
+                   ROUND(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 6)  AS gross_profit,
+                   ROUND(SUM(CASE WHEN pnl <= 0 THEN pnl ELSE 0 END), 6) AS gross_loss
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            """,
+            (hours_back,),
+        )
+        row = cursor.fetchone()
+        if row and row["total_trades"] and row["total_trades"] > 0:
+            d = dict(row)
+            d["win_rate"] = round(d["wins"] / d["total_trades"], 4) if d["total_trades"] else 0
+            return d
+        return {
+            "total_trades": 0, "wins": 0, "losses": 0, "total_pnl": 0,
+            "avg_pnl": 0, "avg_pnl_pct": 0, "win_rate": 0,
+            "gross_profit": 0, "gross_loss": 0,
+        }
+
+    def get_score_bracket_stats(self, hours_back: int = 48) -> List[Dict[str, Any]]:
+        """
+        Win rate by confidence/score bracket (e.g. 72-80, 80-85, 85-92, 92+).
+        Helps determine if our score thresholds are calibrated.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT CASE
+                     WHEN confidence >= 92 THEN '92+'
+                     WHEN confidence >= 85 THEN '85-92'
+                     WHEN confidence >= 80 THEN '80-85'
+                     WHEN confidence >= 72 THEN '72-80'
+                     ELSE '<72'
+                   END AS score_bracket,
+                   COUNT(*) AS trades,
+                   ROUND(AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END), 4) AS win_rate,
+                   ROUND(SUM(pnl), 6) AS total_pnl,
+                   ROUND(AVG(pnl), 6) AS avg_pnl
+            FROM trades
+            WHERE status = 'closed' AND pnl IS NOT NULL AND confidence IS NOT NULL
+              AND closed_at >= datetime('now', '-' || ? || ' hours')
+            GROUP BY score_bracket
+            ORDER BY score_bracket
+            """,
+            (hours_back,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
 
     def get_performance_stats(self) -> Dict[str, Any]:
         """
@@ -344,11 +619,15 @@ class TradeRepository:
         cumulative = 0.0
         peak = 0.0
         max_drawdown = 0.0
+        max_drawdown_abs = 0.0
         for p in pnls:
             cumulative += p
             if cumulative > peak:
                 peak = cumulative
-            dd = (peak - cumulative) / peak if peak > 0 else 0.0
+            dd_abs = peak - cumulative
+            if dd_abs > max_drawdown_abs:
+                max_drawdown_abs = dd_abs
+            dd = dd_abs / peak if peak > 0 else 0.0
             if dd > max_drawdown:
                 max_drawdown = dd
 
@@ -373,6 +652,7 @@ class TradeRepository:
             "total_pnl": round(total_pnl, 4),
             "avg_pnl": round(avg_pnl, 4),
             "max_drawdown": round(max_drawdown, 4),
+            "max_drawdown_abs": round(max_drawdown_abs, 4),
             "sharpe_ratio": round(sharpe, 4),
         }
 

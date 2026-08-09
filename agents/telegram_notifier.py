@@ -43,11 +43,13 @@ def _save_subscribers(path: str, subs: Set[str]) -> None:
 class TelegramNotifier:
     """שולח הודעות עדכון למסחר בעברית לכל המנויים — עיצוב מקצועי."""
 
-    def __init__(self, token: str, owner_chat_id: str):
+    def __init__(self, token: str, owner_chat_id: str, enabled: bool = True):
         self.token = token
-        self._enabled = bool(token)
-        self._subscribers: Set[str] = _load_subscribers(_SUBSCRIBERS_FILE)
-        if owner_chat_id:
+        self._enabled = bool(enabled and token)
+        self._subscribers: Set[str] = (
+            _load_subscribers(_SUBSCRIBERS_FILE) if enabled else set()
+        )
+        if enabled and owner_chat_id:
             self._subscribers.add(str(owner_chat_id))
             _save_subscribers(_SUBSCRIBERS_FILE, self._subscribers)
         self._update_offset: int = 0
@@ -60,6 +62,8 @@ class TelegramNotifier:
             logger.info("TelegramNotifier מוכן — %d מנויים", len(self._subscribers))
             t = threading.Thread(target=self._poll_loop, daemon=True)
             t.start()
+        elif not enabled:
+            logger.info("TelegramNotifier כבוי לפי TELEGRAM_ENABLED=false")
         else:
             logger.warning("TelegramNotifier — לא הוגדר token, הודעות מבוטלות")
 
@@ -127,6 +131,8 @@ class TelegramNotifier:
             "fast_exit_no_move": "⚡ יציאה מהירה — אין תנועה",
             "opposite_pressure": "🔄 לחץ הפוך — מגמה התהפכה",
             "trailing_stop": "📉 טריילינג סטופ",
+            "profit_lock": "🔒 נעילת רווח",
+            "scalp_take_profit": "🎯 לקיחת רווח מהירה",
             "KILL_SWITCH": "🚨 קיל סוויץ'",
         }
         reason_he = reason_map.get(reason, reason)
@@ -212,6 +218,38 @@ class TelegramNotifier:
         )
         self._broadcast(msg)
 
+    def cooldown(self, reason: str, minutes: float) -> None:
+        """Notify that trading is paused due to consecutive losses."""
+        self._broadcast(
+            f"⏸ ═══════════════════\n"
+            f"  *הבוט בהפסקה*\n"
+            f"═══════════════════════\n\n"
+            f"🧊 סיבה: {reason}\n"
+            f"⏱ משך: `{minutes:.0f}` דקות\n"
+            f"🛡 יציאות עדיין פעילות\n"
+            f"📊 סשן: {self._session_wins}W / {self._session_losses}L\n\n"
+            f"🕐 {self._now()}"
+        )
+
+    def intelligence_update(self, win_rate: float, score_entry: float,
+                            kelly: float, blacklist_count: int,
+                            sl_mult: float, tp_mult: float,
+                            model_healthy: bool) -> None:
+        """Periodic intelligence insights summary."""
+        health = "✅ תקין" if model_healthy else "❌ לא תקין — כניסות חסומות!"
+        self._broadcast(
+            f"🧠 ═══════════════════\n"
+            f"  *עדכון אינטליגנציה*\n"
+            f"═══════════════════════\n\n"
+            f"📊 Win Rate: `{win_rate:.1f}%`\n"
+            f"🎯 סף כניסה: `{score_entry:.0f}`\n"
+            f"📐 Kelly: `{kelly:.0%}`\n"
+            f"🚫 סימבולים חסומים: `{blacklist_count}`\n"
+            f"🛡 SL×`{sl_mult:.2f}` | TP×`{tp_mult:.2f}`\n"
+            f"🤖 בריאות מודל: {health}\n\n"
+            f"🕐 {self._now()}"
+        )
+
     def error(self, message: str) -> None:
         self._broadcast(
             f"⚠️ *שגיאה בבוט*\n\n"
@@ -225,7 +263,7 @@ class TelegramNotifier:
 
     def _poll_loop(self) -> None:
         """Polls Telegram for new messages and handles /start."""
-        while True:
+        while self._enabled:
             try:
                 url = TELEGRAM_API.format(token=self.token, method="getUpdates")
                 resp = requests.get(
@@ -233,6 +271,9 @@ class TelegramNotifier:
                     params={"offset": self._update_offset, "timeout": 30, "allowed_updates": ["message"]},
                     timeout=35,
                 )
+                if resp.status_code == 401:
+                    self._disable("טוקן טלגרם לא תקין (401) — האזנה הופסקה")
+                    return
                 if not resp.ok:
                     continue
                 data = resp.json()
@@ -283,6 +324,12 @@ class TelegramNotifier:
     # Internal
     # ------------------------------------------------------------------
 
+    def _disable(self, reason: str) -> None:
+        """Permanently disable Telegram for this run (e.g. bad token) — stops the spam."""
+        if self._enabled:
+            logger.warning("TelegramNotifier מושבת אוטומטית: %s", reason)
+        self._enabled = False
+
     def _now(self) -> str:
         il_time = datetime.now(timezone(timedelta(hours=3)))
         return il_time.strftime("%H:%M:%S") + " 🇮🇱"
@@ -305,6 +352,9 @@ class TelegramNotifier:
                 json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
                 timeout=_SEND_TIMEOUT,
             )
+            if resp.status_code == 401:
+                self._disable("טוקן טלגרם לא תקין (401) — הודעות בוטלו")
+                return
             if not resp.ok:
                 logger.warning("Telegram שגיאה ל-%s: %s", chat_id, resp.text[:100])
         except Exception as exc:
@@ -319,7 +369,7 @@ def get_notifier() -> Optional[TelegramNotifier]:
     return _instance
 
 
-def init_notifier(token: str, chat_id: str) -> TelegramNotifier:
+def init_notifier(token: str, chat_id: str, enabled: bool = True) -> TelegramNotifier:
     global _instance
-    _instance = TelegramNotifier(token=token, owner_chat_id=chat_id)
+    _instance = TelegramNotifier(token=token, owner_chat_id=chat_id, enabled=enabled)
     return _instance

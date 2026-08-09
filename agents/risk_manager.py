@@ -5,6 +5,7 @@ Risk management: legacy (assess_risk + ExecutionAgent) + aggressive HFT (evaluat
 from __future__ import annotations
 
 import logging
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -88,6 +89,31 @@ class RiskManagerAgent:
 
         streak_n = max(3, self.config.rage_streak)
         self._trade_history: deque = deque(maxlen=streak_n * 2)
+
+        # Adaptive score entry from TradeAnalyzer (overridden externally)
+        self._adaptive_score_entry: Optional[float] = None
+        # Exit reasons that history shows are net-negative (set externally by TradeAnalyzer)
+        self._bad_exit_reasons: set = set()
+        # UTC hours that history shows are net-negative (set externally by
+        # TradeAnalyzer) — entries are blocked during them, exits unaffected.
+        self._bad_hours_utc: set = set()
+        # Trade-history blacklist enforced at the LAST gate so no signal path
+        # (scanner, TradingView, DEX inject, future agents) can bypass it.
+        self._symbol_blacklist: set = set()
+        # Fee guard: commissions were 69% of the account bleed (17.48 USDT in
+        # 48h vs 7.78 to the market). Entry budget + re-entry cooldown cut churn.
+        self._entry_times: deque = deque(maxlen=300)
+        self._last_exit_ts: Dict[str, float] = {}
+        # Kelly-inspired fraction for position sizing (0.1–1.0, set by TradeAnalyzer)
+        self._kelly_fraction: float = 1.0
+        # Performance escalator (0.5–1.5, set by TradeAnalyzer): earned
+        # aggression — proven recent edge sizes up, negative edge sizes down.
+        self._performance_multiplier: float = 1.0
+        # Dynamic SL/TP multipliers from trade history
+        self._sl_multiplier: float = 1.0
+        self._tp_multiplier: float = 1.0
+        # Model health flag — can reject or only warn, depending on config
+        self._model_healthy: bool = True
 
     # ------------------------------------------------------------------
     # Legacy pipeline (main.py + ExecutionAgent)
@@ -263,11 +289,48 @@ class RiskManagerAgent:
             return current_price <= position.tp_price
         return False
 
+    @staticmethod
+    def favorable_move_pct(position: Position, current_price: float) -> float:
+        if position.entry_price <= 0:
+            return 0.0
+        if position.side == "LONG":
+            return (current_price - position.entry_price) / position.entry_price
+        if position.side == "SHORT":
+            return (position.entry_price - current_price) / position.entry_price
+        return 0.0
+
+    @staticmethod
+    def peak_profit_pct(position: Position) -> float:
+        if position.entry_price <= 0:
+            return 0.0
+        if position.side == "LONG":
+            return (position.peak_price - position.entry_price) / position.entry_price
+        if position.side == "SHORT":
+            return (position.entry_price - position.peak_price) / position.entry_price
+        return 0.0
+
+    @staticmethod
+    def retrace_from_peak_pct(position: Position, current_price: float) -> float:
+        if position.peak_price <= 0:
+            return 0.0
+        if position.side == "LONG":
+            return (position.peak_price - current_price) / position.peak_price
+        if position.side == "SHORT":
+            return (current_price - position.peak_price) / position.peak_price
+        return 0.0
+
+    def estimated_roundtrip_cost_pct(self) -> float:
+        fee = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
+        buffer = float(getattr(self.config, "profit_edge_buffer_pct", 0.0) or 0.0)
+        return max(0.0, fee * 2.0 + buffer)
+
     def register_open_position(self, position: Position) -> None:
         self.open_positions[position.symbol] = position
+        self._entry_times.append(time.time())
 
     def remove_position(self, symbol: str) -> None:
         self.open_positions.pop(symbol, None)
+        self._last_exit_ts[symbol] = time.time()
 
     def update_balance(self, new_balance: float) -> None:
         self._current_balance = new_balance
@@ -333,12 +396,17 @@ class RiskManagerAgent:
     # ------------------------------------------------------------------
 
     def get_rage_multiplier(self) -> float:
+        """
+        Adaptive position sizing based on recent trade streak.
+        SAFETY: win streaks do NOT increase size (overconfidence trap).
+        Loss streaks reduce size to protect capital.
+        """
         n = self.config.rage_streak
         if len(self._trade_history) < n:
             return 1.0
         recent = list(self._trade_history)[-n:]
-        if all(recent):
-            return self.config.rage_win_mult
+        # Win streak: stay at 1.0 — do NOT increase (learned from losses)
+        # Loss streak: reduce size to protect capital
         if not any(recent):
             return self.config.rage_loss_mult
         return 1.0
@@ -355,18 +423,55 @@ class RiskManagerAgent:
         atr: float,
         current_balance: float,
         open_positions: Dict[str, Position],
+        size_multiplier: float = 1.0,
     ) -> RiskDecision:
         if self.kill_switch:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Kill switch")
+        if not self._model_healthy and self.config.block_when_model_unhealthy:
+            return RiskDecision(False, 0.0, 0.0, 0.0, "Model unhealthy — predictions unreliable")
         if len(open_positions) >= self.config.hft_max_open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Max positions")
         if symbol in open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Symbol occupied")
-
-        if score < self.config.score_entry:
+        if symbol in self._symbol_blacklist:
             return RiskDecision(
-                False, 0.0, 0.0, 0.0, f"Score {score:.1f} < {self.config.score_entry}"
+                False, 0.0, 0.0, 0.0, f"{symbol} blacklisted by trade history"
             )
+
+        # Use adaptive threshold from TradeAnalyzer if available
+        effective_threshold = self._adaptive_score_entry if self._adaptive_score_entry is not None else self.config.score_entry
+        if score < effective_threshold:
+            return RiskDecision(
+                False, 0.0, 0.0, 0.0, f"Score {score:.1f} < {effective_threshold}"
+            )
+
+        # Historically losing hours: no new entries (exit management continues)
+        hour_utc = datetime.now(timezone.utc).hour
+        if hour_utc in self._bad_hours_utc:
+            return RiskDecision(
+                False, 0.0, 0.0, 0.0,
+                f"Hour {hour_utc:02d} UTC historically loses — entries paused",
+            )
+
+        # Fee guard: churn is the #1 account bleed — every round trip costs
+        # ~0.1% of notional in commissions regardless of outcome.
+        now_ts = time.time()
+        reentry_cd = float(getattr(self.config, "symbol_reentry_cooldown_seconds", 0) or 0)
+        if reentry_cd > 0:
+            last_exit = self._last_exit_ts.get(symbol, 0.0)
+            if last_exit and now_ts - last_exit < reentry_cd:
+                return RiskDecision(
+                    False, 0.0, 0.0, 0.0,
+                    f"{symbol} re-entry cooldown {int(reentry_cd - (now_ts - last_exit))}s (fee guard)",
+                )
+        max_hourly = int(getattr(self.config, "max_entries_per_hour", 0) or 0)
+        if max_hourly > 0:
+            recent_entries = sum(1 for t in self._entry_times if now_ts - t < 3600)
+            if recent_entries >= max_hourly:
+                return RiskDecision(
+                    False, 0.0, 0.0, 0.0,
+                    f"Entry budget {max_hourly}/h reached — only the best setups trade (fee guard)",
+                )
 
         if score >= self.config.score_extreme:
             tier_pct = self.config.size_extreme_pct
@@ -378,6 +483,14 @@ class RiskManagerAgent:
             tier_pct = self.config.size_base_pct
             tier = "BASE"
 
+        # Stop distance first — sizing below derives from it (risk parity)
+        atr_pct = atr / entry_price if entry_price > 0 else 0.005
+        tw = {"BASE": 0.85, "HIGH": 1.0, "EXTREME": 1.15}.get(tier, 1.0)
+        scaled = atr_pct * tw
+        # Apply dynamic SL/TP multipliers from trade history analysis
+        sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled * self._sl_multiplier))
+        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4 * self._tp_multiplier))
+
         # Portfolio sizing: divide balance equally among max open positions
         max_pos = max(1, self.config.hft_max_open_positions)
         slice_margin = current_balance / max_pos  # equal share per position
@@ -387,34 +500,174 @@ class RiskManagerAgent:
         )
         # Notional = slice × leverage, scaled by tier (extreme gets full slice, base gets less)
         notional = slice_margin * adj_pct * self.config.leverage
-        # Hard-cap: never exceed one full slice × leverage
-        max_notional = slice_margin * self.config.leverage
+        # Apply Kelly fraction — reduce sizing when win rate / R:R is poor
+        notional *= self._kelly_fraction
+        # Performance escalator — size follows proven recent results
+        notional *= max(0.5, min(2.0, self._performance_multiplier))
+
+        active_drawdown = self._drawdown_pct
+        if self.peak_balance > 0 and current_balance > 0:
+            active_drawdown = max(
+                active_drawdown,
+                (self.peak_balance - current_balance) / self.peak_balance,
+            )
+
+        max_size_multiplier = 1.0
+        if (
+            self.config.high_conviction_enabled
+            and active_drawdown <= self.config.high_conviction_max_drawdown_pct
+        ):
+            max_size_multiplier = max(1.0, self.config.high_conviction_size_multiplier)
+        if (
+            getattr(self.config, "capital_allocator_enabled", False)
+            and active_drawdown <= self.config.high_conviction_max_drawdown_pct
+        ):
+            max_size_multiplier = max(
+                max_size_multiplier,
+                float(getattr(self.config, "capital_allocator_size_multiplier", 1.0) or 1.0),
+            )
+
+        size_multiplier = max(0.10, min(max_size_multiplier, float(size_multiplier or 1.0)))
+        if (
+            self.config.drawdown_size_reduction_enabled
+            and active_drawdown >= self.config.drawdown_size_reduction_start_pct
+        ):
+            size_multiplier *= self.config.drawdown_size_multiplier
+
+        # Apply external committee sizing. It can increase only for high-conviction
+        # setups and only while drawdown is inside the configured comfort zone.
+        notional *= size_multiplier
+
+        # Hard caps: normal trades stay inside one equal slice; high-conviction
+        # trades may use unused room, but never above the configured margin cap.
+        normal_cap = slice_margin * self.config.leverage
+        # Earned margin release: only while the escalator proves a strong
+        # recent edge does the per-position margin cap open 25% -> 30%.
+        margin_fraction = self.config.max_margin_fraction
+        if self._performance_multiplier >= 1.5:
+            margin_fraction = min(0.30, margin_fraction * 1.2)
+        margin_cap = current_balance * margin_fraction * self.config.leverage
+        max_notional = min(
+            margin_cap if margin_cap > 0 else normal_cap,
+            normal_cap * max(1.0, size_multiplier),
+        )
         notional = min(notional, max_notional)
 
-        # Minimum notional (USDT position size) — avoids tiny “penny” trades; still respects cap above.
+        # Risk parity: constant dollar risk per trade regardless of stop width.
+        # Volatile symbols get wide stops with smaller size (room to breathe);
+        # calm symbols get tight stops with bigger size (real dollars per win).
+        risk_notional_cap = max_notional
+        risk_budget_pct = float(getattr(self.config, "max_risk_pct", 0.0) or 0.0)
+        if risk_budget_pct > 0 and sl_pct > 0:
+            risk_notional_cap = min(
+                risk_notional_cap,
+                (current_balance * risk_budget_pct) / sl_pct,
+            )
+            notional = min(notional, risk_notional_cap)
+
+        affordable_notional_cap = max(0.0, min(max_notional, risk_notional_cap))
+
+        # Minimum notional (USDT position size) avoids tiny trades, but it must
+        # not freeze a small live account after drawdown or transfer-out events.
         min_n = float(self.config.hft_min_notional_usdt or 0.0)
-        if min_n > 0 and max_notional > 0:
-            if max_notional < min_n - 1e-9:
+        if min_n > 0 and affordable_notional_cap > 0:
+            if affordable_notional_cap < min_n - 1e-9:
+                logger.warning(
+                    "%s: recovery sizing: affordable max notional %.2f is below "
+                    "configured HFT_MIN_NOTIONAL_USDT %.2f; using affordable cap",
+                    symbol,
+                    affordable_notional_cap,
+                    min_n,
+                )
+                min_n = affordable_notional_cap
+            notional = max(notional, min_n)
+        notional = min(notional, affordable_notional_cap)
+
+        runner_mode = (
+            bool(getattr(self.config, "trend_runner_enabled", False))
+            and score >= float(getattr(self.config, "trend_runner_min_score", 999.0) or 999.0)
+        )
+        if runner_mode:
+            runner_tp_max = float(getattr(self.config, "trend_runner_tp_max_pct", self.config.tp_max_pct) or self.config.tp_max_pct)
+            runner_mult = float(getattr(self.config, "trend_runner_tp_multiplier", 1.0) or 1.0)
+            tp_pct = min(max(self.config.tp_max_pct, runner_tp_max), max(tp_pct * runner_mult, tp_pct))
+
+        est_cost_pct = self.estimated_roundtrip_cost_pct()
+        est_cost_usdt = 0.0
+        net_tp_usdt = 0.0
+        net_rr = 0.0
+        if bool(getattr(self.config, "fee_aware_sizing_enabled", True)):
+            min_net_usdt = float(
+                getattr(self.config, "min_expected_net_profit_usdt", 0.0) or 0.0
+            )
+            min_net_rr = float(
+                getattr(self.config, "min_net_reward_risk", 0.0) or 0.0
+            )
+            min_cost_ratio = float(
+                getattr(self.config, "min_profit_cost_ratio", 0.0) or 0.0
+            )
+
+            if tp_pct <= est_cost_pct:
                 return RiskDecision(
                     False,
                     0.0,
                     0.0,
                     0.0,
                     (
-                        f"Max notional {max_notional:.2f} USDT < HFT_MIN_NOTIONAL_USDT "
-                        f"({min_n:.2f}) — increase balance or raise max_margin / leverage"
+                        f"TP edge {tp_pct * 100:.2f}% <= estimated "
+                        f"round-trip cost {est_cost_pct * 100:.2f}%"
                     ),
                 )
-            notional = max(notional, min(min_n, max_notional))
-        notional = min(notional, max_notional)
+
+            if min_net_usdt > 0:
+                required_notional = min_net_usdt / max(tp_pct - est_cost_pct, 1e-9)
+                if required_notional > notional:
+                    if required_notional <= affordable_notional_cap + 1e-9:
+                        notional = required_notional
+                    else:
+                        return RiskDecision(
+                            False,
+                            0.0,
+                            0.0,
+                            0.0,
+                            (
+                                f"Net TP too small after fees: needs "
+                                f"{min_net_usdt:.2f} USDT, cap allows "
+                                f"{affordable_notional_cap * (tp_pct - est_cost_pct):.2f} USDT"
+                            ),
+                        )
+
+            gross_tp_usdt = notional * tp_pct
+            gross_sl_usdt = notional * sl_pct
+            est_cost_usdt = notional * est_cost_pct
+            net_tp_usdt = gross_tp_usdt - est_cost_usdt
+            net_loss_usdt = gross_sl_usdt + est_cost_usdt
+            net_rr = net_tp_usdt / net_loss_usdt if net_loss_usdt > 0 else 0.0
+
+            if min_cost_ratio > 0 and gross_tp_usdt < est_cost_usdt * min_cost_ratio:
+                return RiskDecision(
+                    False,
+                    0.0,
+                    0.0,
+                    0.0,
+                    (
+                        f"Profit/fee ratio too low "
+                        f"({gross_tp_usdt / max(est_cost_usdt, 1e-9):.1f}x < "
+                        f"{min_cost_ratio:.1f}x)"
+                    ),
+                )
+            if min_net_rr > 0 and net_rr < min_net_rr:
+                return RiskDecision(
+                    False,
+                    0.0,
+                    0.0,
+                    0.0,
+                    f"Net R:R {net_rr:.2f} < {min_net_rr:.2f} after fees",
+                )
 
         qty = notional / entry_price if entry_price > 0 else 0.0
-
-        atr_pct = atr / entry_price if entry_price > 0 else 0.005
-        tw = {"BASE": 0.85, "HIGH": 1.0, "EXTREME": 1.15}.get(tier, 1.0)
-        scaled = atr_pct * tw
-        sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled))
-        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4))
+        if qty <= 0:
+            return RiskDecision(False, 0.0, 0.0, 0.0, "Quantity is zero after caps")
 
         if direction == "LONG":
             sl_price = entry_price * (1 - sl_pct)
@@ -424,7 +677,7 @@ class RiskManagerAgent:
             tp_price = entry_price * (1 - tp_pct)
 
         logger.info(
-            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f",
+            "HFT approve %s %s score=%.1f tier=%s qty=%.6f notional≈%.2f USDT margin≈%.2f USDT SL%%=%.3f TP%%=%.3f netTP≈%.2f fee≈%.2f netRR=%.2f size_mult=%.2f%s",
             symbol,
             direction,
             score,
@@ -434,8 +687,24 @@ class RiskManagerAgent:
             notional / self.config.leverage if self.config.leverage else 0.0,
             sl_pct * 100,
             tp_pct * 100,
+            net_tp_usdt,
+            est_cost_usdt,
+            net_rr,
+            size_multiplier,
+            " runner=on" if runner_mode else "",
         )
-        return RiskDecision(True, qty, sl_price, tp_price, f"{tier} score={score:.1f}")
+        runner_note = " runner" if runner_mode else ""
+        return RiskDecision(
+            True,
+            qty,
+            sl_price,
+            tp_price,
+            (
+                f"{tier}{runner_note} score={score:.1f} "
+                f"netTP={net_tp_usdt:.2f} fee={est_cost_usdt:.2f} "
+                f"size={size_multiplier:.2f}"
+            ),
+        )
 
     def check_exits(
         self,
@@ -452,6 +721,67 @@ class RiskManagerAgent:
             # Update trailing stop
             self.update_trailing_stop(pos, px)
 
+            age = (now - pos.opened_at).total_seconds()
+            move = self.favorable_move_pct(pos, px)
+            peak_profit = self.peak_profit_pct(pos)
+            retrace = self.retrace_from_peak_pct(pos, px)
+
+            # Bank a clean scalp even if the exchange-side TP is farther away.
+            profit_take_pct = float(getattr(self.config, "profit_take_pct", 0.0) or 0.0)
+            min_profitable_move = self.estimated_roundtrip_cost_pct()
+            profit_take_age = float(
+                getattr(self.config, "profit_take_min_age_seconds", 0.0) or 0.0
+            )
+            runner_mode = (
+                bool(getattr(self.config, "trend_runner_enabled", False))
+                and pos.score_at_entry >= float(getattr(self.config, "trend_runner_min_score", 999.0) or 999.0)
+            )
+            if (
+                bool(getattr(self.config, "high_conviction_enabled", False))
+                and pos.score_at_entry >= float(getattr(self.config, "high_conviction_min_score", 999.0))
+            ):
+                profit_take_pct *= float(
+                    getattr(self.config, "high_conviction_profit_take_multiplier", 1.0) or 1.0
+                )
+            if runner_mode:
+                profit_take_pct *= float(
+                    getattr(self.config, "trend_runner_profit_take_multiplier", 1.0) or 1.0
+                )
+                profit_take_age = max(
+                    profit_take_age,
+                    float(getattr(self.config, "trend_runner_min_age_seconds", 0.0) or 0.0),
+                )
+            profit_take_pct = max(profit_take_pct, min_profitable_move)
+            if profit_take_pct > 0 and age >= profit_take_age and move >= profit_take_pct:
+                exits.append({"symbol": sym, "reason": "scalp_take_profit"})
+                continue
+
+            # If a trade was nicely profitable but starts giving it back, close
+            # while it is still green instead of waiting for a full round-trip.
+            if bool(getattr(self.config, "profit_lock_enabled", True)):
+                trigger = float(getattr(self.config, "profit_lock_trigger_pct", 0.0) or 0.0)
+                retrace_pct = float(getattr(self.config, "profit_lock_retrace_pct", 0.0) or 0.0)
+                min_net = float(getattr(self.config, "profit_lock_min_net_pct", 0.0) or 0.0)
+                if runner_mode:
+                    trigger = max(
+                        trigger,
+                        float(getattr(self.config, "trend_runner_lock_trigger_pct", trigger) or trigger),
+                    )
+                    retrace_pct = max(
+                        retrace_pct,
+                        float(getattr(self.config, "trend_runner_retrace_pct", retrace_pct) or retrace_pct),
+                    )
+                min_net = max(min_net, min_profitable_move)
+                if (
+                    trigger > 0
+                    and retrace_pct > 0
+                    and peak_profit >= trigger
+                    and retrace >= retrace_pct
+                    and move >= min_net
+                ):
+                    exits.append({"symbol": sym, "reason": "profit_lock"})
+                    continue
+
             if self.is_sl_hit(pos, px):
                 exits.append({"symbol": sym, "reason": "stop_loss"})
                 continue
@@ -459,44 +789,39 @@ class RiskManagerAgent:
                 exits.append({"symbol": sym, "reason": "take_profit"})
                 continue
 
-            age = (now - pos.opened_at).total_seconds()
-
             # ── Fast exit: no movement in 30-45 seconds ──
-            fast_sec = self.config.fast_exit_seconds
-            if fast_sec > 0 and age >= fast_sec:
-                if pos.side == "LONG":
-                    move = (px - pos.entry_price) / pos.entry_price
-                else:
-                    move = (pos.entry_price - px) / pos.entry_price
-                if move < self.config.min_favorable_move_pct:
-                    exits.append({"symbol": sym, "reason": "fast_exit_no_move"})
-                    continue
+            # Skip if trade history shows this exit type loses money
+            if "fast_exit_no_move" not in self._bad_exit_reasons:
+                fast_sec = self.config.fast_exit_seconds
+                if fast_sec > 0 and age >= fast_sec:
+                    if move < self.config.min_favorable_move_pct:
+                        exits.append({"symbol": sym, "reason": "fast_exit_no_move"})
+                        continue
 
             # ── Opposite pressure: exit if trade reverses from peak profit ──
-            opp_pct = self.config.opposite_pressure_pct
-            if opp_pct > 0 and pos.peak_price != pos.entry_price:
-                if pos.side == "LONG":
-                    # Had profit, now price dropped from peak
-                    peak_profit = (pos.peak_price - pos.entry_price) / pos.entry_price
-                    current_from_peak = (pos.peak_price - px) / pos.peak_price
-                    if peak_profit > opp_pct and current_from_peak > opp_pct:
-                        exits.append({"symbol": sym, "reason": "opposite_pressure"})
-                        continue
-                elif pos.side == "SHORT":
-                    peak_profit = (pos.entry_price - pos.peak_price) / pos.entry_price
-                    current_from_peak = (px - pos.peak_price) / pos.peak_price if pos.peak_price > 0 else 0
-                    if peak_profit > opp_pct and current_from_peak > opp_pct:
-                        exits.append({"symbol": sym, "reason": "opposite_pressure"})
-                        continue
+            # Skip if trade history shows this exit type loses money
+            if "opposite_pressure" not in self._bad_exit_reasons:
+                opp_pct = self.config.opposite_pressure_pct
+                if opp_pct > 0 and pos.peak_price != pos.entry_price:
+                    if pos.side == "LONG":
+                        peak_profit = (pos.peak_price - pos.entry_price) / pos.entry_price
+                        current_from_peak = (pos.peak_price - px) / pos.peak_price
+                        if peak_profit > opp_pct and current_from_peak > opp_pct:
+                            exits.append({"symbol": sym, "reason": "opposite_pressure"})
+                            continue
+                    elif pos.side == "SHORT":
+                        peak_profit = (pos.entry_price - pos.peak_price) / pos.entry_price
+                        current_from_peak = (px - pos.peak_price) / pos.peak_price if pos.peak_price > 0 else 0
+                        if peak_profit > opp_pct and current_from_peak > opp_pct:
+                            exits.append({"symbol": sym, "reason": "opposite_pressure"})
+                            continue
 
             # ── Original stale exit (longer timeframe fallback) ──
-            se = self.config.stale_exit_seconds
-            if se > 0 and age >= se:
-                if pos.side == "LONG":
-                    move = (px - pos.entry_price) / pos.entry_price
-                else:
-                    move = (pos.entry_price - px) / pos.entry_price
-                if move < self.config.min_favorable_move_pct:
-                    exits.append({"symbol": sym, "reason": "stale_no_move"})
+            # Skip if trade history shows this exit type loses money
+            if "stale_no_move" not in self._bad_exit_reasons:
+                se = self.config.stale_exit_seconds
+                if se > 0 and age >= se:
+                    if move < self.config.min_favorable_move_pct:
+                        exits.append({"symbol": sym, "reason": "stale_no_move"})
 
         return exits

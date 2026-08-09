@@ -12,3 +12,6 @@ streamlit-autorefresh>=1.0.1
 aiohttp>=3.9.0
 lightgbm>=4.3.0
 xgboost>=2.0.0
+tradingview-ta>=3.3.0
+flask>=3.0.0
+gunicorn>=21.0.0
