@@ -65,6 +65,7 @@ class IsoMarketPainter extends CustomPainter {
     _paintBackdrop(canvas, size);
     _paintWalls(canvas, brush, projection);
     _paintFloor(canvas, brush, projection);
+    _paintCeilingLights(canvas, projection);
     _paintFloorDecals(canvas, brush, projection);
 
     // Everything that stands up is depth-sorted together so props and people
@@ -81,6 +82,7 @@ class IsoMarketPainter extends CustomPainter {
     // whenever it stands behind a gondola, and losing track of your own
     // character mid-shift is worse than the small break in realism.
     _paintPlayer(canvas, brush);
+    _paintHangingSign(canvas, projection);
     _paintFloatingEffects(canvas, projection);
 
     _paintAmbience(canvas, size, projection);
@@ -221,6 +223,39 @@ class IsoMarketPainter extends CustomPainter {
         ..strokeWidth = math.max(1.2, 2 * p.scale)
         ..color = const Color(0x66452F16),
     );
+  }
+
+  /// Warm pools cast by overhead fixtures.
+  ///
+  /// Regularly spaced light on the floor is what reads as "a lit shop" rather
+  /// than "an evenly shaded diagram". The pools sit under the props so fixtures
+  /// still cast their own contact shadows on top.
+  void _paintCeilingLights(Canvas canvas, IsoProjection p) {
+    final ground = p.groundPath();
+    canvas.save();
+    canvas.clipPath(ground);
+    const spots = <Offset>[
+      Offset(0.28, 0.28),
+      Offset(0.72, 0.28),
+      Offset(0.28, 0.72),
+      Offset(0.72, 0.72),
+      Offset(0.5, 0.5),
+    ];
+    for (final spot in spots) {
+      final centre = p.project(spot.dx, spot.dy);
+      final radius = p.tileWidth * 0.22;
+      canvas.drawCircle(
+        centre,
+        radius,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..shader = ui.Gradient.radial(centre, radius, [
+            const Color(0x2EFFE6B0),
+            const Color(0x00FFE6B0),
+          ]),
+      );
+    }
+    canvas.restore();
   }
 
   void _paintFloorDecals(Canvas canvas, IsoBrush brush, IsoProjection p) {
@@ -1090,6 +1125,86 @@ class IsoMarketPainter extends CustomPainter {
         Offset(anchor.dx - painter.width / 2, anchor.dy - rise - painter.height),
       );
     }
+  }
+
+  /// Brand plaque hung from the ceiling over the shop floor.
+  ///
+  /// Gives the space an identity from inside the world — the icon carries the
+  /// brand on the store facade, but the board itself had no marque. Drawn late
+  /// so it always hangs in front of the fixtures below it.
+  void _paintHangingSign(Canvas canvas, IsoProjection p) {
+    final anchor = p.project(0.5, 0.16, 0.62);
+    final width = p.tileWidth * 0.30;
+    final height = width * 0.30;
+    final rect = Rect.fromCenter(
+      center: anchor,
+      width: width,
+      height: height,
+    );
+
+    final paint = Paint()..isAntiAlias = true;
+    // Suspension cords back up to the ceiling line.
+    paint
+      ..color = const Color(0x66203029)
+      ..strokeWidth = math.max(1, 1.4 * p.scale);
+    canvas.drawLine(
+      rect.topLeft + Offset(width * 0.18, 0),
+      rect.topLeft + Offset(width * 0.30, -height * 0.9),
+      paint,
+    );
+    canvas.drawLine(
+      rect.topRight - Offset(width * 0.18, 0),
+      rect.topRight - Offset(width * 0.30, height * 0.9),
+      paint,
+    );
+
+    // Plaque.
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(height * 0.34));
+    canvas.drawRRect(
+      rrect.shift(Offset(0, height * 0.14)),
+      Paint()..color = const Color(0x4D04211A),
+    );
+    paint.shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, const [
+      Color(0xFF14624A),
+      Color(0xFF0A3D2E),
+    ]);
+    canvas.drawRRect(rrect, paint);
+    paint.shader = null;
+    canvas.drawRRect(
+      rrect.deflate(height * 0.10),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1, 1.4 * p.scale)
+        ..color = _accentGold.withValues(alpha: 0.7),
+    );
+
+    // Leaf mark plus wordmark.
+    final leafCentre = rect.centerLeft + Offset(width * 0.16, 0);
+    canvas.drawCircle(
+      leafCentre,
+      height * 0.22,
+      Paint()..color = _accentGold,
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: 'PoMARKET',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: height * 0.42,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.5,
+          height: 1,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(
+        leafCentre.dx + height * 0.30,
+        anchor.dy - painter.height / 2,
+      ),
+    );
   }
 
   void _paintAmbience(Canvas canvas, Size size, IsoProjection p) {
