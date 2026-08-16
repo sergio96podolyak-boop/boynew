@@ -284,8 +284,9 @@ class MarketPainter extends CustomPainter {
   static const _forest = Color(0xFF245442);
   static const _deepForest = Color(0xFF12362C);
   static const _cream = Color(0xFFFFF4D8);
-  static const _tileLight = Color(0xFFF6E8CD);
-  static const _tileDark = Color(0xFFE1C792);
+  static const _tileLight = Color(0xFFFFF3DA);
+  static const _tileDark = Color(0xFFEBD6A8);
+  static const _tileDeep = Color(0xFFB08F5C);
   static const _checkoutRed = Color(0xFFA84E58);
   static const _storageBlue = Color(0xFF526A70);
   static const _bakeryGold = Color(0xFFD59739);
@@ -448,18 +449,29 @@ class MarketPainter extends CustomPainter {
       layout.market.right,
       layout.market.bottom,
     );
+    // Floor recedes: darker at the back, brighter toward the shopper. The
+    // previous light-to-dark ramp ran the other way and flattened the room.
     _paint.shader = const LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: <Color>[_tileLight, _tileDark],
+      colors: <Color>[_tileDeep, _tileDark, _tileLight],
+      stops: <double>[0, .34, .92],
     ).createShader(salesFloor);
     canvas.drawRect(salesFloor, _paint);
     _paint.shader = null;
 
+    // Single vanishing point sitting above the back wall. Tile rows bunch up
+    // toward it and the column lines converge on it, which is what turns a
+    // top-down map into a room you are looking into.
+    final vanishing = Offset(
+      salesFloor.center.dx,
+      layout.market.top - layout.market.height * .20,
+    );
+
     _paint
       ..style = PaintingStyle.stroke
-      ..strokeWidth = .5 * scale
-      ..color = const Color(0x1E3D5149);
+      ..strokeWidth = .8 * scale
+      ..color = const Color(0x4A6B5334);
     final rows = layout.compact ? 10 : 15;
     for (var row = 1; row < rows; row++) {
       final t = row / rows;
@@ -470,11 +482,52 @@ class MarketPainter extends CustomPainter {
         _paint,
       );
     }
+
     final columns = layout.compact ? 7 : 11;
+    final depthSpan = salesFloor.bottom - vanishing.dy;
+    final backRatio = (salesFloor.top - vanishing.dy) / depthSpan;
     for (var column = 1; column < columns; column++) {
-      final x = salesFloor.left + salesFloor.width * column / columns;
-      canvas.drawLine(Offset(x, salesFloor.top), Offset(x, salesFloor.bottom), _paint);
+      // Fan the columns out past the floor edges so the outermost lines still
+      // cross the front of the room rather than stopping short of it.
+      final spread = 1.55;
+      final frontX =
+          salesFloor.center.dx +
+          (salesFloor.width * (column / columns - .5)) * spread;
+      final backX = vanishing.dx + (frontX - vanishing.dx) * backRatio;
+      canvas.drawLine(
+        Offset(backX, salesFloor.top),
+        Offset(frontX, salesFloor.bottom),
+        _paint,
+      );
     }
+
+    // Contact shadow where the back wall meets the floor. A hard line alone
+    // reads as a seam; the falloff below it is what gives the wall height.
+    final wallFoot = Rect.fromLTWH(
+      salesFloor.left,
+      salesFloor.top,
+      salesFloor.width,
+      salesFloor.height * .16,
+    );
+    _paint
+      ..style = PaintingStyle.fill
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: <Color>[Color(0x5A20332A), Color(0x0020332A)],
+      ).createShader(wallFoot);
+    canvas.drawRect(wallFoot, _paint);
+    _paint.shader = null;
+
+    // Warm key light pooling over the play area. Kept tight and biased toward
+    // the front so it does not wash out the darker back of the room.
+    _paint.shader = RadialGradient(
+      center: const Alignment(0, .34),
+      radius: .60,
+      colors: const <Color>[Color(0x3AFFE3B0), Color(0x00FFE3B0)],
+    ).createShader(salesFloor);
+    canvas.drawRect(salesFloor, _paint);
+    _paint.shader = null;
 
     // Wide, subtle circulation bands unify the store without reading as map
     // overlays or debug rectangles.
@@ -1038,21 +1091,45 @@ class MarketPainter extends CustomPainter {
       _point(layout.market, const Offset(.905, .55)).dx,
       _point(layout.market, const Offset(.5, .745)).dy,
     );
+    // Marked queue lane. This region used to be a plain grey slab that read as
+    // unfinished space; the decals give it a job and point at the till.
     _paint
       ..style = PaintingStyle.fill
-      ..color = const Color(0x295F6D68);
+      ..color = const Color(0x59FFF3D6);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(lane, Radius.circular(7 * scale)),
+      RRect.fromRectAndRadius(lane, Radius.circular(8 * scale)),
       _paint,
     );
+
     _paint
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1 * scale
-      ..color = const Color(0x42606B66);
+      ..strokeWidth = 1.4 * scale
+      ..color = const Color(0x8FC98A2E);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(lane.deflate(3 * scale), Radius.circular(5 * scale)),
+      RRect.fromRectAndRadius(
+        lane.deflate(3 * scale),
+        Radius.circular(6 * scale),
+      ),
       _paint,
     );
+
+    // Chevrons walk the eye from the back of the lane up to the counter.
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xB5B87A22);
+    const steps = 4;
+    final width = 15 * scale;
+    final height = 10 * scale;
+    for (var step = 0; step < steps; step++) {
+      final t = (step + .5) / steps;
+      final y = lane.bottom - lane.height * t * .82 - height;
+      final path = Path()
+        ..moveTo(lane.center.dx, y)
+        ..lineTo(lane.center.dx + width / 2, y + height)
+        ..lineTo(lane.center.dx - width / 2, y + height)
+        ..close();
+      canvas.drawPath(path, _paint);
+    }
   }
 
   void _addEntrance(
@@ -1401,14 +1478,28 @@ class MarketPainter extends CustomPainter {
     }
     final width = source.width * factor;
 
+    // Two-part contact shadow: a wide soft pool plus a tighter, darker core
+    // right under the object. The single soft oval left everything looking as
+    // though it hovered a few pixels above the floor.
     _shadowPaint.color = const Color(0xFF20332B).withValues(
+      alpha: shadow * alpha * .62,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: ground + Offset(width * .05, height * .016),
+        width: width * .92,
+        height: max(6, height * .115),
+      ),
+      _shadowPaint,
+    );
+    _shadowPaint.color = const Color(0xFF16261F).withValues(
       alpha: shadow * alpha,
     );
     canvas.drawOval(
       Rect.fromCenter(
-        center: ground + Offset(width * .02, height * .012),
-        width: width * .70,
-        height: max(5, height * .085),
+        center: ground + Offset(width * .02, height * .008),
+        width: width * .58,
+        height: max(4, height * .062),
       ),
       _shadowPaint,
     );

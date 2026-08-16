@@ -11,6 +11,7 @@ import '../services/app_settings.dart';
 import '../services/monetization_service.dart';
 import '../services/sfx/sfx_backend.dart';
 import '../services/sfx/sfx_manager.dart';
+import 'iso/iso_market_painter.dart';
 import 'market_painter.dart';
 import 'theme/pomarket_design.dart';
 import 'widgets/celebration_overlay.dart';
@@ -312,71 +313,24 @@ class _GameScreenState extends State<GameScreen>
                                           Positioned.fill(
                                             child: RepaintBoundary(
                                               child: CustomPaint(
-                                                painter: MarketPainter(
+                                                painter: IsoMarketPainter(
                                                   game: game,
-                                                  departmentLabels: {
-                                                    for (final type
-                                                        in DepartmentType.values)
-                                                      type: switch (type) {
-                                                        DepartmentType.generalGoods =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentGeneralGoods,
-                                                        DepartmentType.bakery =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentBakery,
-                                                        DepartmentType.produce =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentProduce,
-                                                        DepartmentType.refrigerated =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentRefrigerated,
-                                                        DepartmentType.beauty =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentBeauty,
-                                                        DepartmentType.electronics =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentElectronics,
-                                                      },
-                                                  },
                                                   storageLabel:
                                                       AppLocalizations.of(
                                                         context,
                                                       ).storage.toUpperCase(),
-                                                  shelfLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).shelfStock.toUpperCase(),
-                                                  checkoutLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).assignmentCheckout.toUpperCase(),
                                                   bakeryLabel:
                                                       AppLocalizations.of(
                                                         context,
                                                       ).departmentBakery.toUpperCase(),
-                                                  bakeryReadyLabel:
+                                                  checkoutLabel:
                                                       AppLocalizations.of(
                                                         context,
-                                                      ).bakeryReady.replaceFirst(
-                                                        '{current}',
-                                                        '${game.bakeryReadyStock}',
-                                                      ).replaceFirst(
-                                                        '{capacity}',
-                                                        '${GameBalance.bakeryReadyCapacity}',
-                                                      ),
-                                                  bakeryLockedLabel:
+                                                      ).assignmentCheckout.toUpperCase(),
+                                                  shelfLabel:
                                                       AppLocalizations.of(
                                                         context,
-                                                      ).unlockAtLevel.replaceFirst(
-                                                        '{level}',
-                                                        '${GameBalance.bakeryUnlockLevel}',
-                                                      ),
+                                                      ).shelfStock.toUpperCase(),
                                                   textDirection:
                                                       Directionality.of(context),
                                                 ),
