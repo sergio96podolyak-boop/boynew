@@ -12,6 +12,7 @@ import '../services/monetization_service.dart';
 import '../services/sfx/sfx_backend.dart';
 import '../services/sfx/sfx_manager.dart';
 import 'iso/iso_market_painter.dart';
+import 'iso/iso_projection.dart';
 import 'market_painter.dart';
 import 'theme/pomarket_design.dart';
 import 'widgets/celebration_overlay.dart';
@@ -337,24 +338,27 @@ class _GameScreenState extends State<GameScreen>
                                               ),
                                             ),
                                           ),
-                                          // Cinematic grade over the board art:
-                                          // warm key light on the play area,
-                                          // cool falloff at the corners.
-                                          Positioned.fill(
-                                            child: RepaintBoundary(
-                                              child: WorldLightOverlay(
-                                                warmth: settings.reducedMotion
-                                                    ? 0.6
-                                                    : 1,
-                                                clipper: boardClipFor,
-                                              ),
-                                            ),
-                                          ),
+                                          // The isometric painter does its own
+                                          // lighting and vignette, so the old
+                                          // flat-board grade overlay is dropped
+                                          // here to avoid double-darkening.
                                           Positioned.fill(
                                             child: TouchMovement(
                                               game: game,
                                               onTap: () {},
                                               controlMode: settings.controlMode,
+                                              // Map taps through the same iso
+                                              // projection the board is drawn
+                                              // with so the player walks to
+                                              // where the finger lands.
+                                              screenToWorld: (local, size) =>
+                                                  IsoProjection.fit(
+                                                    size,
+                                                  ).unproject(local),
+                                              worldToScreen: (world, size) =>
+                                                  IsoProjection.fit(
+                                                    size,
+                                                  ).projectOffset(world),
                                             ),
                                           ),
                                           PositionedDirectional(

@@ -12,11 +12,22 @@ class TouchMovement extends StatefulWidget {
     required this.game,
     required this.onTap,
     this.controlMode = ControlMode.directTouch,
+    this.screenToWorld,
+    this.worldToScreen,
   });
 
   final GameController game;
   final VoidCallback onTap;
   final ControlMode controlMode;
+
+  /// Overrides the flat top-down tap mapping. The isometric board passes its
+  /// inverse projection here so taps land where the player sees them; other
+  /// callers fall back to [localToWorld].
+  final Offset Function(Offset local, Size size)? screenToWorld;
+
+  /// Inverse of [screenToWorld], used to find the player's on-screen position
+  /// for the drag-start hit test.
+  final Offset Function(Offset world, Size size)? worldToScreen;
 
   static Rect marketRectFor(Size size) {
     return Rect.fromLTWH(
@@ -129,13 +140,18 @@ class _TouchMovementState extends State<TouchMovement> {
     );
   }
 
+  Offset _localToWorld(Offset local, Size size) => TouchMovement.clampWorldTarget(
+    widget.screenToWorld?.call(local, size) ??
+        TouchMovement.localToWorld(local, size),
+  );
+
   void _handleTap(Offset localPosition) {
     final size = context.size;
     if (size == null) {
       return;
     }
     final normalized = TouchMovement.snapToInteractionPoint(
-      TouchMovement.localToWorld(localPosition, size),
+      _localToWorld(localPosition, size),
     );
     final target = normalized - widget.game.playerPosition;
     if (target.distance > 0.02) {
@@ -149,7 +165,7 @@ class _TouchMovementState extends State<TouchMovement> {
     if (size == null) {
       return;
     }
-    final normalized = TouchMovement.localToWorld(localPosition, size);
+    final normalized = _localToWorld(localPosition, size);
     final target = normalized - widget.game.playerPosition;
     if (target.distance > 0.02) {
       widget.game.moveTo(normalized);
@@ -159,10 +175,9 @@ class _TouchMovementState extends State<TouchMovement> {
   }
 
   bool _startsNearPlayer(Offset localPosition, Size size) {
-    final playerLocal = TouchMovement.worldToLocal(
-      widget.game.playerPosition,
-      size,
-    );
+    final playerLocal =
+        widget.worldToScreen?.call(widget.game.playerPosition, size) ??
+        TouchMovement.worldToLocal(widget.game.playerPosition, size);
     final radius = max(44.0, size.shortestSide * 0.08);
     return (localPosition - playerLocal).distance <= radius;
   }

@@ -34,11 +34,14 @@ class IsoMarketPainter extends CustomPainter {
 
   // Store palette. Saturated enough to survive the ambient grade without
   // turning garish under the warm key light.
-  static const _floorLight = Color(0xFFF3E3C4);
-  static const _floorDark = Color(0xFFD9BC8E);
-  static const _floorSeam = Color(0x2A6B5334);
-  static const _wallBack = Color(0xFF52685D);
-  static const _wallSide = Color(0xFF3E5349);
+  static const _floorLight = Color(0xFFF4F0E7);
+  static const _floorDark = Color(0xFFDED6C6);
+  static const _floorSeam = Color(0x22705E3A);
+  // Light walls that recede as backdrop. Dark walls dominated the frame and
+  // made the shop feel like a basement; commercial tycoon boards use bright,
+  // near-white interiors.
+  static const _wallBack = Color(0xFFE6EAE2);
+  static const _wallSide = Color(0xFFD2DAD1);
   static const _shelfBody = Color(0xFF2F7B58);
   static const _fridgeBody = Color(0xFF356F98);
   static const _counterBody = Color(0xFF3C4F58);
@@ -58,6 +61,10 @@ class IsoMarketPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (game.pendingShiftSummary != null || size.shortestSide < 80) return;
+
+    // CustomPaint does not clip, so without this the extended room and its
+    // walls project past the board and paint over the HUD above it.
+    canvas.clipRect(Offset.zero & size);
 
     final projection = IsoProjection.fit(size);
     final brush = IsoBrush(projection);
@@ -82,7 +89,6 @@ class IsoMarketPainter extends CustomPainter {
     // whenever it stands behind a gondola, and losing track of your own
     // character mid-shift is worse than the small break in realism.
     _paintPlayer(canvas, brush);
-    _paintHangingSign(canvas, projection);
     _paintFloatingEffects(canvas, projection);
 
     _paintAmbience(canvas, size, projection);
@@ -178,7 +184,7 @@ class IsoMarketPainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           Offset(roomBounds.center.dx, roomBounds.top),
           Offset(roomBounds.center.dx, roomBounds.bottom),
-          const [Color(0xFFB59A6C), Color(0xFFCBB588)],
+          const [Color(0xFFCFC6B4), Color(0xFFDED6C6)],
         ),
     );
 
@@ -874,15 +880,15 @@ class IsoMarketPainter extends CustomPainter {
     _ => const Color(0xFF52463E),
   };
 
-  /// Mood glyph above a shopper. Only shown when it tells the player something
-  /// they can act on — a shopper running out of patience, or a big spender.
-  String? _customerBubble(MarketCustomer customer) {
+  /// Mood above a shopper. Only shown when it tells the player something they
+  /// can act on — a shopper running out of patience, a VIP, or a big spender.
+  _Mood? _customerBubble(MarketCustomer customer) {
     if (customer.phase == CustomerPhase.leaving) return null;
-    if (customer.patience < 2.2) return '😠';
-    if (customer.isVip) return '⭐';
+    if (customer.patience < 2.2) return _Mood.impatient;
+    if (customer.isVip) return _Mood.vip;
     if (customer.phase == CustomerPhase.checkout ||
         customer.phase == CustomerPhase.paying) {
-      return '💰';
+      return _Mood.paying;
     }
     return null;
   }
@@ -916,7 +922,7 @@ class IsoMarketPainter extends CustomPainter {
     Color hair = const Color(0xFF4A342A),
     double walkPhase = 0,
     bool facingRight = true,
-    String? bubble,
+    _Mood? bubble,
   }) {
     final x = at.dx.clamp(0.0, 1.0);
     final y = at.dy.clamp(0.0, 1.0);
@@ -924,8 +930,9 @@ class IsoMarketPainter extends CustomPainter {
     final ground = p.project(x, y);
 
     // Shoulder width drives every other measurement so the figure scales as a
-    // unit with the board.
-    final u = p.tileWidth * 0.052;
+    // unit with the board. Kept small so shoppers read as tidy figures rather
+    // than looming over the shelves.
+    final u = p.tileWidth * 0.034;
     final stride = math.sin(walkPhase) * u * 0.34;
     final bob = (math.sin(walkPhase * 2).abs()) * u * 0.10;
     final baseY = ground.dy - bob;
@@ -1071,30 +1078,70 @@ class IsoMarketPainter extends CustomPainter {
   }
 
   /// Small mood bubble above a shopper.
-  void _speechBubble(Canvas canvas, Offset at, double u, String glyph) {
+  void _speechBubble(Canvas canvas, Offset at, double u, _Mood mood) {
     final paint = Paint()..isAntiAlias = true;
-    final rect = Rect.fromCenter(center: at, width: u * 1.5, height: u * 1.2);
-    paint.color = const Color(0xF2FFFFFF);
+    final rect = Rect.fromCenter(center: at, width: u * 1.7, height: u * 1.35);
+    paint.color = const Color(0xF7FFFFFF);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, Radius.circular(u * 0.42)),
+      RRect.fromRectAndRadius(rect, Radius.circular(u * 0.46)),
       paint,
     );
     canvas.drawPath(
       Path()
-        ..moveTo(at.dx - u * 0.22, rect.bottom - u * 0.06)
-        ..lineTo(at.dx, rect.bottom + u * 0.34)
-        ..lineTo(at.dx + u * 0.16, rect.bottom - u * 0.06)
+        ..moveTo(at.dx - u * 0.24, rect.bottom - u * 0.06)
+        ..lineTo(at.dx, rect.bottom + u * 0.36)
+        ..lineTo(at.dx + u * 0.18, rect.bottom - u * 0.06)
         ..close(),
       paint,
     );
-    final painter = TextPainter(
-      text: TextSpan(
-        text: glyph,
-        style: TextStyle(fontSize: u * 0.82, height: 1),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    painter.paint(canvas, at - Offset(painter.width / 2, painter.height / 2));
+
+    // Icons are drawn, not typed: CanvasKit on web has no emoji font, so glyph
+    // bubbles rendered as empty tofu boxes.
+    final r = u * 0.44;
+    switch (mood) {
+      case _Mood.vip:
+        _drawStar(canvas, at, r, _accentGold);
+      case _Mood.paying:
+        paint.color = const Color(0xFFE0A11E);
+        canvas.drawCircle(at, r, paint);
+        paint.color = const Color(0xFFFFD466);
+        canvas.drawCircle(at, r * 0.74, paint);
+        final s = TextPainter(
+          text: TextSpan(
+            text: r'$',
+            style: TextStyle(
+              color: const Color(0xFF7A5310),
+              fontSize: u * 0.78,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        s.paint(canvas, at - Offset(s.width / 2, s.height / 2));
+      case _Mood.impatient:
+        paint.color = const Color(0xFFE0483C);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: at.translate(0, -u * 0.1), width: u * 0.26, height: u * 0.66),
+            Radius.circular(u * 0.13),
+          ),
+          paint,
+        );
+        canvas.drawCircle(at.translate(0, u * 0.42), u * 0.15, paint);
+    }
+  }
+
+  void _drawStar(Canvas canvas, Offset c, double r, Color color) {
+    final path = Path();
+    for (var i = 0; i < 10; i++) {
+      final radius = i.isEven ? r : r * 0.46;
+      final a = -math.pi / 2 + i * math.pi / 5;
+      final point = c + Offset(math.cos(a) * radius, math.sin(a) * radius);
+      i == 0 ? path.moveTo(point.dx, point.dy) : path.lineTo(point.dx, point.dy);
+    }
+    path.close();
+    canvas.drawPath(path, Paint()..color = color..isAntiAlias = true);
   }
 
   // ---------------------------------------------------------------- ambience
@@ -1149,85 +1196,6 @@ class IsoMarketPainter extends CustomPainter {
     }
   }
 
-  /// Brand plaque hung from the ceiling over the shop floor.
-  ///
-  /// Gives the space an identity from inside the world — the icon carries the
-  /// brand on the store facade, but the board itself had no marque. Drawn late
-  /// so it always hangs in front of the fixtures below it.
-  void _paintHangingSign(Canvas canvas, IsoProjection p) {
-    final anchor = p.project(0.5, 0.16, 0.62);
-    final width = p.tileWidth * 0.30;
-    final height = width * 0.30;
-    final rect = Rect.fromCenter(
-      center: anchor,
-      width: width,
-      height: height,
-    );
-
-    final paint = Paint()..isAntiAlias = true;
-    // Suspension cords back up to the ceiling line.
-    paint
-      ..color = const Color(0x66203029)
-      ..strokeWidth = math.max(1, 1.4 * p.scale);
-    canvas.drawLine(
-      rect.topLeft + Offset(width * 0.18, 0),
-      rect.topLeft + Offset(width * 0.30, -height * 0.9),
-      paint,
-    );
-    canvas.drawLine(
-      rect.topRight - Offset(width * 0.18, 0),
-      rect.topRight - Offset(width * 0.30, height * 0.9),
-      paint,
-    );
-
-    // Plaque.
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(height * 0.34));
-    canvas.drawRRect(
-      rrect.shift(Offset(0, height * 0.14)),
-      Paint()..color = const Color(0x4D04211A),
-    );
-    paint.shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, const [
-      Color(0xFF14624A),
-      Color(0xFF0A3D2E),
-    ]);
-    canvas.drawRRect(rrect, paint);
-    paint.shader = null;
-    canvas.drawRRect(
-      rrect.deflate(height * 0.10),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1, 1.4 * p.scale)
-        ..color = _accentGold.withValues(alpha: 0.7),
-    );
-
-    // Leaf mark plus wordmark.
-    final leafCentre = rect.centerLeft + Offset(width * 0.16, 0);
-    canvas.drawCircle(
-      leafCentre,
-      height * 0.22,
-      Paint()..color = _accentGold,
-    );
-    final painter = TextPainter(
-      text: TextSpan(
-        text: 'PoMARKET',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: height * 0.42,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.5,
-          height: 1,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    painter.paint(
-      canvas,
-      Offset(
-        leafCentre.dx + height * 0.30,
-        anchor.dy - painter.height / 2,
-      ),
-    );
-  }
 
   void _paintAmbience(Canvas canvas, Size size, IsoProjection p) {
     final rect = Offset.zero & size;
@@ -1246,3 +1214,6 @@ class IsoMarketPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant IsoMarketPainter oldDelegate) => true;
 }
+
+/// Actionable shopper moods surfaced as a bubble above the figure.
+enum _Mood { vip, paying, impatient }

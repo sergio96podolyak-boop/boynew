@@ -22,14 +22,14 @@ class IsoProjection {
     // The diamond is as wide as the board and a little over half as tall, which
     // leaves the upper band free for wall height without cropping the front
     // corner.
-    final tileWidth = size.width * 1.30;
-    final tileHeight = size.height * 0.84;
-    final wallRoom = size.height * 0.16;
+    final tileWidth = size.width * 1.12;
+    final tileHeight = size.height * 0.70;
+    final wallRoom = size.height * 0.20;
     return IsoProjection(
       origin: Offset(size.width / 2, wallRoom),
       tileWidth: tileWidth,
       tileHeight: tileHeight,
-      unitHeight: size.height * 0.30,
+      unitHeight: size.height * 0.24,
       scale: math.min(size.width, size.height) / 380,
     );
   }
@@ -56,6 +56,19 @@ class IsoProjection {
 
   Offset projectOffset(Offset world, [double z = 0]) =>
       project(world.dx, world.dy, z);
+
+  /// Inverse of [project] on the ground plane (z = 0).
+  ///
+  /// Turns a screen tap back into play-field coordinates so touch control
+  /// matches the isometric view — without this the player walks to a rotated,
+  /// unrelated spot and control feels broken.
+  Offset unproject(Offset screen) {
+    final dx = screen.dx - origin.dx;
+    final dy = screen.dy - origin.dy;
+    final xMinusY = 2 * dx / tileWidth;
+    final xPlusY = 2 * dy / tileHeight;
+    return Offset((xPlusY + xMinusY) / 2, (xPlusY - xMinusY) / 2);
+  }
 
   /// Painter's-algorithm key. Larger draws later, i.e. nearer the camera.
   static double depthOf(double x, double y) => x + y;
