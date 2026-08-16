@@ -89,9 +89,73 @@ class IsoMarketPainter extends CustomPainter {
     // whenever it stands behind a gondola, and losing track of your own
     // character mid-shift is worse than the small break in realism.
     _paintPlayer(canvas, brush);
+    _paintZoneLabels(canvas, projection);
     _paintFloatingEffects(canvas, projection);
 
     _paintAmbience(canvas, size, projection);
+  }
+
+  /// Floating name tags over each area of the shop.
+  ///
+  /// The genre leans on this: every commercial supermarket-tycoon board labels
+  /// its zones so a new player knows the storeroom from the tills at a glance.
+  /// The painter already receives these strings; it just never drew them, which
+  /// is a large part of why the board read as unreadable.
+  void _paintZoneLabels(Canvas canvas, IsoProjection p) {
+    void tag(Offset zone, double lift, String text, Color color) {
+      final anchor = p.project(zone.dx, zone.dy, lift);
+      final painter = TextPainter(
+        textDirection: TextDirection.ltr,
+        text: TextSpan(
+          text: text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.6,
+            height: 1,
+          ),
+        ),
+      )..layout();
+      final w = painter.width + 16 * p.scale;
+      final h = painter.height + 8 * p.scale;
+      final rect = Rect.fromCenter(
+        center: Offset(anchor.dx, anchor.dy),
+        width: w,
+        height: h,
+      );
+      final rrect = RRect.fromRectAndRadius(rect, Radius.circular(h / 2));
+      canvas.drawRRect(
+        rrect.shift(Offset(0, 1.5 * p.scale)),
+        Paint()..color = const Color(0x5504211A),
+      );
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, [
+            color,
+            IsoLight.shade(color, 0.7),
+          ]),
+      );
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(0.8, 1 * p.scale)
+          ..color = Colors.white.withValues(alpha: 0.28),
+      );
+      painter.paint(
+        canvas,
+        Offset(anchor.dx - painter.width / 2, anchor.dy - painter.height / 2),
+      );
+    }
+
+    tag(GameController.stockZone, 0.24, storageLabel, const Color(0xFF4A6B76));
+    tag(GameController.shelfZone, 0.30, shelfLabel, const Color(0xFF2F7B58));
+    tag(GameController.checkoutZone, 0.26, checkoutLabel, const Color(0xFF3C4F58));
+    if (game.bakeryUnlocked) {
+      tag(GameController.bakeryZone, 0.28, bakeryLabel, _bakeryBody);
+    }
   }
 
   // ---------------------------------------------------------------- backdrop
