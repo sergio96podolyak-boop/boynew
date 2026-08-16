@@ -109,7 +109,13 @@ class IsoMarketPainter extends CustomPainter {
     const height = 0.15;
     final paint = Paint()..isAntiAlias = true;
 
-    // Back-right wall lies along y = 0; back-left along x = 0.
+    // Walls run along the back edges of the extended room, not the play field,
+    // so the room reads as fully enclosed rather than as a raised platform.
+    const m = IsoProjection.roomMargin;
+    const lo = -m;
+    const hi = 1 + m;
+
+    // Back-right wall lies along y = lo; back-left along x = lo.
     Path wall(Offset a, Offset b) => Path()
       ..moveTo(p.projectOffset(a).dx, p.projectOffset(a).dy)
       ..lineTo(p.projectOffset(b).dx, p.projectOffset(b).dy)
@@ -117,8 +123,8 @@ class IsoMarketPainter extends CustomPainter {
       ..lineTo(p.projectOffset(a, height).dx, p.projectOffset(a, height).dy)
       ..close();
 
-    final right = wall(const Offset(0, 0), const Offset(1, 0));
-    final left = wall(const Offset(0, 0), const Offset(0, 1));
+    final right = wall(const Offset(lo, lo), const Offset(hi, lo));
+    final left = wall(const Offset(lo, lo), const Offset(lo, hi));
 
     paint.color = _wallSide;
     canvas.drawPath(right, paint);
@@ -127,8 +133,8 @@ class IsoMarketPainter extends CustomPainter {
 
     // Skirting plus the gradient that anchors each wall to the floor.
     for (final entry in [
-      (right, const Offset(0, 0), const Offset(1, 0)),
-      (left, const Offset(0, 0), const Offset(0, 1)),
+      (right, const Offset(lo, lo), const Offset(hi, lo)),
+      (left, const Offset(lo, lo), const Offset(lo, hi)),
     ]) {
       final a = p.projectOffset(entry.$2);
       final b = p.projectOffset(entry.$3);
@@ -160,6 +166,22 @@ class IsoMarketPainter extends CustomPainter {
   // ------------------------------------------------------------------- floor
 
   void _paintFloor(Canvas canvas, IsoBrush brush, IsoProjection p) {
+    // The room floor reaches past the play field so it meets the frame edges,
+    // then the 0..1 field is laid on top as the lit shopping area. A small
+    // floating diamond in a black void was the biggest reason the board read as
+    // a prototype rather than a shop.
+    final room = p.extendedGroundPath(IsoProjection.roomMargin);
+    final roomBounds = room.getBounds();
+    canvas.drawPath(
+      room,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(roomBounds.center.dx, roomBounds.top),
+          Offset(roomBounds.center.dx, roomBounds.bottom),
+          const [Color(0xFFB59A6C), Color(0xFFCBB588)],
+        ),
+    );
+
     final ground = p.groundPath();
     final bounds = ground.getBounds();
 

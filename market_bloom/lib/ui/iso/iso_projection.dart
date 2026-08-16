@@ -22,9 +22,9 @@ class IsoProjection {
     // The diamond is as wide as the board and a little over half as tall, which
     // leaves the upper band free for wall height without cropping the front
     // corner.
-    final tileWidth = size.width * 1.04;
-    final tileHeight = size.height * 0.68;
-    final wallRoom = size.height * 0.17;
+    final tileWidth = size.width * 1.30;
+    final tileHeight = size.height * 0.84;
+    final wallRoom = size.height * 0.16;
     return IsoProjection(
       origin: Offset(size.width / 2, wallRoom),
       tileWidth: tileWidth,
@@ -61,10 +61,23 @@ class IsoProjection {
   static double depthOf(double x, double y) => x + y;
 
   /// The ground diamond, used for clipping and for the floor fill.
-  Path groundPath() => Path()
-    ..moveTo(project(0, 0).dx, project(0, 0).dy)
-    ..lineTo(project(1, 0).dx, project(1, 0).dy)
-    ..lineTo(project(1, 1).dx, project(1, 1).dy)
-    ..lineTo(project(0, 1).dx, project(0, 1).dy)
-    ..close();
+  Path groundPath() => extendedGroundPath(0);
+
+  /// A ground diamond grown by [margin] world units on every side.
+  ///
+  /// The shopping field is only 0..1, but the room is drawn larger so the floor
+  /// reaches the frame edges instead of floating as a small tile in a void.
+  Path extendedGroundPath(double margin) {
+    final lo = -margin;
+    final hi = 1 + margin;
+    return Path()
+      ..moveTo(project(lo, lo).dx, project(lo, lo).dy)
+      ..lineTo(project(hi, lo).dx, project(hi, lo).dy)
+      ..lineTo(project(hi, hi).dx, project(hi, hi).dy)
+      ..lineTo(project(lo, hi).dx, project(lo, hi).dy)
+      ..close();
+  }
+
+  /// How far the drawn room extends past the play field on each side.
+  static const roomMargin = 0.30;
 }
