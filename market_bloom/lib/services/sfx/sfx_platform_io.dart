@@ -14,34 +14,26 @@ final class _MobileSfxBackend implements SfxBackend {
 
   @override
   Future<void> play(SfxCue cue) async {
-    if (_muted || _disposed) {
-      return;
-    }
-
-    final (systemSound, haptic) = switch (cue) {
+    if (_muted || _disposed) return;
+    final fallback = cue.fallback;
+    final (systemSound, haptic) = switch (fallback) {
       SfxCue.click => (SystemSoundType.click, HapticFeedback.selectionClick),
       SfxCue.success => (SystemSoundType.click, HapticFeedback.lightImpact),
       SfxCue.milestone => (SystemSoundType.alert, HapticFeedback.mediumImpact),
       SfxCue.error => (SystemSoundType.alert, HapticFeedback.heavyImpact),
+      _ => (SystemSoundType.click, HapticFeedback.selectionClick),
     };
-
     await Future.wait<void>([SystemSound.play(systemSound), haptic()]);
   }
 
   @override
   Future<void> playAmbient(MusicPhase phase) async {
-    if (_disposed || phase == _currentPhase) {
-      return;
-    }
+    if (_disposed || phase == _currentPhase) return;
     _currentPhase = phase;
     _ambientTimer?.cancel();
     _ambientTimer = null;
+    if (_muted || phase == MusicPhase.silent) return;
 
-    if (_muted || phase == MusicPhase.silent) {
-      return;
-    }
-
-    // Subtle periodic haptic pulse to give tactile rhythm on mobile.
     final interval = switch (phase) {
       MusicPhase.preparation => const Duration(milliseconds: 3200),
       MusicPhase.open => const Duration(milliseconds: 2400),
@@ -49,18 +41,11 @@ final class _MobileSfxBackend implements SfxBackend {
       MusicPhase.closing => const Duration(milliseconds: 4000),
       MusicPhase.silent => null,
     };
-
-    if (interval == null) {
-      return;
-    }
-
+    if (interval == null) return;
     _ambientTimer = Timer.periodic(interval, (_) async {
-      if (_muted || _disposed) {
-        return;
-      }
+      if (_muted || _disposed) return;
       await switch (_currentPhase) {
         MusicPhase.rush => HapticFeedback.lightImpact(),
-        MusicPhase.open => HapticFeedback.selectionClick(),
         _ => HapticFeedback.selectionClick(),
       };
     });
@@ -79,6 +64,7 @@ final class _MobileSfxBackend implements SfxBackend {
     if (muted) {
       _ambientTimer?.cancel();
       _ambientTimer = null;
+      _currentPhase = MusicPhase.silent;
     }
   }
 
@@ -86,6 +72,7 @@ final class _MobileSfxBackend implements SfxBackend {
   Future<void> dispose() async {
     _ambientTimer?.cancel();
     _ambientTimer = null;
+    _currentPhase = MusicPhase.silent;
     _disposed = true;
   }
 }

@@ -27,3 +27,12 @@ data/decision_state.json
 logs/
 data/opportunity_radar.json
 .env.backup-*
+
+# macOS finder metadata
+.DS_Store
+
+# Local Python agent sandbox (includes a ~330MB virtualenv)
+pomarket_agent/
+
+# Gradle build output
+market_bloom/android/build/

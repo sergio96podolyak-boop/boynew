@@ -57,6 +57,8 @@ class TouchMovement extends StatefulWidget {
       GameController.stockZone,
       GameController.shelfZone,
       GameController.checkoutZone,
+      GameController.checkout2Zone,
+      GameController.checkout3Zone,
       GameController.bakeryZone,
     ];
     var nearest = target;

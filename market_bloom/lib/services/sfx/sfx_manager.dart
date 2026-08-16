@@ -4,82 +4,103 @@ import 'sfx_backend.dart';
 import 'sfx_platform.dart';
 
 /// Small, fail-safe sound facade for gameplay and UI feedback.
-///
-/// Callers may await cue methods, but normally do not need to: playback errors
-/// are contained here and never interrupt a game action.
 final class SfxManager {
-  SfxManager._(this._backend);
+  SfxManager._(this._backend, this._now);
 
-  static final SfxManager instance = SfxManager._(createSfxBackend());
+  static final SfxManager instance = SfxManager._(
+    createSfxBackend(),
+    DateTime.now,
+  );
+
+  @visibleForTesting
+  factory SfxManager.forTesting(
+    SfxBackend backend, {
+    DateTime Function()? now,
+  }) => SfxManager._(backend, now ?? DateTime.now);
 
   final SfxBackend _backend;
+  final DateTime Function() _now;
   final Map<SfxCue, DateTime> _lastPlayedAt = <SfxCue, DateTime>{};
   bool _muted = false;
   bool _disposed = false;
   bool _reportedFailure = false;
   bool _backendFailed = false;
+  MusicPhase _ambientPhase = MusicPhase.silent;
 
   bool get isMuted => _muted;
 
-  Future<void> setMuted(bool muted, {bool playFeedback = true}) async {
-    if (_disposed || muted == _muted) {
-      return;
-    }
+  @visibleForTesting
+  bool get isDisposed => _disposed;
 
+  @visibleForTesting
+  MusicPhase get ambientPhase => _ambientPhase;
+
+  Future<void> setMuted(bool muted, {bool playFeedback = true}) async {
+    if (_disposed || muted == _muted) return;
     _muted = muted;
     await _safely(() => _backend.setMuted(muted));
-    if (!muted && playFeedback) {
-      await click();
+    if (!muted && !_backendFailed) {
+      if (_ambientPhase != MusicPhase.silent) {
+        await _safely(() => _backend.playAmbient(_ambientPhase));
+      }
+      if (playFeedback) await click();
     }
   }
 
   Future<void> toggleMuted() => setMuted(!_muted);
 
   Future<void> click() => _play(SfxCue.click);
-
   Future<void> success() => _play(SfxCue.success);
-
   Future<void> milestone() => _play(SfxCue.milestone);
-
   Future<void> error() => _play(SfxCue.error);
+  Future<void> pickup() => _play(SfxCue.pickup);
+  Future<void> restock() => _play(SfxCue.restock);
+  Future<void> checkoutScan() => _play(SfxCue.checkoutScan);
+  Future<void> sale() => _play(SfxCue.sale);
+  Future<void> customerWarning() => _play(SfxCue.customerWarning);
+  Future<void> customerLeave() => _play(SfxCue.customerLeave);
+  Future<void> deliveryArrived() => _play(SfxCue.deliveryArrived);
+  Future<void> bakeryReady() => _play(SfxCue.bakeryReady);
+  Future<void> registerOpen() => _play(SfxCue.registerOpen);
+  Future<void> registerClose() => _play(SfxCue.registerClose);
 
-  /// Start (or cross-fade to) ambient music for [phase].
-  ///
-  /// Silently ignored when muted or when the backend has failed.
   Future<void> playAmbient(MusicPhase phase) async {
-    if (_muted || _disposed || _backendFailed) {
-      return;
-    }
+    if (_disposed) return;
+    _ambientPhase = phase;
+    if (_muted || _backendFailed) return;
     await _safely(() => _backend.playAmbient(phase));
   }
 
-  /// Fade out and stop ambient music.
   Future<void> stopAmbient() async {
-    if (_disposed || _backendFailed) {
-      return;
-    }
+    if (_disposed) return;
+    _ambientPhase = MusicPhase.silent;
+    if (_backendFailed) return;
     await _safely(_backend.stopAmbient);
   }
 
   Future<void> _play(SfxCue cue) async {
-    if (_muted || _disposed || _backendFailed || _isThrottled(cue)) {
-      return;
-    }
+    if (_muted || _disposed || _backendFailed || _isThrottled(cue)) return;
     await _safely(() => _backend.play(cue));
   }
 
   bool _isThrottled(SfxCue cue) {
-    final now = DateTime.now();
+    final now = _now();
     final previous = _lastPlayedAt[cue];
     final minimumGap = switch (cue) {
-      SfxCue.click => const Duration(milliseconds: 35),
-      SfxCue.success => const Duration(milliseconds: 70),
-      SfxCue.milestone => const Duration(milliseconds: 220),
-      SfxCue.error => const Duration(milliseconds: 110),
+      SfxCue.click || SfxCue.pickup || SfxCue.checkoutScan =>
+        const Duration(milliseconds: 35),
+      SfxCue.success || SfxCue.sale || SfxCue.bakeryReady =>
+        const Duration(milliseconds: 70),
+      SfxCue.restock => const Duration(milliseconds: 120),
+      SfxCue.milestone || SfxCue.deliveryArrived =>
+        const Duration(milliseconds: 220),
+      SfxCue.error || SfxCue.customerLeave =>
+        const Duration(milliseconds: 110),
+      SfxCue.customerWarning => const Duration(milliseconds: 900),
+      SfxCue.registerOpen || SfxCue.registerClose =>
+        const Duration(milliseconds: 180),
     };
-    if (previous != null && now.difference(previous) < minimumGap) {
-      return true;
-    }
+    if (previous != null && now.difference(previous) < minimumGap) return true;
     _lastPlayedAt[cue] = now;
     return false;
   }
@@ -98,10 +119,9 @@ final class SfxManager {
   }
 
   Future<void> dispose() async {
-    if (_disposed) {
-      return;
-    }
+    if (_disposed) return;
     _disposed = true;
+    _ambientPhase = MusicPhase.silent;
     _lastPlayedAt.clear();
     await _safely(_backend.dispose);
   }

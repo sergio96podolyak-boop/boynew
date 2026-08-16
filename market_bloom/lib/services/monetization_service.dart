@@ -1,6 +1,8 @@
+import 'app_settings.dart';
 import 'monetization_factory_stub.dart'
     if (dart.library.io) 'monetization_factory_io.dart'
     as platform_factory;
+import 'release_configuration.dart';
 
 enum RewardPlacement {
   instantCoins,
@@ -51,74 +53,104 @@ abstract final class MonetizationPolicy {
 
 abstract interface class MonetizationService {
   bool get isPreview;
-
   bool get storeAvailable;
-
   bool get rewardedAdsAvailable;
-
   bool get interstitialAdsAvailable;
-
   String? priceFor(StoreProduct product);
-
   Future<void> initialize();
-
   Future<bool> showRewardedAd(RewardPlacement placement);
-
   Future<bool> showInterstitial(InterstitialPlacement placement);
-
   Future<StorePurchaseResult> purchase(StoreProduct product);
-
-  /// Attempts to restore previously purchased products.
-  ///
-  /// Preview builds that do not connect to a real store return an empty list
-  /// without performing any side effects.
   Future<List<StorePurchaseResult>> restorePurchases();
-
   void dispose();
 }
 
-MonetizationService createMonetizationService() {
-  return platform_factory.createPlatformMonetizationService();
+abstract interface class ConsentAwareMonetizationService {
+  Future<void> refreshConsent();
 }
 
-/// Safe no-op adapter used when mobile ads and stores are unavailable.
-///
-/// It never simulates an earned ad reward or a successful purchase.
-class PreviewMonetizationService implements MonetizationService {
+MonetizationService createMonetizationService({AppSettings? settings}) {
+  ReleaseConfiguration.fromEnvironment().validateCurrentPlatformRelease();
+  return platform_factory.createPlatformMonetizationService(settings: settings);
+}
+
+/// Keeps ads operational while making store purchases unavailable unless the
+/// production verification service is configured.
+class StoreAvailabilityGuard
+    implements MonetizationService, ConsentAwareMonetizationService {
+  StoreAvailabilityGuard({
+    required this.delegate,
+    required this.storeEnabled,
+  });
+
+  final MonetizationService delegate;
+  final bool storeEnabled;
+
+  @override
+  bool get isPreview => delegate.isPreview;
+  @override
+  bool get storeAvailable => storeEnabled && delegate.storeAvailable;
+  @override
+  bool get rewardedAdsAvailable => delegate.rewardedAdsAvailable;
+  @override
+  bool get interstitialAdsAvailable => delegate.interstitialAdsAvailable;
+  @override
+  String? priceFor(StoreProduct product) =>
+      storeEnabled ? delegate.priceFor(product) : null;
+  @override
+  Future<void> initialize() => delegate.initialize();
+  @override
+  Future<void> refreshConsent() async {
+    final service = delegate;
+    if (service is ConsentAwareMonetizationService) {
+      await (service as ConsentAwareMonetizationService).refreshConsent();
+    }
+  }
+
+  @override
+  Future<bool> showRewardedAd(RewardPlacement placement) =>
+      delegate.showRewardedAd(placement);
+  @override
+  Future<bool> showInterstitial(InterstitialPlacement placement) =>
+      delegate.showInterstitial(placement);
+  @override
+  Future<StorePurchaseResult> purchase(StoreProduct product) => storeEnabled
+      ? delegate.purchase(product)
+      : Future.value(StorePurchaseResult.failed(product));
+  @override
+  Future<List<StorePurchaseResult>> restorePurchases() => storeEnabled
+      ? delegate.restorePurchases()
+      : Future.value(const <StorePurchaseResult>[]);
+  @override
+  void dispose() => delegate.dispose();
+}
+
+class PreviewMonetizationService
+    implements MonetizationService, ConsentAwareMonetizationService {
   @override
   void dispose() {}
-
   @override
   Future<void> initialize() async {}
-
+  @override
+  Future<void> refreshConsent() async {}
   @override
   bool get isPreview => true;
-
   @override
   bool get storeAvailable => false;
-
   @override
   bool get rewardedAdsAvailable => false;
-
   @override
   bool get interstitialAdsAvailable => false;
-
   @override
   String? priceFor(StoreProduct product) => null;
-
   @override
-  Future<StorePurchaseResult> purchase(StoreProduct product) async {
-    return StorePurchaseResult.failed(product);
-  }
-
+  Future<StorePurchaseResult> purchase(StoreProduct product) async =>
+      StorePurchaseResult.failed(product);
   @override
-  Future<List<StorePurchaseResult>> restorePurchases() async {
-    return const <StorePurchaseResult>[];
-  }
-
+  Future<List<StorePurchaseResult>> restorePurchases() async =>
+      const <StorePurchaseResult>[];
   @override
   Future<bool> showRewardedAd(RewardPlacement placement) async => false;
-
   @override
   Future<bool> showInterstitial(InterstitialPlacement placement) async => false;
 }

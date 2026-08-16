@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../game/economy_calculator.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../widgets/management_ui.dart';
+import '../widgets/premium_ui.dart';
+import '../widgets/pressable_scale.dart';
 
 class InventoryScreen extends StatelessWidget {
   const InventoryScreen({super.key, required this.controller});
@@ -12,90 +16,115 @@ class InventoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(loc.inventoryTitle)),
-      body: AnimatedBuilder(
+    return ManagementScaffold(
+      title: loc.inventoryTitle,
+      icon: Icons.inventory_2_rounded,
+      child: AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
-          final totalInventory = controller.totalStoredInventory;
-          final capacity = controller.storageCapacity;
           final deliveries = controller.pendingDeliveries;
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
             children: [
-              _InventoryHeader(
-                controller: controller,
-                loc: loc,
-                totalInventory: totalInventory,
-                capacity: capacity,
+              ManagementHero(
+                icon: Icons.warehouse_rounded,
+                title: loc.warehouseStock,
+                subtitle:
+                    '${controller.activeDepartmentCount} ${loc.activeDepartments}',
+                colors: const [Color(0xFF183650), Color(0xFF276F78)],
+                metrics: [
+                  ManagementHeroMetric(
+                    icon: Icons.inventory_rounded,
+                    label: loc.warehouseStock,
+                    value:
+                        '${controller.totalStoredInventory}/${controller.storageCapacity}',
+                  ),
+                  ManagementHeroMetric(
+                    icon: Icons.storefront_rounded,
+                    label: loc.floorStock,
+                    value: '${controller.totalShelfInventory}',
+                  ),
+                  ManagementHeroMetric(
+                    icon: Icons.local_shipping_rounded,
+                    label: loc.pendingDeliveries,
+                    value: '${deliveries.length}',
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-              Text(
-                loc.activeDepartments,
-                style: Theme.of(
+              const SizedBox(height: 22),
+              ManagementSectionTitle(
+                title: loc.activeDepartments,
+                subtitle: _term(
                   context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  en: 'Live stock, pricing and reorder status',
+                  he: 'מלאי, תמחור ומצב הזמנות בזמן אמת',
+                  ar: 'المخزون والتسعير وحالة الطلبات',
+                ),
               ),
-              const SizedBox(height: 10),
-              for (final definition in DepartmentCatalog.all)
-                if (controller.isDepartmentUnlocked(definition.type)) ...[
-                  _CategoryCard(
-                    definition: definition,
-                    controller: controller,
-                    loc: loc,
-                  ),
-                  const SizedBox(height: 11),
-                ],
-              const SizedBox(height: 10),
-              Row(
+              const SizedBox(height: 12),
+              ManagementResponsiveWrap(
                 children: [
-                  Expanded(
-                    child: Text(
-                      loc.pendingDeliveries,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
+                  for (final definition in DepartmentCatalog.all)
+                    if (controller.isDepartmentUnlocked(definition.type))
+                      _ProductCard(
+                        key: ValueKey(
+                          'inventory-card-${definition.type.name}',
+                        ),
+                        definition: definition,
+                        controller: controller,
+                        loc: loc,
                       ),
-                    ),
-                  ),
-                  if (deliveries.isNotEmpty)
-                    Badge(label: Text('${deliveries.length}')),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
+              ManagementSectionTitle(
+                title: loc.pendingDeliveries,
+                subtitle: deliveries.isEmpty ? loc.noPendingDeliveries : null,
+                trailing: deliveries.isEmpty
+                    ? null
+                    : ManagementStatusPill(
+                        label: '${deliveries.length}',
+                        color: PoMarketPalette.blue,
+                        icon: Icons.local_shipping_rounded,
+                      ),
+              ),
+              const SizedBox(height: 10),
               if (deliveries.isEmpty)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.task_alt_rounded,
-                          color: Color(0xFF38A878),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
+                ManagementCard(
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.task_alt_rounded,
+                        color: PoMarketPalette.mint,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
                           loc.noPendingDeliveries,
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
+                          style: const TextStyle(
+                            color: PoMarketPalette.muted,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 )
               else
-                for (final delivery in deliveries)
-                  _DeliveryCard(
-                    delivery: delivery,
-                    loc: loc,
-                    ready: controller.isDeliveryReady(delivery),
-                    onFulfill: () =>
-                        controller.fulfillPendingDelivery(delivery.id),
-                  ),
+                ManagementResponsiveWrap(
+                  children: [
+                    for (final delivery in deliveries)
+                      _DeliveryCard(
+                        delivery: delivery,
+                        loc: loc,
+                        ready: controller.isDeliveryReady(delivery),
+                        onFulfill: () =>
+                            controller.fulfillPendingDelivery(delivery.id),
+                      ),
+                  ],
+                ),
               if (controller.canClaimEmergencyStock) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 _EmergencyStockCard(controller: controller, loc: loc),
               ],
             ],
@@ -106,169 +135,9 @@ class InventoryScreen extends StatelessWidget {
   }
 }
 
-class _InventoryHeader extends StatelessWidget {
-  const _InventoryHeader({
-    required this.controller,
-    required this.loc,
-    required this.totalInventory,
-    required this.capacity,
-  });
-
-  final GameController controller;
-  final AppLocalizations loc;
-  final int totalInventory;
-  final int capacity;
-
-  @override
-  Widget build(BuildContext context) {
-    final fraction = capacity == 0 ? 0.0 : totalInventory / capacity;
-    return Container(
-      padding: const EdgeInsets.all(19),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF202C46), Color(0xFF345887), Color(0xFF43A7A0)],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x30202C46),
-            blurRadius: 20,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(17),
-                ),
-                child: const Icon(
-                  Icons.warehouse_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      loc.warehouseStock,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      '${controller.activeDepartmentCount} ${loc.activeDepartments}',
-                      style: const TextStyle(
-                        color: Color(0xCCFFFFFF),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '$totalInventory/$capacity',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 17),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: fraction.clamp(0, 1),
-              minHeight: 11,
-              color: const Color(0xFFFFD36A),
-              backgroundColor: const Color(0x30FFFFFF),
-            ),
-          ),
-          const SizedBox(height: 13),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _HeaderChip(
-                icon: Icons.shopping_bag_rounded,
-                label: loc.carried,
-                value: '${controller.carried}/${controller.bagCapacity}',
-              ),
-              _HeaderChip(
-                icon: Icons.storefront_rounded,
-                label: loc.floorStock,
-                value: '${controller.totalShelfInventory}',
-              ),
-              _HeaderChip(
-                icon: Icons.local_shipping_rounded,
-                label: loc.pendingDeliveries,
-                value: '${controller.pendingDeliveryCount}',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderChip extends StatelessWidget {
-  const _HeaderChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.11),
-        borderRadius: BorderRadius.circular(13),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: const Color(0xFFFFD36A), size: 16),
-          const SizedBox(width: 5),
-          Text(
-            '$label $value',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryCard extends StatelessWidget {
-  const _CategoryCard({
+class _ProductCard extends StatelessWidget {
+  const _ProductCard({
+    super.key,
     required this.definition,
     required this.controller,
     required this.loc,
@@ -281,40 +150,63 @@ class _CategoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shelf = controller.departmentStock(definition.type);
-    final shelfCapacity = controller.departmentCapacity(definition.type);
+    final capacity = controller.departmentCapacity(definition.type);
     final storage = controller.departmentStorage(definition.type);
-    final selected = controller.selectedRestockDepartment == definition.type;
+    final price = controller.departmentItemPrice(definition.type);
+    final unitCost = EconomyCalculator.unitCost(definition);
+    final profit = EconomyCalculator.estimatedProfitPerItem(
+      definition,
+      sellingPrice: price,
+    );
+    final margin = EconomyCalculator.grossMargin(
+      definition,
+      sellingPrice: price,
+    );
+    final demand = controller.departmentDemand(definition.type);
     final pending = controller.hasPendingDepartmentDelivery(definition.type);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(21),
-        border: Border.all(
-          color: selected
-              ? definition.color
-              : Theme.of(context).colorScheme.outlineVariant,
-          width: selected ? 2 : 1,
-        ),
-      ),
+    final selected = controller.selectedRestockDepartment == definition.type;
+    final totalStock = shelf + storage;
+    final lowStock = totalStock <= max(2, definition.orderQuantity ~/ 2);
+    final statusColor = pending
+        ? PoMarketPalette.blue
+        : lowStock
+        ? PoMarketPalette.coral
+        : PoMarketPalette.mint;
+    final statusLabel = pending
+        ? loc.deliveryInTransit
+        : lowStock
+        ? loc.lowStock
+        : _term(context, en: 'Stock healthy', he: 'מלאי תקין', ar: 'المخزون جيد');
+
+    return ManagementCard(
+      accent: definition.color,
+      highlighted: selected || lowStock,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: definition.color.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(16),
-                ),
+                width: 54,
+                height: 54,
                 alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      definition.color.withValues(alpha: 0.24),
+                      definition.color.withValues(alpha: 0.08),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(17),
+                ),
                 child: Text(
                   definition.emoji,
-                  style: const TextStyle(fontSize: 24),
+                  style: const TextStyle(fontSize: 27),
                 ),
               ),
-              const SizedBox(width: 11),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -322,14 +214,16 @@ class _CategoryCard extends StatelessWidget {
                     Text(
                       _departmentName(definition.type, loc),
                       style: const TextStyle(
-                        fontSize: 15,
+                        color: PoMarketPalette.ink,
+                        fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
-                      '${loc.floorStock} $shelf/$shelfCapacity · ${loc.warehouseStock} $storage',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      definition.category,
+                      style: const TextStyle(
+                        color: PoMarketPalette.muted,
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                       ),
@@ -337,42 +231,134 @@ class _CategoryCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (selected)
-                Icon(Icons.check_circle_rounded, color: definition.color),
+              ManagementStatusPill(
+                label: statusLabel,
+                color: statusColor,
+                icon: pending
+                    ? Icons.local_shipping_rounded
+                    : lowStock
+                    ? Icons.warning_amber_rounded
+                    : Icons.check_circle_rounded,
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
+          const SizedBox(height: 14),
+          Row(
             children: [
-              _InfoChip(
-                label: loc.demand,
-                value:
-                    '${(controller.departmentDemand(definition.type) * 100).round()}%',
-              ),
-              _InfoChip(
-                label: loc.sellingPrice,
-                value: '${controller.departmentItemPrice(definition.type)}',
-              ),
-              _InfoChip(
-                label: loc.estimatedProfit,
-                value:
-                    '${controller.departmentEstimatedProfit(definition.type)}',
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${loc.floorStock} $shelf/$capacity · ${loc.warehouseStock} $storage',
+                            style: const TextStyle(
+                              color: PoMarketPalette.muted,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$totalStock',
+                          style: TextStyle(
+                            color: lowStock
+                                ? PoMarketPalette.coral
+                                : PoMarketPalette.ink,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: capacity <= 0
+                            ? 0
+                            : (shelf / capacity).clamp(0, 1),
+                        minHeight: 8,
+                        color: lowStock
+                            ? PoMarketPalette.coral
+                            : definition.color,
+                        backgroundColor: definition.color.withValues(
+                          alpha: 0.10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 13),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ManagementInfoTile(
+                icon: Icons.shopping_cart_checkout_rounded,
+                label: _term(
+                  context,
+                  en: 'Buy cost',
+                  he: 'עלות קנייה',
+                  ar: 'تكلفة الشراء',
+                ),
+                value:
+                    '${definition.orderCost} · ${unitCost.toStringAsFixed(1)}/${_term(context, en: 'item', he: 'יח׳', ar: 'قطعة')}',
+                color: PoMarketPalette.gold,
+              ),
+              ManagementInfoTile(
+                icon: Icons.sell_rounded,
+                label: loc.sellingPrice,
+                value: '$price',
+                color: PoMarketPalette.blue,
+              ),
+              ManagementInfoTile(
+                icon: profit < 0
+                    ? Icons.trending_down_rounded
+                    : Icons.trending_up_rounded,
+                label: loc.profitPerItem,
+                value: '$profit',
+                color: PoMarketPalette.mint,
+                negative: profit < 0,
+              ),
+              ManagementInfoTile(
+                icon: Icons.percent_rounded,
+                label: _term(
+                  context,
+                  en: 'Margin',
+                  he: 'מרווח',
+                  ar: 'الهامش',
+                ),
+                value: '${(margin * 100).round()}%',
+                color: PoMarketPalette.violet,
+                negative: margin < 0,
+              ),
+              ManagementInfoTile(
+                icon: Icons.local_fire_department_rounded,
+                label: loc.demand,
+                value: '${(demand * 100).round()}%',
+                color: definition.color,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: selected
                       ? null
-                      : () =>
-                            controller.selectRestockDepartment(definition.type),
+                      : () => controller.selectRestockDepartment(
+                          definition.type,
+                        ),
                   icon: Icon(
-                    selected ? Icons.check_rounded : Icons.inventory_2_rounded,
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.inventory_2_rounded,
                     size: 17,
                   ),
                   label: Text(
@@ -384,22 +370,32 @@ class _CategoryCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: FilledButton.icon(
-                  onPressed: controller.canOrderDepartmentStock(definition.type)
-                      ? () => controller.placeDepartmentOrder(definition.type)
-                      : null,
-                  icon: Icon(
-                    pending
-                        ? Icons.local_shipping_rounded
-                        : Icons.add_shopping_cart_rounded,
-                    size: 17,
-                  ),
-                  label: Text(
-                    pending
-                        ? loc.deliveryInTransit
-                        : '${definition.orderQuantity} · ${definition.orderCost}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                child: PressableScale(
+                  enabled: controller.canOrderDepartmentStock(definition.type),
+                  child: FilledButton.icon(
+                    onPressed:
+                        controller.canOrderDepartmentStock(definition.type)
+                        ? () => _order(context)
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: lowStock
+                          ? PoMarketPalette.coral
+                          : definition.color,
+                      minimumSize: const Size(44, 46),
+                    ),
+                    icon: Icon(
+                      pending
+                          ? Icons.local_shipping_rounded
+                          : Icons.add_shopping_cart_rounded,
+                      size: 17,
+                    ),
+                    label: Text(
+                      pending
+                          ? loc.deliveryInTransit
+                          : '${definition.orderQuantity} · ${definition.orderCost}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ),
@@ -409,25 +405,13 @@ class _CategoryCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        '$label $value',
-        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+  void _order(BuildContext context) {
+    if (controller.placeDepartmentOrder(definition.type) == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(loc.quickRestockOrdered),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -452,24 +436,43 @@ class _DeliveryCard extends StatelessWidget {
       (item) => item.category.toLowerCase() == delivery.category.toLowerCase(),
       orElse: () => DepartmentCatalog.all.first,
     );
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: definition.color.withValues(alpha: 0.14),
-          child: Text(definition.emoji),
-        ),
-        title: Text('${delivery.category} · ${delivery.quantity}'),
-        subtitle: Text(
-          ready
-              ? loc.deliveryReady
-              : MaterialLocalizations.of(
-                  context,
-                ).formatTimeOfDay(TimeOfDay.fromDateTime(delivery.readyAt)),
-        ),
-        trailing: FilledButton(
-          onPressed: ready ? onFulfill : null,
-          child: Text(loc.fulfill),
-        ),
+    return ManagementCard(
+      accent: definition.color,
+      highlighted: ready,
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: definition.color.withValues(alpha: 0.14),
+            child: Text(definition.emoji),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${delivery.category} · ${delivery.quantity}',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  ready
+                      ? loc.deliveryReady
+                      : MaterialLocalizations.of(context).formatTimeOfDay(
+                          TimeOfDay.fromDateTime(delivery.readyAt),
+                        ),
+                  style: const TextStyle(
+                    color: PoMarketPalette.muted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          FilledButton(
+            onPressed: ready ? onFulfill : null,
+            child: Text(loc.fulfill),
+          ),
+        ],
       ),
     );
   }
@@ -483,18 +486,14 @@ class _EmergencyStockCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF2D7),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFFD27A)),
-      ),
+    return ManagementCard(
+      accent: PoMarketPalette.gold,
+      highlighted: true,
       child: Row(
         children: [
           const Icon(
             Icons.volunteer_activism_rounded,
-            color: Color(0xFFE49A21),
+            color: PoMarketPalette.gold,
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -507,17 +506,17 @@ class _EmergencyStockCard extends StatelessWidget {
                 ),
                 Text(
                   loc.emergencyStockDesc,
-                  style: const TextStyle(fontSize: 10),
+                  style: const TextStyle(
+                    color: PoMarketPalette.muted,
+                    fontSize: 10,
+                  ),
                 ),
               ],
             ),
           ),
           TextButton(
             onPressed: controller.claimEmergencyStock,
-            child: Text(
-              '+${GameBalance.emergencyStockQuantity}',
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
+            child: Text('+${GameBalance.emergencyStockQuantity}'),
           ),
         ],
       ),
@@ -533,5 +532,18 @@ String _departmentName(DepartmentType type, AppLocalizations loc) {
     DepartmentType.refrigerated => loc.departmentRefrigerated,
     DepartmentType.beauty => loc.departmentBeauty,
     DepartmentType.electronics => loc.departmentElectronics,
+  };
+}
+
+String _term(
+  BuildContext context, {
+  required String en,
+  required String he,
+  required String ar,
+}) {
+  return switch (Localizations.localeOf(context).languageCode) {
+    'he' => he,
+    'ar' => ar,
+    _ => en,
   };
 }

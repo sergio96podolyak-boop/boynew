@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 
 import '../services/game_storage.dart';
 import '../services/monetization_service.dart';
+import '../services/sfx/sfx_manager.dart';
 import 'game_models.dart';
+import 'operating_cost_policy.dart';
 import 'meta_models.dart';
 
 class GameController extends ChangeNotifier {
@@ -21,6 +23,20 @@ class GameController extends ChangeNotifier {
   static const stockZone = Offset(0.16, 0.79);
   static const shelfZone = Offset(0.35, 0.51);
   static const checkoutZone = Offset(0.77, 0.25);
+  static const checkout2Zone = Offset(0.58, 0.25);
+  static const checkout3Zone = Offset(0.92, 0.25);
+  static const primaryCheckoutStationId = 'checkout-1';
+  static const checkoutStationIds = <String>[
+    'checkout-1',
+    'checkout-2',
+    'checkout-3',
+  ];
+  static const checkout2UnlockLevel = 2;
+  static const checkout3UnlockLevel = 4;
+  static const checkoutQueueGraceSeconds = 2.0;
+  static const checkoutRebalanceSeconds = 2.5;
+  static const checkoutPatienceWarning = 3.0;
+  static const checkoutSatisfactionFloor = 0.2;
   static const bakeryZone = Offset(0.78, 0.76);
   static const stockerPickupZone = Offset(0.24, 0.73);
   static const stockerShelfZone = shelfZone;
@@ -39,6 +55,20 @@ class GameController extends ChangeNotifier {
   Offset movement = Offset.zero;
   Offset? _movementTarget;
   final List<MarketCustomer> customers = [];
+  final List<CheckoutStationState> _checkoutStations =
+      <CheckoutStationState>[
+        CheckoutStationState(
+          id: primaryCheckoutStationId,
+          unlocked: true,
+          active: true,
+        ),
+        CheckoutStationState(id: 'checkout-2'),
+        CheckoutStationState(id: 'checkout-3'),
+      ];
+  final Map<String, List<MarketCustomer>> _checkoutQueues =
+      <String, List<MarketCustomer>>{
+        for (final id in checkoutStationIds) id: <MarketCustomer>[],
+      };
   final List<FloatingTextEffect> floatingEffects = [];
   int comboCount = 0;
   double comboTimer = 0.0;
@@ -113,6 +143,8 @@ class GameController extends ChangeNotifier {
   int shiftSales = 0;
   int shiftRevenue = 0;
   int shiftMissedSales = 0;
+  ShiftLedger _shiftLedger = ShiftLedger();
+  bool _shiftOperatingCostsApplied = false;
   bool shiftMissionClaimed = false;
   bool fastCheckoutClaimed = false;
   DateTime? _dailyMissionClaimedOn;
@@ -283,6 +315,62 @@ class GameController extends ChangeNotifier {
       _dailyMissionClaimedOn != null &&
       _sameCalendarDay(_dailyMissionClaimedOn!, _now());
 
+  ShiftLedger get shiftLedger => _shiftLedger.snapshot();
+
+  void recordSale(int amount) {
+    _shiftLedger.recordSale(amount);
+    if (amount > 0) _dirty = true;
+  }
+
+  void recordStockOrderCost(int amount) {
+    _shiftLedger.recordStockOrderCost(amount);
+    if (amount > 0) _dirty = true;
+  }
+
+  void recordBonus(int amount) {
+    _shiftLedger.recordBonus(amount);
+    if (amount > 0) _dirty = true;
+  }
+
+  void recordMissedSaleEstimate(int amount) {
+    _shiftLedger.recordMissedSaleEstimate(amount);
+    if (amount > 0) _dirty = true;
+  }
+
+  void recordOperatingCost(
+    int amount, {
+    ShiftOperatingCostType type = ShiftOperatingCostType.department,
+  }) {
+    _shiftLedger.recordOperatingCost(amount, type: type);
+    if (amount > 0) _dirty = true;
+  }
+
+  int get projectedShiftPayroll =>
+      OperatingCostPolicy.totalPayroll(staffMembers);
+
+  int get projectedDepartmentOperatingCosts =>
+      OperatingCostPolicy.totalDepartmentOperatingCosts(_departments);
+
+  bool get shiftOperatingCostsApplied => _shiftOperatingCostsApplied;
+
+  void _applyShiftOperatingCostsOnce() {
+    if (_shiftOperatingCostsApplied) return;
+    final payroll = projectedShiftPayroll;
+    final departmentCosts = projectedDepartmentOperatingCosts;
+    if (payroll > 0) {
+      recordOperatingCost(payroll, type: ShiftOperatingCostType.payroll);
+    }
+    if (departmentCosts > 0) {
+      recordOperatingCost(
+        departmentCosts,
+        type: ShiftOperatingCostType.department,
+      );
+    }
+    coins -= payroll + departmentCosts;
+    _shiftOperatingCostsApplied = true;
+    _dirty = true;
+  }
+
   double get shiftProgress =>
       (shiftElapsedSeconds / shiftDurationSeconds).clamp(0, 1);
 
@@ -297,11 +385,55 @@ class GameController extends ChangeNotifier {
         customers.length;
   }
 
+  List<CheckoutStationState> get checkoutStations =>
+      List<CheckoutStationState>.unmodifiable(_checkoutStations);
+
+  List<MarketCustomer> checkoutQueueFor(String checkoutStationId) =>
+      List<MarketCustomer>.unmodifiable(
+        _checkoutQueues[checkoutStationId] ?? const <MarketCustomer>[],
+      );
+
+  bool checkoutStationHasCashier(String checkoutStationId) =>
+      _cashierAtCheckoutStation(checkoutStationId);
+
+  bool checkoutStationIsOperational(String checkoutStationId) {
+    final station = _checkoutStations.where(
+      (item) => item.id == checkoutStationId,
+    );
+    return station.isNotEmpty &&
+        station.first.unlocked &&
+        station.first.active &&
+        (_playerAtCheckoutStation(checkoutStationId) ||
+            _cashierAtCheckoutStation(checkoutStationId));
+  }
+
+  bool setCheckoutStationActive(String checkoutStationId, bool active) {
+    final stationIndex = _checkoutStations.indexWhere(
+      (station) => station.id == checkoutStationId,
+    );
+    if (stationIndex < 0) {
+      return false;
+    }
+    final station = _checkoutStations[stationIndex];
+    if (!station.unlocked ||
+        station.id == primaryCheckoutStationId ||
+        station.active == active) {
+      return false;
+    }
+    station.active = active;
+    unawaited(active ? SfxManager.instance.registerOpen() : SfxManager.instance.registerClose());
+    if (!active) _rebalanceCheckoutQueues(force: true);
+    _markDirty(immediate: true);
+    notifyListeners();
+    return true;
+  }
+
+  // Compatibility view for the original checkout used by the current UI.
   List<MarketCustomer> get checkoutQueue =>
-      List<MarketCustomer>.unmodifiable(_checkoutQueue);
+      checkoutQueueFor(primaryCheckoutStationId);
 
   List<Offset> get checkoutQueueSlots => List<Offset>.generate(
-    _checkoutQueue.length,
+    checkoutQueue.length,
     (index) => checkoutZone + Offset(-0.03, 0.10 + index * 0.085),
     growable: false,
   );
@@ -597,7 +729,12 @@ class GameController extends ChangeNotifier {
         return 'Stocking ${departmentCategory(type)}';
       }
     }
-    if (_near(playerPosition, checkoutZone, 0.13)) {
+    if (_checkoutStations.any(
+      (station) =>
+          station.unlocked &&
+          station.active &&
+          _near(playerPosition, checkoutStationZone(station.id), 0.13),
+    )) {
       return 'Customers pay here';
     }
     return '';
@@ -737,6 +874,7 @@ class GameController extends ChangeNotifier {
     }
     shiftElapsedSeconds = min(shiftDurationSeconds, shiftElapsedSeconds + dt);
     if (shiftElapsedSeconds >= shiftDurationSeconds) {
+      _applyShiftOperatingCostsOnce();
       pendingShiftSummary = ShiftSummary(
         shiftNumber: shiftNumber,
         sales: shiftSales,
@@ -745,6 +883,7 @@ class GameController extends ChangeNotifier {
         satisfaction: averageCustomerSatisfaction,
         xp: shiftSales * 2 + max(0, 10 - shiftMissedSales),
         stockRemaining: totalShelfInventory + totalStoredInventory,
+        ledger: _shiftLedger,
       );
       paused = true;
       _markDirty(immediate: true);
@@ -757,6 +896,8 @@ class GameController extends ChangeNotifier {
     shiftSales = 0;
     shiftRevenue = 0;
     shiftMissedSales = 0;
+    _shiftLedger = ShiftLedger();
+    _shiftOperatingCostsApplied = false;
     shiftMissionClaimed = false;
     fastCheckoutClaimed = false;
     pendingShiftSummary = null;
@@ -772,6 +913,7 @@ class GameController extends ChangeNotifier {
     shiftMissionClaimed = true;
     coins += 20;
     totalCoinsEarned += 20;
+    recordBonus(20);
     totalActions++;
     _afterProgressChanged(immediate: true);
     notifyListeners();
@@ -785,6 +927,7 @@ class GameController extends ChangeNotifier {
     _dailyMissionClaimedOn = _now();
     coins += 15;
     totalCoinsEarned += 15;
+    recordBonus(15);
     totalActions++;
     _afterProgressChanged(immediate: true);
 
@@ -800,6 +943,7 @@ class GameController extends ChangeNotifier {
     fastCheckoutClaimed = true;
     coins += 8;
     totalCoinsEarned += 8;
+    recordBonus(8);
     totalActions++;
     _afterProgressChanged(immediate: true);
 
@@ -838,6 +982,7 @@ class GameController extends ChangeNotifier {
           _bakeryProductionTimer = 0;
           bakeryReadyStock++;
           totalActions++;
+          unawaited(SfxManager.instance.bakeryReady());
         }
       } else {
         _bakeryProductionTimer = 0;
@@ -880,6 +1025,7 @@ class GameController extends ChangeNotifier {
         _carriedDepartment = pickupDepartment;
         carried++;
         totalActions++;
+        unawaited(SfxManager.instance.pickup());
       }
     } else {
       _stockActionTimer = 0;
@@ -900,6 +1046,7 @@ class GameController extends ChangeNotifier {
         }
         stockedTotal++;
         totalActions++;
+        unawaited(SfxManager.instance.restock());
       }
     } else {
       _shelfActionTimer = 0;
@@ -1066,34 +1213,241 @@ class GameController extends ChangeNotifier {
     return current + delta / delta.distance * step;
   }
 
-  final List<MarketCustomer> _checkoutQueue = [];
+  List<MarketCustomer> _queueForCheckout(String checkoutStationId) =>
+      _checkoutQueues.putIfAbsent(
+        checkoutStationId,
+        () => <MarketCustomer>[],
+      );
+
+  String _assignCheckoutStation(MarketCustomer customer) {
+    final assigned = customer.checkoutStationId;
+    if (assigned != null) {
+      return assigned;
+    }
+    final activeStations = _checkoutStations
+        .where((station) => station.unlocked && station.active)
+        .toList(growable: false);
+    final staffedStations = activeStations
+        .where(
+          (station) =>
+              _playerAtCheckoutStation(station.id) ||
+              _cashierAtCheckoutStation(station.id),
+        )
+        .toList(growable: false);
+    final candidates = staffedStations.isNotEmpty
+        ? staffedStations
+        : activeStations;
+    var station = candidates.isEmpty
+        ? _checkoutStations.first
+        : candidates.first;
+    for (final candidate in candidates.skip(1)) {
+      if (_queueForCheckout(candidate.id).length <
+          _queueForCheckout(station.id).length) {
+        station = candidate;
+      }
+    }
+    customer.checkoutStationId = station.id;
+    return station.id;
+  }
+
+  Offset checkoutStationZone(String checkoutStationId) {
+    return switch (checkoutStationId) {
+      'checkout-2' => checkout2Zone,
+      'checkout-3' => checkout3Zone,
+      _ => checkoutZone,
+    };
+  }
+
+  bool _playerAtCheckoutStation(String checkoutStationId) =>
+      _near(playerPosition, checkoutStationZone(checkoutStationId), 0.13);
+
+  bool _cashierAtCheckoutStation(String checkoutStationId) {
+    if (!isStaffHired(StaffRole.cashier)) {
+      return false;
+    }
+    final activeStations = _checkoutStations
+        .where((station) => station.unlocked && station.active)
+        .toList(growable: false);
+    final stationIndex = activeStations.indexWhere(
+      (station) => station.id == checkoutStationId,
+    );
+    return stationIndex >= 0 &&
+        stationIndex < staffWorkerCount(StaffRole.cashier);
+  }
+
+  void _removeCustomerFromCheckoutQueue(MarketCustomer customer) {
+    final stationId = customer.checkoutStationId;
+    if (stationId != null) {
+      _checkoutQueues[stationId]?.remove(customer);
+    }
+  }
+
+  CheckoutStationState? _bestCheckoutStation({String? excluding}) {
+    final candidates = _checkoutStations
+        .where((station) =>
+            station.unlocked && station.active && station.id != excluding)
+        .toList(growable: false);
+    if (candidates.isEmpty) {
+      return null;
+    }
+    candidates.sort((left, right) {
+      final leftReady = _playerAtCheckoutStation(left.id) ||
+          _cashierAtCheckoutStation(left.id);
+      final rightReady = _playerAtCheckoutStation(right.id) ||
+          _cashierAtCheckoutStation(right.id);
+      if (leftReady != rightReady) return leftReady ? -1 : 1;
+      final queueOrder = _queueForCheckout(left.id).length.compareTo(
+        _queueForCheckout(right.id).length,
+      );
+      return queueOrder != 0
+          ? queueOrder
+          : checkoutStationIds.indexOf(left.id).compareTo(
+              checkoutStationIds.indexOf(right.id),
+            );
+    });
+    return candidates.first;
+  }
+
+  void _moveCustomerToCheckout(
+    MarketCustomer customer,
+    CheckoutStationState station,
+  ) {
+    _removeCustomerFromCheckoutQueue(customer);
+    customer
+      ..checkoutStationId = station.id
+      ..checkoutOperator = null;
+    final queue = _queueForCheckout(station.id);
+    if (!queue.contains(customer)) {
+      queue.add(customer);
+    }
+    spawnFloatingText(
+      '↪ Queue moved',
+      customer.position,
+      const Color(0xFF5B8DEF),
+      fontSize: 12,
+    );
+  }
+
+  void _rebalanceCheckoutQueues({bool force = false}) {
+    for (final station in _checkoutStations) {
+      final queue = List<MarketCustomer>.of(_queueForCheckout(station.id));
+      for (final customer in queue) {
+        if (customer.phase != CustomerPhase.checkout &&
+            customer.phase != CustomerPhase.paying) {
+          continue;
+        }
+        final currentCanServe = station.unlocked &&
+            station.active &&
+            (_playerAtCheckoutStation(station.id) ||
+                _cashierAtCheckoutStation(station.id));
+        final needsMove = !station.unlocked ||
+            !station.active ||
+            (!currentCanServe &&
+                customer.checkoutWaitTime >= checkoutRebalanceSeconds);
+        if (!needsMove) {
+          continue;
+        }
+        final target = _bestCheckoutStation(excluding: station.id);
+        if (target == null) {
+          continue;
+        }
+        final targetCanServe = _playerAtCheckoutStation(target.id) ||
+            _cashierAtCheckoutStation(target.id);
+        if (!force && currentCanServe == targetCanServe) {
+          continue;
+        }
+        _moveCustomerToCheckout(customer, target);
+      }
+    }
+  }
 
   void _updateCustomers(double dt) {
     final removed = <MarketCustomer>[];
-    final playerAtCheckout = _near(playerPosition, checkoutZone, 0.13);
-    final cashierAvailable = isStaffHired(StaffRole.cashier);
-
-    _checkoutQueue.removeWhere(
-      (c) =>
-          !customers.contains(c) ||
-          (c.phase != CustomerPhase.checkout &&
-              c.phase != CustomerPhase.paying),
-    );
+    for (final queue in _checkoutQueues.values) {
+      queue.removeWhere(
+        (customer) =>
+            !customers.contains(customer) ||
+            (customer.phase != CustomerPhase.checkout &&
+                customer.phase != CustomerPhase.paying),
+      );
+    }
 
     for (final customer in customers) {
       if (customer.phase == CustomerPhase.shopping) {
         _updateCustomerShopping(customer, dt);
-      } else if (customer.phase == CustomerPhase.checkout &&
-          !_checkoutQueue.contains(customer)) {
-        _checkoutQueue.add(customer);
-      } else if (customer.phase == CustomerPhase.paying &&
-          !_checkoutQueue.contains(customer)) {
-        _checkoutQueue.insert(0, customer);
+      } else if (customer.phase == CustomerPhase.checkout) {
+        final queue = _queueForCheckout(_assignCheckoutStation(customer));
+        if (!queue.contains(customer)) {
+          queue.add(customer);
+        }
+      } else if (customer.phase == CustomerPhase.paying) {
+        final queue = _queueForCheckout(_assignCheckoutStation(customer));
+        if (!queue.contains(customer)) {
+          queue.insert(0, customer);
+        }
       }
     }
 
+    _rebalanceCheckoutQueues();
+
     for (final customer in customers) {
-      final queueIndex = _checkoutQueue.indexOf(customer);
+      final stationId = customer.checkoutStationId;
+      final queue = stationId == null
+          ? const <MarketCustomer>[]
+          : _queueForCheckout(stationId);
+      final queueIndex = queue.indexOf(customer);
+      final playerAtCheckout = stationId != null &&
+          _playerAtCheckoutStation(stationId);
+      final cashierAvailable = stationId != null &&
+          _cashierAtCheckoutStation(stationId);
+      final waitingAtCheckout =
+          customer.phase == CustomerPhase.checkout ||
+          customer.phase == CustomerPhase.paying;
+      final canProgress =
+          queueIndex == 0 && (playerAtCheckout || cashierAvailable);
+      if (waitingAtCheckout && !canProgress) {
+        customer.checkoutWaitTime += dt;
+        final patienceBefore = customer.patience;
+        customer.patience = max(0, customer.patience - dt * 0.35);
+        if (patienceBefore > checkoutPatienceWarning &&
+            customer.patience <= checkoutPatienceWarning) {
+          spawnFloatingText(
+            'Getting impatient',
+            customer.position,
+            const Color(0xFFF6A623),
+            fontSize: 12,
+          );
+          unawaited(SfxManager.instance.customerWarning());
+        }
+        if (customer.checkoutWaitTime > checkoutQueueGraceSeconds) {
+          customer.satisfaction = max(
+            checkoutSatisfactionFloor,
+            customer.satisfaction - dt * 0.035,
+          );
+        }
+        if (customer.patience <= checkoutPatienceWarning) {
+          customer.emotion = 'worried';
+        }
+        if (customer.patience <= 0) {
+          customer
+            ..phase = CustomerPhase.leaving
+            ..phaseTime = 0
+            ..emotion = 'sad'
+            ..checkoutOperator = null;
+          shiftMissedSales++;
+          recordMissedSaleEstimate(itemPrice);
+          totalActions++;
+          _removeCustomerFromCheckoutQueue(customer);
+          spawnFloatingText(
+            'Customer left',
+            customer.position,
+            const Color(0xFFE85D75),
+            fontSize: 12,
+          );
+          unawaited(SfxManager.instance.customerLeave());
+          continue;
+        }
+      }
 
       switch (customer.phase) {
         case CustomerPhase.shopping:
@@ -1109,6 +1463,19 @@ class GameController extends ChangeNotifier {
               : cashierAvailable
               ? CheckoutOperator.cashier
               : null;
+          final assignedOperatorAvailable =
+              customer.checkoutOperator == CheckoutOperator.player
+              ? playerAtCheckout
+              : customer.checkoutOperator == CheckoutOperator.cashier
+              ? cashierAvailable
+              : false;
+          if (!assignedOperatorAvailable) {
+            customer.checkoutOperator = playerAtCheckout
+                ? CheckoutOperator.player
+                : cashierAvailable
+                ? CheckoutOperator.cashier
+                : null;
+          }
           final operatorAvailable =
               customer.checkoutOperator == CheckoutOperator.player
               ? playerAtCheckout
@@ -1136,9 +1503,10 @@ class GameController extends ChangeNotifier {
         case CustomerPhase.checkout:
           final effectiveIndex = queueIndex >= 0
               ? queueIndex
-              : _checkoutQueue.length;
+              : queue.length;
           final queueTarget =
-              checkoutZone + Offset(-0.03, 0.10 + effectiveIndex * 0.085);
+              checkoutStationZone(stationId ?? primaryCheckoutStationId) +
+              Offset(-0.03, 0.10 + effectiveIndex * 0.085);
           _moveCustomer(customer, queueTarget, dt);
 
           if (queueIndex == 0 &&
@@ -1146,9 +1514,12 @@ class GameController extends ChangeNotifier {
               _near(customer.position, queueTarget, 0.04)) {
             customer.phase = CustomerPhase.paying;
             customer.phaseTime = 0;
+            customer.checkoutWaitTime = 0;
+            customer.emotion = 'happy';
             customer.checkoutOperator = playerAtCheckout
                 ? CheckoutOperator.player
                 : CheckoutOperator.cashier;
+            unawaited(SfxManager.instance.checkoutScan());
           }
         case CustomerPhase.paying:
           final checkoutSeconds =
@@ -1163,6 +1534,7 @@ class GameController extends ChangeNotifier {
             totalSales++;
             shiftSales++;
             shiftRevenue += saleValue;
+            recordSale(saleValue);
             totalActions++;
             if (customer.checkoutOperator == CheckoutOperator.player) {
               registerComboAction(customer.position);
@@ -1173,16 +1545,17 @@ class GameController extends ChangeNotifier {
               customer.isVip ? const Color(0xFFFFD700) : const Color(0xFF4CAF50),
               fontSize: customer.isVip ? 20 : 16,
             );
+            unawaited(SfxManager.instance.sale());
             customer.phase = CustomerPhase.leaving;
             customer.phaseTime = 0;
             customer.checkoutOperator = null;
-            _checkoutQueue.remove(customer);
+            _removeCustomerFromCheckoutQueue(customer);
           }
         case CustomerPhase.leaving:
           _moveCustomer(customer, exit, dt);
           if (customer.position.dy < -0.04) {
             removed.add(customer);
-            _checkoutQueue.remove(customer);
+            _removeCustomerFromCheckoutQueue(customer);
           }
       }
     }
@@ -1230,6 +1603,7 @@ class GameController extends ChangeNotifier {
       if (customer.phaseTime >= 1.4) {
         customer.missedItems++;
         shiftMissedSales++;
+        recordMissedSaleEstimate(departmentItemPrice(department));
         customer.shoppingIndex++;
         customer.phaseTime = 0;
         if (customer.currentDepartment == null) {
@@ -1247,8 +1621,10 @@ class GameController extends ChangeNotifier {
       return;
     }
     customer.phase = CustomerPhase.checkout;
-    if (!_checkoutQueue.contains(customer)) {
-      _checkoutQueue.add(customer);
+    customer.checkoutWaitTime = 0;
+    final queue = _queueForCheckout(_assignCheckoutStation(customer));
+    if (!queue.contains(customer)) {
+      queue.add(customer);
     }
   }
 
@@ -1319,6 +1695,7 @@ class GameController extends ChangeNotifier {
         break;
       case UpgradeType.checkout:
         checkoutLevel++;
+        _unlockCheckoutStationsForLevel();
         break;
       case UpgradeType.restock:
         restockLevel++;
@@ -1763,6 +2140,7 @@ class GameController extends ChangeNotifier {
       return null;
     }
     coins -= cost;
+    recordStockOrderCost(cost);
     final delivery = InventoryDelivery(
       id: 'delivery-${_now().microsecondsSinceEpoch}-${_random.nextInt(1000)}',
       category: category.trim(),
@@ -1805,6 +2183,7 @@ class GameController extends ChangeNotifier {
       return false;
     }
     delivery.completed = true;
+    unawaited(SfxManager.instance.deliveryArrived());
     _pendingDeliveries.remove(delivery);
     _inventoryByCategory[delivery.category] =
         inventoryFor(delivery.category) + delivery.quantity;
@@ -1942,6 +2321,7 @@ class GameController extends ChangeNotifier {
       final bonus = managerPower * 2;
       if (bonus > 0) {
         coins = max(0, coins + bonus);
+        recordBonus(bonus);
       }
     }
   }
@@ -1950,6 +2330,7 @@ class GameController extends ChangeNotifier {
     for (final delivery in _pendingDeliveries) {
       if (!delivery.completed && _now().isAfter(delivery.readyAt)) {
         delivery.completed = true;
+        unawaited(SfxManager.instance.deliveryArrived());
         _inventoryByCategory[delivery.category] =
             inventoryFor(delivery.category) + delivery.quantity;
       }
@@ -2003,6 +2384,7 @@ class GameController extends ChangeNotifier {
   Map<String, dynamic> _saveSnapshot() {
     return <String, dynamic>{
       'version': 7,
+      'saveSchemaVersion': 2,
       'savedAt': _now().toIso8601String(),
       'coins': coins,
       'gems': gems,
@@ -2022,6 +2404,8 @@ class GameController extends ChangeNotifier {
       'shiftSales': shiftSales,
       'shiftRevenue': shiftRevenue,
       'shiftMissedSales': shiftMissedSales,
+      'shiftLedger': _shiftLedger.toJson(),
+      'shiftOperatingCostsApplied': _shiftOperatingCostsApplied,
       'shiftMissionClaimed': shiftMissionClaimed,
       'fastCheckoutClaimed': fastCheckoutClaimed,
       'dailyMissionClaimedOn': _dailyMissionClaimedOn?.toIso8601String(),
@@ -2035,6 +2419,15 @@ class GameController extends ChangeNotifier {
       'priceLevel': priceLevel,
       'speedLevel': speedLevel,
       'checkoutLevel': checkoutLevel,
+      'checkoutStations': _checkoutStations
+          .map(
+            (station) => <String, Object>{
+              'id': station.id,
+              'unlocked': station.unlocked,
+              'active': station.active,
+            },
+          )
+          .toList(growable: false),
       'restockLevel': restockLevel,
       'adsRemoved': adsRemoved,
       'totalActions': totalActions,
@@ -2150,7 +2543,7 @@ class GameController extends ChangeNotifier {
     _inventoryByCategory.clear();
     _departmentShelfStock.clear();
     _pendingDeliveries.clear();
-    _checkoutQueue.clear();
+    _resetCheckoutStations();
     stockerPosition = stockerPickupZone;
     _stockerLoad = 0;
     _stockerDepartment = null;
@@ -2344,6 +2737,12 @@ class GameController extends ChangeNotifier {
       const ['shiftMissedSales'],
       0,
       minimum: 0,
+    );
+    _shiftLedger = ShiftLedger.fromJson(saved['shiftLedger']);
+    _shiftOperatingCostsApplied = _readBoolAny(
+      saved,
+      const ['shiftOperatingCostsApplied'],
+      false,
     );
     shiftMissionClaimed = _readBoolAny(saved, const [
       'shiftMissionClaimed',
@@ -2597,7 +2996,66 @@ class GameController extends ChangeNotifier {
       restoredX.clamp(0.06, 0.94),
       restoredY.clamp(0.09, 0.94),
     );
+    _restoreCheckoutStations(saved['checkoutStations']);
     _reconcileAfterLoad();
+  }
+
+  void _resetCheckoutStations() {
+    for (final station in _checkoutStations) {
+      station.unlocked = station.id == primaryCheckoutStationId;
+      station.active = station.id == primaryCheckoutStationId;
+    }
+    _checkoutQueues
+      ..clear()
+      ..addEntries(
+        checkoutStationIds.map(
+          (id) => MapEntry<String, List<MarketCustomer>>(
+            id,
+            <MarketCustomer>[],
+          ),
+        ),
+      );
+  }
+
+  void _restoreCheckoutStations(Object? rawStations) {
+    _resetCheckoutStations();
+    if (rawStations is List) {
+      for (final rawStation in rawStations) {
+        if (rawStation is! Map) {
+          continue;
+        }
+        final station = Map<String, dynamic>.from(rawStation);
+        final id = station['id'];
+        if (id is! String || !checkoutStationIds.contains(id)) {
+          continue;
+        }
+        final state = _checkoutStations.firstWhere((item) => item.id == id);
+        state.unlocked = station['unlocked'] == true;
+        state.active = station['active'] == true && state.unlocked;
+        _checkoutQueues.putIfAbsent(id, () => <MarketCustomer>[]);
+      }
+    }
+
+    final primary = _checkoutStations.first;
+    primary.unlocked = true;
+    primary.active = true;
+    _unlockCheckoutStationsForLevel();
+  }
+
+  void _unlockCheckoutStationsForLevel() {
+    for (final station in _checkoutStations.skip(1)) {
+      final requiredLevel = station.id == 'checkout-2'
+          ? checkout2UnlockLevel
+          : checkout3UnlockLevel;
+      if (checkoutLevel >= requiredLevel) {
+        final wasUnlocked = station.unlocked;
+        station.unlocked = true;
+        if (!wasUnlocked) {
+          station.active = true;
+        }
+        _queueForCheckout(station.id);
+      }
+    }
   }
 
   void _reconcileAfterLoad() {

@@ -59,7 +59,7 @@ final class _WebAudioSfxBackend implements SfxBackend {
     }
 
     final now = context.currentTime;
-    switch (cue) {
+    switch (cue.fallback) {
       case SfxCue.click:
         _scheduleTone(
           context,
@@ -116,6 +116,8 @@ final class _WebAudioSfxBackend implements SfxBackend {
           gain: 0.028,
           wave: 'triangle',
         );
+      default:
+        return;
     }
   }
 
@@ -270,6 +272,7 @@ final class _WebAudioSfxBackend implements SfxBackend {
       return;
     }
 
+    _currentPhase = MusicPhase.silent;
     _releaseVoices();
     _ambientNoteTimer?.cancel();
     _ambientNoteTimer = null;

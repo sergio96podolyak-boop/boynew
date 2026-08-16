@@ -4,16 +4,30 @@ import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
 import '../../services/app_settings.dart';
+import '../theme/pomarket_design.dart';
 
-/// The single app-wide status header.
+/// Persistent HUD for the playable market and management screens.
 ///
-/// It participates in normal layout instead of being painted over the whole
-/// screen, so it never creates a modal-looking dim layer or covers gameplay.
+/// Layout is deliberately fixed rather than scrollable: the previous version
+/// packed five near-identical pills into a horizontal scroll view, which
+/// overflowed on phones and hid the save indicator. Now the level sits on the
+/// left, wallet on the right, and shift state renders as a full-width progress
+/// rail along the bottom edge — informative at zero extra height.
+/// Width kept clear at the trailing edge for the floating cloud-save badge
+/// (30px chip inset by 8 in [CloudSaveStatusLayer]).
+const double _cloudBadgeLane = 44;
+
 class GlobalHud extends StatelessWidget {
-  const GlobalHud({super.key, required this.game, required this.settings});
+  const GlobalHud({
+    super.key,
+    required this.game,
+    required this.settings,
+    this.compactMode = false,
+  });
 
   final GameController game;
   final AppSettings settings;
+  final bool compactMode;
 
   @override
   Widget build(BuildContext context) {
@@ -22,89 +36,124 @@ class GlobalHud extends StatelessWidget {
         settings.reducedMotion || MediaQuery.disableAnimationsOf(context);
 
     return Material(
-      color: const Color(0xFF063D2C),
-      elevation: 5,
-      shadowColor: const Color(0x55315F4A),
+      color: PoDepthColors.deepSea,
+      elevation: 10,
+      shadowColor: PoDepthColors.abyss.withValues(alpha: 0.55),
       child: SafeArea(
         bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxWidth < 360;
-            final compactBrand =
-                constraints.maxWidth >= 430 && constraints.maxWidth < 500;
-            final tight = constraints.maxWidth < 430;
-            final showSubtitle = constraints.maxWidth >= 350 && !compactBrand;
-
+            final width = constraints.maxWidth;
+            final compact = compactMode || width < 430;
+            final showPhaseLabel = width >= 380;
+            // Everything below is fixed-width; the brand wordmark is the only
+            // flexible element, so these thresholds decide what fits before the
+            // wordmark absorbs whatever is left.
+            final showBrandText = width >= 380;
+            final showPhaseBadge = width >= 400;
             return AnimatedBuilder(
               animation: game,
-              child: _HudBrand(
-                compactBrand: compactBrand,
-                showSubtitle: showSubtitle,
-                subtitle: loc.yourMiniMarket,
-              ),
-              builder: (context, brand) {
+              builder: (context, _) {
                 return Semantics(
                   container: true,
                   label:
                       'PoMarket, ${loc.levelLabel} ${game.storeLevel}, ${game.coins} ${loc.coinsShort}, ${game.gems} ${loc.gemsShort}',
                   child: SizedBox(
                     height: compact ? 58 : 66,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: compact ? 8 : 12,
-                        vertical: compact ? 7 : 8,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(child: brand!),
-                          _HudPill(
-                            icon: Icons.trending_up_rounded,
-                            label: 'L${game.storeLevel}',
-                            value: '${(game.levelProgress * 100).round()}%',
-                            color: const Color(0xFF38B879),
-                            compact: compact,
-                            reducedMotion: reducedMotion,
+                    child: Stack(
+                      children: [
+                        const Positioned.fill(child: _HudBackdrop()),
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                            compact ? 9 : 13,
+                            compact ? 6 : 8,
+                            // CloudSaveStatusLayer floats a 30px badge over the
+                            // top-end corner of the whole app. Reserving its
+                            // lane here stops it landing on the gem chip and
+                            // makes it read as part of the HUD.
+                            _cloudBadgeLane,
+                            // Room for the shift rail pinned to the bottom.
+                            compact ? 9 : 11,
                           ),
-                          SizedBox(width: compact ? 4 : 6),
-                          _HudPill(
-                            icon: Icons.monetization_on_rounded,
-                            label: loc.coinsShort,
-                            value: '${game.coins}',
-                            color: const Color(0xFFF6A623),
-                            compact: compact,
-                            reducedMotion: reducedMotion,
-                          ),
-                          SizedBox(width: compact ? 4 : 6),
-                          _HudPill(
-                            icon: Icons.diamond_rounded,
-                            label: loc.gemsShort,
-                            value: '${game.gems}',
-                            color: const Color(0xFF9B7AE6),
-                            compact: compact,
-                            reducedMotion: reducedMotion,
-                          ),
-                          SizedBox(width: compact ? 3 : 6),
-                          AnimatedBuilder(
-                            animation: game.scene,
-                            builder: (context, _) => _ShiftPill(
-                              game: game,
-                              loc: loc,
-                              compact: tight,
-                            ),
-                          ),
-                          if (game.shelfStock < 3) ...[
-                            SizedBox(width: compact ? 3 : 5),
-                            Tooltip(
-                              message: loc.lowStock,
-                              child: const Icon(
-                                Icons.warning_amber_rounded,
-                                color: Color(0xFFFF7C8F),
-                                size: 18,
+                          child: Row(
+                            children: [
+                              _BrandMark(compact: compact),
+                              SizedBox(width: compact ? 6 : 9),
+                              // Fixed width so the metric cluster below is the
+                              // single flexible child and owns all the slack.
+                              if (showBrandText) ...[
+                                SizedBox(
+                                  width: 92,
+                                  child: _BrandWordmark(
+                                    subtitle: loc.yourMiniMarket,
+                                  ),
+                                ),
+                                SizedBox(width: compact ? 6 : 9),
+                              ],
+                              _LevelChip(
+                                game: game,
+                                loc: loc,
+                                compact: compact,
+                                reducedMotion: reducedMotion,
                               ),
-                            ),
-                          ],
-                        ],
-                      ),
+                              // Takes every remaining pixel and right-aligns
+                              // inside it. On the narrowest phones the cluster
+                              // scales down a few percent instead of
+                              // overflowing the bar.
+                              Expanded(
+                                child: Align(
+                                  alignment: AlignmentDirectional.centerEnd,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: AlignmentDirectional.centerEnd,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (game.shelfStock < 3) ...[
+                                          SizedBox(width: compact ? 5 : 8),
+                                          _LowStockFlag(message: loc.lowStock),
+                                        ],
+                                        if (showPhaseBadge) ...[
+                                          SizedBox(width: compact ? 5 : 8),
+                                          _PhaseBadge(game: game, loc: loc),
+                                        ],
+                                        SizedBox(width: compact ? 5 : 8),
+                                        _WalletChip(
+                                          icon: Icons.monetization_on_rounded,
+                                          value: game.coins,
+                                          face: PoAccent.goldFace,
+                                          compact: compact,
+                                          semanticLabel: loc.coinsShort,
+                                          reducedMotion: reducedMotion,
+                                        ),
+                                        SizedBox(width: compact ? 5 : 8),
+                                        _WalletChip(
+                                          icon: Icons.diamond_rounded,
+                                          value: game.gems,
+                                          face: PoAccent.gemFace,
+                                          compact: compact,
+                                          semanticLabel: loc.gemsShort,
+                                          reducedMotion: reducedMotion,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PositionedDirectional(
+                          start: 0,
+                          end: 0,
+                          bottom: 0,
+                          child: _ShiftRail(
+                            game: game,
+                            loc: loc,
+                            showLabel: showPhaseLabel,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -117,234 +166,424 @@ class GlobalHud extends StatelessWidget {
   }
 }
 
-class _HudBrand extends StatelessWidget {
-  const _HudBrand({
-    required this.compactBrand,
-    required this.showSubtitle,
-    required this.subtitle,
-  });
+class _HudBackdrop extends StatelessWidget {
+  const _HudBackdrop();
 
-  final bool compactBrand;
-  final bool showSubtitle;
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [PoDepthColors.canopy, PoDepthColors.abyss],
+          stops: [0, 0.85],
+        ),
+      ),
+      child: CustomPaint(painter: _HudGlowPainter()),
+    );
+  }
+}
+
+class _HudGlowPainter extends CustomPainter {
+  const _HudGlowPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // A single soft bloom behind the brand keeps the bar from reading as a
+    // flat block without adding noise behind the numbers.
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..blendMode = BlendMode.plus
+        ..shader = RadialGradient(
+          center: const Alignment(-0.85, -0.5),
+          radius: 1.1,
+          colors: [
+            PoAccent.mintFace.withValues(alpha: 0.16),
+            Colors.transparent,
+          ],
+        ).createShader(rect),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _BrandMark extends StatelessWidget {
+  const _BrandMark({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 32.0 : 38.0;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF6DF0BA), Color(0xFF11A26D)],
+        ),
+        borderRadius: BorderRadius.circular(compact ? 11 : 13),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
+        boxShadow: PoDepth.glow(PoAccent.mintFace, strength: 0.7),
+      ),
+      child: Icon(
+        Icons.storefront_rounded,
+        color: PoDepthColors.abyss,
+        size: compact ? 18 : 21,
+      ),
+    );
+  }
+}
+
+/// Brand wordmark. Shrinks and ellipsizes so the metrics beside it always win
+/// the available width.
+class _BrandWordmark extends StatelessWidget {
+  const _BrandWordmark({required this.subtitle});
+
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: compactBrand ? 34 : 40,
-          height: compactBrand ? 34 : 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFF38B879),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            Icons.storefront_rounded,
+        const Text(
+          'POMARKET',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
             color: Colors.white,
-            size: compactBrand ? 20 : 23,
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.6,
+            height: 1,
           ),
         ),
-        if (!compactBrand) ...[
-          const SizedBox(width: 8),
-          Flexible(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'POMARKET',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                    height: 1,
-                  ),
-                ),
-                if (showSubtitle) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFFC9E9D9),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      height: 1,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+        const SizedBox(height: 3),
+        Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.66),
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            height: 1,
           ),
-        ],
+        ),
       ],
     );
   }
 }
 
-class _HudPill extends StatelessWidget {
-  const _HudPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.compact,
-    required this.reducedMotion,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-  final bool compact;
-  final bool reducedMotion;
-
-  @override
-  Widget build(BuildContext context) {
-    final valueText = Text(
-      value,
-      key: ValueKey(value),
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: compact ? 10 : 12,
-        fontWeight: FontWeight.w900,
-        height: 1,
-      ),
-    );
-
-    return Container(
-      constraints: BoxConstraints(minWidth: compact ? 42 : 48),
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 5 : 7,
-        vertical: compact ? 4 : 5,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.55)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: compact ? 12 : 14, color: color),
-          const SizedBox(width: 3),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  color: const Color(0xFFC9E9D9),
-                  fontSize: compact ? 7 : 8,
-                  fontWeight: FontWeight.w700,
-                  height: 1,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Directionality(
-                textDirection: TextDirection.ltr,
-                child: reducedMotion
-                    ? valueText
-                    : AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: valueText,
-                      ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ShiftPill extends StatelessWidget {
-  const _ShiftPill({
+/// Level readout with an inline progress track toward the next unlock.
+class _LevelChip extends StatelessWidget {
+  const _LevelChip({
     required this.game,
     required this.loc,
     required this.compact,
+    required this.reducedMotion,
   });
 
   final GameController game;
   final AppLocalizations loc;
   final bool compact;
+  final bool reducedMotion;
 
   @override
   Widget build(BuildContext context) {
-    final phase = switch (game.shiftPhase) {
-      ShiftPhase.preparation => loc.shiftPreparation,
-      ShiftPhase.open => loc.shiftOpen,
-      ShiftPhase.rush => loc.rushHour,
-      ShiftPhase.closing => loc.shiftClosing,
-      ShiftPhase.summary => loc.shiftSummary,
-    };
-    final rush = game.rushActive;
-    if (compact) {
-      return Semantics(
-        label: '${loc.shift} ${game.shiftNumber}, $phase',
-        child: Tooltip(
-          message: phase,
-          child: Icon(
-            rush ? Icons.local_fire_department_rounded : Icons.schedule_rounded,
-            color: rush ? const Color(0xFFFF8FA0) : const Color(0xFF65D7A5),
-            size: 18,
-          ),
-        ),
-      );
+    return _PopOnChange(
+      value: game.storeLevel,
+      reducedMotion: reducedMotion,
+      child: PoCurrencyChip(
+        icon: Icons.stars_rounded,
+        value: '${game.storeLevel}',
+        label: compact ? null : loc.levelLabel,
+        face: PoAccent.mintFace,
+        progress: game.levelProgress,
+        compact: compact,
+        semanticLabel: '${loc.levelLabel} ${game.storeLevel}',
+      ),
+    );
+  }
+}
+
+class _WalletChip extends StatelessWidget {
+  const _WalletChip({
+    required this.icon,
+    required this.value,
+    required this.face,
+    required this.compact,
+    required this.semanticLabel,
+    required this.reducedMotion,
+  });
+
+  final IconData icon;
+  final int value;
+  final Color face;
+  final bool compact;
+  final String semanticLabel;
+  final bool reducedMotion;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PopOnChange(
+      value: value,
+      reducedMotion: reducedMotion,
+      child: PoCurrencyChip(
+        icon: icon,
+        value: poShortNumber(value),
+        face: face,
+        compact: compact,
+        semanticLabel: '$semanticLabel $value',
+      ),
+    );
+  }
+}
+
+/// Scales its child briefly whenever the tracked value changes, so earnings
+/// and spends register even when the player is looking at the market board.
+class _PopOnChange extends StatefulWidget {
+  const _PopOnChange({
+    required this.value,
+    required this.reducedMotion,
+    required this.child,
+  });
+
+  final int value;
+  final bool reducedMotion;
+  final Widget child;
+
+  @override
+  State<_PopOnChange> createState() => _PopOnChangeState();
+}
+
+class _PopOnChangeState extends State<_PopOnChange>
+    with SingleTickerProviderStateMixin {
+  // Constructed eagerly: build() returns early under reduced motion and never
+  // touches the controller, so a lazy `late final` would first run its
+  // initialiser inside dispose(), where looking up TickerMode on the
+  // already-deactivated element throws.
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+      value: 1,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _PopOnChange oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value && !widget.reducedMotion) {
+      _controller
+        ..value = 0
+        ..forward();
     }
-    return Semantics(
-      label: '${loc.shift} ${game.shiftNumber}, $phase',
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.reducedMotion) return widget.child;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = Curves.easeOutBack.transform(_controller.value);
+        return Transform.scale(scale: 0.86 + 0.14 * t, child: child);
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// Phase, colour and icon for the current point in the shift cycle.
+({String label, Color face, IconData icon}) _phaseStyle(
+  ShiftPhase phase,
+  AppLocalizations loc,
+) => switch (phase) {
+  ShiftPhase.preparation => (
+    label: loc.shiftPreparation,
+    face: PoAccent.goldFace,
+    icon: Icons.build_circle_rounded,
+  ),
+  ShiftPhase.open => (
+    label: loc.shiftOpen,
+    face: PoAccent.mintFace,
+    icon: Icons.lock_open_rounded,
+  ),
+  ShiftPhase.rush => (
+    label: loc.rushHour,
+    face: PoAccent.coralFace,
+    icon: Icons.local_fire_department_rounded,
+  ),
+  ShiftPhase.closing => (
+    label: loc.shiftClosing,
+    face: PoAccent.goldFace,
+    icon: Icons.schedule_rounded,
+  ),
+  ShiftPhase.summary => (
+    label: loc.shiftSummary,
+    face: PoAccent.gemFace,
+    icon: Icons.assessment_rounded,
+  ),
+};
+
+/// Compact phase marker. The rail below carries the timing; this carries the
+/// identity, so it stays readable even on the narrowest phones.
+class _PhaseBadge extends StatelessWidget {
+  const _PhaseBadge({required this.game, required this.loc});
+
+  final GameController game;
+  final AppLocalizations loc;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _phaseStyle(game.shiftPhase, loc);
+    return Tooltip(
+      message: '${style.label} · ${loc.shift} ${game.shiftNumber}',
       child: Container(
-        constraints: BoxConstraints(minWidth: compact ? 40 : 54),
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 4 : 7,
-          vertical: compact ? 4 : 5,
-        ),
+        width: 30,
+        height: 30,
         decoration: BoxDecoration(
-          color: (rush ? const Color(0xFFE85D75) : const Color(0xFF2B9C73))
-              .withValues(alpha: 0.22),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: rush ? const Color(0xFFFF8FA0) : const Color(0xFF65D7A5),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              PoAccent.lighten(style.face),
+              PoAccent.deepen(style.face),
+            ],
           ),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.36)),
+          boxShadow: PoDepth.glow(style.face, strength: 0.55),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Icon(style.icon, color: Colors.white, size: 16),
+      ),
+    );
+  }
+}
+
+/// Full-width shift timing rail pinned to the bottom edge of the HUD.
+///
+/// Deliberately text-free at phone widths: a 7px caption inside a 9px bar was
+/// unreadable. The colour comes from the phase badge above it, so the rail only
+/// has to answer "how far through are we".
+class _ShiftRail extends StatelessWidget {
+  const _ShiftRail({
+    required this.game,
+    required this.loc,
+    required this.showLabel,
+  });
+
+  final GameController game;
+  final AppLocalizations loc;
+  final bool showLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _phaseStyle(game.shiftPhase, loc);
+    return Semantics(
+      label: '${style.label}, ${loc.shift} ${game.shiftNumber}',
+      child: SizedBox(
+        height: showLabel ? 13 : 6,
+        child: Stack(
           children: [
-            Text(
-              '${loc.shift} ${game.shiftNumber}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: compact ? 7 : 8,
-                fontWeight: FontWeight.w900,
+            Positioned.fill(
+              child: ColoredBox(
+                color: PoDepthColors.abyss.withValues(alpha: 0.6),
               ),
             ),
-            const SizedBox(height: 3),
-            SizedBox(
-              width: compact ? 32 : 40,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(99),
-                child: LinearProgressIndicator(
-                  value: game.shiftProgress,
-                  minHeight: compact ? 3 : 4,
-                  color: rush
-                      ? const Color(0xFFFF8FA0)
-                      : const Color(0xFF65D7A5),
-                  backgroundColor: Colors.white.withValues(alpha: 0.18),
+            Positioned.fill(
+              child: FractionallySizedBox(
+                alignment: AlignmentDirectional.centerStart,
+                widthFactor: game.shiftProgress.clamp(0.0, 1.0),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [PoAccent.lighten(style.face), style.face],
+                    ),
+                    boxShadow: PoDepth.glow(style.face, strength: 0.45),
+                  ),
                 ),
               ),
             ),
+            if (showLabel)
+              PositionedDirectional(
+                start: 13,
+                top: 0,
+                bottom: 0,
+                child: Align(
+                  child: Text(
+                    '${style.label.toUpperCase()} · ${loc.shift} ${game.shiftNumber}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PoNumerals.caption.copyWith(
+                      color: Colors.white,
+                      fontSize: 8,
+                      shadows: [
+                        Shadow(
+                          color: PoDepthColors.abyss.withValues(alpha: 0.95),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LowStockFlag extends StatelessWidget {
+  const _LowStockFlag({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: message,
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [PoAccent.coralFace, PoAccent.coralDeep],
+          ),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+          boxShadow: PoDepth.glow(PoAccent.coralFace, strength: 0.7),
+        ),
+        child: const Icon(
+          Icons.priority_high_rounded,
+          color: Colors.white,
+          size: 17,
         ),
       ),
     );

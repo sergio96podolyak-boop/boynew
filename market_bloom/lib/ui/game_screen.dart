@@ -12,20 +12,42 @@ import '../services/monetization_service.dart';
 import '../services/sfx/sfx_backend.dart';
 import '../services/sfx/sfx_manager.dart';
 import 'market_painter.dart';
+import 'theme/pomarket_design.dart';
 import 'widgets/celebration_overlay.dart';
 import 'widgets/onboarding_dialog.dart';
 import 'widgets/pressable_scale.dart';
+import 'widgets/shift_pnl_summary.dart';
 import 'widgets/touch_movement.dart';
+
+/// Board outline used by the lighting overlay.
+///
+/// Derived from the same layout [MarketPainter] paints with, so the grade lands
+/// exactly on the room instead of bleeding past its rounded corners. Kept
+/// top-level so the function identity is stable across rebuilds and the
+/// overlay's `shouldRepaint` stays cheap.
+RRect boardClipFor(Size size) {
+  final layout = MarketWorldLayout.forSize(size);
+  return RRect.fromRectAndRadius(
+    layout.market,
+    Radius.circular(22 * layout.scale),
+  );
+}
 
 class GameScreen extends StatefulWidget {
   const GameScreen({
     super.key,
     required this.controller,
     required this.settings,
+    this.onOpenStaff,
+    this.onOpenInventory,
+    this.onOpenDepartments,
   });
 
   final GameController controller;
   final AppSettings settings;
+  final VoidCallback? onOpenStaff;
+  final VoidCallback? onOpenInventory;
+  final VoidCallback? onOpenDepartments;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -217,11 +239,18 @@ class _GameScreenState extends State<GameScreen>
     return CelebrationOverlay(
       controller: _celebration,
       child: DecoratedBox(
+        // Deep stage behind the board so the lit market and the cream cards
+        // read as foreground. A pale backdrop flattened both.
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFDDF5E8), Color(0xFFF8EED9)],
+            colors: [
+              PoDepthColors.forest,
+              PoDepthColors.deepSea,
+              PoDepthColors.abyss,
+            ],
+            stops: [0, 0.5, 1],
           ),
         ),
         child: SafeArea(
@@ -241,7 +270,15 @@ class _GameScreenState extends State<GameScreen>
                           height: MediaQuery.sizeOf(context).width <= 420
                               ? 52
                               : 64,
-                          padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+                          // Trailing gap clears the floating world menu that
+                          // AppShell pins to the top-end corner, which was
+                          // sitting on top of the objective text.
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            8,
+                            2,
+                            72,
+                            2,
+                          ),
                           alignment: Alignment.center,
                           child: _QuestCard(
                             quest: game.quest,
@@ -346,6 +383,19 @@ class _GameScreenState extends State<GameScreen>
                                               ),
                                             ),
                                           ),
+                                          // Cinematic grade over the board art:
+                                          // warm key light on the play area,
+                                          // cool falloff at the corners.
+                                          Positioned.fill(
+                                            child: RepaintBoundary(
+                                              child: WorldLightOverlay(
+                                                warmth: settings.reducedMotion
+                                                    ? 0.6
+                                                    : 1,
+                                                clipper: boardClipFor,
+                                              ),
+                                            ),
+                                          ),
                                           Positioned.fill(
                                             child: TouchMovement(
                                               game: game,
@@ -353,15 +403,28 @@ class _GameScreenState extends State<GameScreen>
                                               controlMode: settings.controlMode,
                                             ),
                                           ),
+                                          PositionedDirectional(
+                                            start: 10,
+                                            end: 10,
+                                            bottom: 8,
+                                            child: _WorldContextActions(
+                                              game: game,
+                                              onOpenStaff: widget.onOpenStaff,
+                                              onOpenInventory:
+                                                  widget.onOpenInventory,
+                                              onOpenDepartments:
+                                                  widget.onOpenDepartments,
+                                            ),
+                                          ),
                                           if (game.pendingShiftSummary != null)
-                                            Positioned(
-                                              left: 16,
-                                              right: 16,
-                                              bottom: 12,
-                                              child: _ShiftSummaryCard(
-                                                summary: game.pendingShiftSummary!,
-                                                onContinue: game.startNextShift,
-                                                onUpgrade: _showUpgrades,
+                                            Positioned.fill(
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(8),
+                                                child: ShiftPnlSummary(
+                                                  summary: game.pendingShiftSummary!,
+                                                  cashBalance: game.coins,
+                                                  onContinue: game.startNextShift,
+                                                ),
                                               ),
                                             ),
                                           if (game.fastCheckoutActive)
@@ -442,14 +505,6 @@ class _GameScreenState extends State<GameScreen>
                               },
                             ),
                           ),
-                        _ControlDeck(
-                          game: game,
-                          settings: settings,
-                          onUpgrades: _showUpgrades,
-                          onReward: _showRewardCenter,
-                          onShop: _showMoneyShop,
-                        ),
-                        const SizedBox(height: 4),
                       ],
                     ),
                   ),
@@ -526,6 +581,18 @@ class _GameScreenState extends State<GameScreen>
     return true;
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showRewardCenter() {
     return showModalBottomSheet<void>(
       context: context,
@@ -538,6 +605,18 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showUpgrades() {
     return showModalBottomSheet<void>(
       context: context,
@@ -559,6 +638,18 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showMoneyShop() {
     unawaited(SfxManager.instance.click());
     return showModalBottomSheet<void>(
@@ -1030,127 +1121,6 @@ String _formatRewardDuration(Duration duration) {
   return '$minutes:${seconds.toString().padLeft(2, '0')}';
 }
 
-class _ShiftSummaryCard extends StatelessWidget {
-  const _ShiftSummaryCard({
-    required this.summary,
-    required this.onContinue,
-    required this.onUpgrade,
-  });
-
-  final ShiftSummary summary;
-  final VoidCallback onContinue;
-  final VoidCallback onUpgrade;
-
-  @override
-  Widget build(BuildContext context) {
-    final loc = AppLocalizations.of(context);
-    final satisfaction = (summary.satisfaction * 100).round();
-    return Card(
-      elevation: 10,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              loc.shiftSummary.replaceFirst(
-                '{shift}',
-                '${summary.shiftNumber}',
-              ),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _SummaryMetric(
-                  icon: Icons.point_of_sale_rounded,
-                  label: loc.sales,
-                  value: '${summary.sales}',
-                ),
-                _SummaryMetric(
-                  icon: Icons.monetization_on_rounded,
-                  label: loc.revenue,
-                  value: '${summary.revenue}',
-                ),
-                _SummaryMetric(
-                  icon: Icons.sentiment_satisfied_alt_rounded,
-                  label: loc.satisfaction,
-                  value: '$satisfaction%',
-                ),
-                _SummaryMetric(
-                  icon: Icons.warning_amber_rounded,
-                  label: loc.missedSales,
-                  value: '${summary.missedSales}',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onUpgrade,
-                    child: Text(loc.upgradeNow),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: onContinue,
-                    child: Text(loc.continueShift),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryMetric extends StatelessWidget {
-  const _SummaryMetric({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              '$label $value',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _FastCheckoutBanner extends StatelessWidget {
   const _FastCheckoutBanner({required this.claimed, required this.onClaim});
 
@@ -1391,6 +1361,233 @@ class _CompactQuestDetails extends StatelessWidget {
   }
 }
 
+class _WorldContextActions extends StatelessWidget {
+  const _WorldContextActions({
+    required this.game,
+    required this.onOpenStaff,
+    required this.onOpenInventory,
+    required this.onOpenDepartments,
+  });
+
+  final GameController game;
+  final VoidCallback? onOpenStaff;
+  final VoidCallback? onOpenInventory;
+  final VoidCallback? onOpenDepartments;
+
+  @override
+  Widget build(BuildContext context) {
+    final contextType = _contextFor(game);
+    if (contextType == null || game.pendingShiftSummary != null) {
+      return const SizedBox.shrink();
+    }
+    final labels = _contextLabels(context);
+    final actions = switch (contextType) {
+      _WorldActionContext.shelf => <_WorldAction>[
+        _WorldAction(
+          label: labels.stock,
+          icon: Icons.inventory_2_rounded,
+          onPressed: onOpenInventory,
+        ),
+        _WorldAction(
+          label: labels.inspect,
+          icon: Icons.search_rounded,
+          onPressed: onOpenDepartments,
+        ),
+      ],
+      _WorldActionContext.checkout => <_WorldAction>[
+        _WorldAction(
+          label: labels.checkout,
+          icon: Icons.point_of_sale_rounded,
+          onPressed: () {
+            game.clearMovementTarget();
+            _showContextHint(context, game.interactionHint);
+          },
+        ),
+        _WorldAction(
+          label: labels.queue,
+          icon: Icons.groups_rounded,
+          onPressed: onOpenStaff,
+        ),
+      ],
+      _WorldActionContext.bakery => <_WorldAction>[
+        _WorldAction(
+          label: labels.bakery,
+          icon: Icons.bakery_dining_rounded,
+          onPressed: onOpenDepartments,
+        ),
+        _WorldAction(
+          label: labels.stock,
+          icon: Icons.inventory_2_rounded,
+          onPressed: onOpenInventory,
+        ),
+      ],
+      _WorldActionContext.storage => <_WorldAction>[
+        _WorldAction(
+          label: labels.storage,
+          icon: Icons.warehouse_rounded,
+          onPressed: onOpenInventory,
+        ),
+        _WorldAction(
+          label: labels.restock,
+          icon: Icons.local_shipping_rounded,
+          onPressed: () {
+            final ordered = game.placeQuickRestock() != null;
+            _showContextHint(
+              context,
+              ordered ? labels.restockOrdered : game.interactionHint,
+            );
+          },
+        ),
+      ],
+    };
+    // These are the primary in-world calls to action, so they get the full
+    // extruded treatment rather than flat text on a shared slab.
+    return Center(
+      child: Row(
+        key: const ValueKey('world-context-actions'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < actions.length; index++) ...[
+            if (index > 0) const SizedBox(width: 8),
+            _WorldContextButton(action: actions[index], primary: index == 0),
+          ],
+        ],
+      ),
+    );
+  }
+
+  _WorldActionContext? _contextFor(GameController game) {
+    final position = game.playerPosition;
+    if ((position - GameController.stockZone).distance <= .17) {
+      return _WorldActionContext.storage;
+    }
+    if ((position - GameController.bakeryZone).distance <= .17) {
+      return _WorldActionContext.bakery;
+    }
+    if (game.checkoutStations.any(
+      (station) =>
+          station.unlocked &&
+          (position - game.checkoutStationZone(station.id)).distance <= .17,
+    )) {
+      return _WorldActionContext.checkout;
+    }
+    if ((position - GameController.shelfZone).distance <= .24) {
+      return _WorldActionContext.shelf;
+    }
+    return null;
+  }
+}
+
+enum _WorldActionContext { shelf, checkout, bakery, storage }
+
+class _WorldAction {
+  const _WorldAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+}
+
+class _WorldContextButton extends StatelessWidget {
+  const _WorldContextButton({required this.action, this.primary = false});
+
+  final _WorldAction action;
+
+  /// The leading action in a context group reads as the main move and gets the
+  /// bright face; the rest stay in the darker supporting tone.
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return PoButton(
+      onPressed: action.onPressed,
+      semanticLabel: action.label,
+      face: primary ? PoAccent.mintFace : PoDepthColors.canopy,
+      radius: 15,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(action.icon, size: 17),
+          const SizedBox(width: 6),
+          Text(action.label, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+({
+  String stock,
+  String inspect,
+  String checkout,
+  String queue,
+  String bakery,
+  String storage,
+  String restock,
+  String restockOrdered,
+}) _contextLabels(BuildContext context) {
+  return switch (Localizations.localeOf(context).languageCode) {
+    'he' => (
+      stock: 'מלאי',
+      inspect: 'בדיקה',
+      checkout: 'קופה',
+      queue: 'תור',
+      bakery: 'מאפייה',
+      storage: 'מחסן',
+      restock: 'הזמנה',
+      restockOrdered: 'המלאי הוזמן',
+    ),
+    'ar' => (
+      stock: 'المخزون',
+      inspect: 'فحص',
+      checkout: 'الدفع',
+      queue: 'الطابور',
+      bakery: 'المخبز',
+      storage: 'المخزن',
+      restock: 'إعادة الطلب',
+      restockOrdered: 'تم طلب المخزون',
+    ),
+    _ => (
+      stock: 'Stock',
+      inspect: 'Inspect',
+      checkout: 'Checkout',
+      queue: 'Queue',
+      bakery: 'Bakery',
+      storage: 'Storage',
+      restock: 'Restock',
+      restockOrdered: 'Stock ordered',
+    ),
+  };
+}
+
+void _showContextHint(BuildContext context, String message) {
+  if (message.trim().isEmpty) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(milliseconds: 1300),
+    ),
+  );
+}
+
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
 class _ControlDeck extends StatelessWidget {
   const _ControlDeck({
     required this.game,

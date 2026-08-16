@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../game/economy_calculator.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../widgets/management_ui.dart';
+import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
 
 class DepartmentsScreen extends StatelessWidget {
@@ -13,207 +16,58 @@ class DepartmentsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(loc.departmentsTitle)),
-      body: AnimatedBuilder(
+    return ManagementScaffold(
+      title: loc.departmentsTitle,
+      icon: Icons.grid_view_rounded,
+      child: AnimatedBuilder(
         animation: controller,
         builder: (context, _) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
           children: [
-            _OperationsHeader(controller: controller, loc: loc),
-            const SizedBox(height: 20),
-            Text(
-              loc.departmentMilestones,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            ManagementHero(
+              icon: Icons.dashboard_customize_rounded,
+              title: loc.departmentOperations,
+              subtitle: '${loc.level} ${controller.storeLevel}',
+              metrics: [
+                ManagementHeroMetric(
+                  icon: Icons.store_mall_directory_rounded,
+                  label: loc.activeDepartments,
+                  value:
+                      '${controller.activeDepartmentCount}/${DepartmentType.values.length}',
+                ),
+                ManagementHeroMetric(
+                  icon: Icons.inventory_2_rounded,
+                  label: loc.floorStock,
+                  value: '${controller.totalShelfInventory}',
+                ),
+                ManagementHeroMetric(
+                  icon: Icons.trending_up_rounded,
+                  label: loc.salesBoost,
+                  value: '+${controller.departmentSalesBonus}',
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              loc.departmentOperationsSubtitle,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            const SizedBox(height: 22),
+            ManagementSectionTitle(
+              title: loc.departmentMilestones,
+              subtitle: loc.departmentOperationsSubtitle,
             ),
-            const SizedBox(height: 14),
-            for (final definition in DepartmentCatalog.all) ...[
-              _DepartmentCard(
-                key: ValueKey('department-card-${definition.type.name}'),
-                definition: definition,
-                controller: controller,
-                loc: loc,
-              ),
-              const SizedBox(height: 14),
-            ],
+            const SizedBox(height: 12),
+            ManagementResponsiveWrap(
+              children: [
+                for (final definition in DepartmentCatalog.all)
+                  _DepartmentCard(
+                    key: ValueKey(
+                      'department-card-${definition.type.name}',
+                    ),
+                    definition: definition,
+                    controller: controller,
+                    loc: loc,
+                  ),
+              ],
+            ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _OperationsHeader extends StatelessWidget {
-  const _OperationsHeader({required this.controller, required this.loc});
-
-  final GameController controller;
-  final AppLocalizations loc;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF163F35), Color(0xFF237A5A), Color(0xFF46B981)],
-        ),
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x33237A5A),
-            blurRadius: 22,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0x55FFFFFF)),
-                ),
-                child: const Icon(
-                  Icons.dashboard_customize_rounded,
-                  color: Colors.white,
-                  size: 29,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      loc.departmentOperations,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      '${loc.level} ${controller.storeLevel}',
-                      style: const TextStyle(
-                        color: Color(0xD9FFFFFF),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD46B),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '${controller.activeDepartmentCount}/${DepartmentType.values.length}',
-                  style: const TextStyle(
-                    color: Color(0xFF163F35),
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _HeaderMetric(
-                icon: Icons.store_mall_directory_rounded,
-                label: loc.activeDepartments,
-                value: '${controller.activeDepartmentCount}',
-              ),
-              _HeaderMetric(
-                icon: Icons.inventory_2_rounded,
-                label: loc.floorStock,
-                value: '${controller.totalShelfInventory}',
-              ),
-              _HeaderMetric(
-                icon: Icons.trending_up_rounded,
-                label: loc.salesBoost,
-                value: '+${controller.departmentSalesBonus}',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderMetric extends StatelessWidget {
-  const _HeaderMetric({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 96),
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0x33FFFFFF)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: const Color(0xFFFFD46B), size: 18),
-          const SizedBox(width: 7),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xCFFFFFFF),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -244,449 +98,396 @@ class _DepartmentCard extends StatelessWidget {
     final stock = controller.departmentStock(definition.type);
     final capacity = controller.departmentCapacity(definition.type);
     final storage = controller.departmentStorage(definition.type);
+    final price = controller.departmentItemPrice(definition.type);
+    final orderRevenue = EconomyCalculator.grossRevenueForOrder(
+      definition,
+      sellingPrice: price,
+    );
+    final orderProfit = EconomyCalculator.grossProfitForOrder(
+      definition,
+      sellingPrice: price,
+    );
+    final profitPerItem = EconomyCalculator.estimatedProfitPerItem(
+      definition,
+      sellingPrice: price,
+    );
+    final margin = EconomyCalculator.grossMargin(
+      definition,
+      sellingPrice: price,
+    );
+    final demand = controller.departmentDemand(definition.type);
+    final upgradeCost = controller.departmentUpgradeCost(definition.type);
     final pending = controller.hasPendingDepartmentDelivery(definition.type);
     final selected =
         controller.selectedRestockDepartment == definition.type && unlocked;
-    final background = unlocked
-        ? definition.color
-        : Theme.of(context).colorScheme.surfaceContainerHighest;
+    final upgradeable = unlocked && state.level < 10;
 
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(27),
-          border: Border.all(
-            color: unlocked
-                ? definition.color.withValues(alpha: 0.38)
-                : Theme.of(context).colorScheme.outlineVariant,
-            width: unlocked ? 2 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: unlocked
-                  ? definition.color.withValues(alpha: 0.16)
-                  : const Color(0x10000000),
-              blurRadius: 18,
-              offset: const Offset(0, 7),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(17),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: unlocked
-                      ? [
-                          background,
-                          Color.lerp(background, Colors.black, 0.18)!,
-                        ]
-                      : [
-                          background,
-                          Theme.of(context).colorScheme.surfaceContainer,
-                        ],
+      color: Colors.transparent,
+      child: ManagementCard(
+        accent: definition.color,
+        highlighted: unlocked,
+        muted: !unlocked,
+        padding: EdgeInsets.zero,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(23),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: unlocked
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            definition.color,
+                            Color.lerp(definition.color, Colors.black, 0.24)!,
+                          ],
+                        )
+                      : const LinearGradient(
+                          colors: [Color(0xFFE8EAE5), Color(0xFFDADFD8)],
+                        ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 66,
-                    height: 66,
-                    decoration: BoxDecoration(
-                      color: unlocked
-                          ? Colors.white.withValues(alpha: 0.18)
-                          : Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 60,
+                      height: 60,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
                         color: unlocked
-                            ? const Color(0x55FFFFFF)
-                            : Theme.of(context).colorScheme.outlineVariant,
+                            ? Colors.white.withValues(alpha: 0.17)
+                            : Colors.white.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(19),
+                        border: Border.all(
+                          color: unlocked
+                              ? const Color(0x44FFFFFF)
+                              : PoMarketPalette.line,
+                        ),
+                      ),
+                      child: unlocked
+                          ? Text(
+                              definition.emoji,
+                              style: const TextStyle(fontSize: 29),
+                            )
+                          : const Icon(
+                              Icons.lock_rounded,
+                              color: PoMarketPalette.muted,
+                              size: 27,
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _nameFor(definition.type, loc),
+                            style: TextStyle(
+                              color: unlocked
+                                  ? Colors.white
+                                  : PoMarketPalette.ink,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _descriptionFor(definition.type, loc),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: unlocked
+                                  ? Colors.white.withValues(alpha: 0.82)
+                                  : PoMarketPalette.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    alignment: Alignment.center,
-                    child: unlocked
-                        ? Text(
-                            definition.emoji,
-                            style: const TextStyle(fontSize: 31),
-                          )
-                        : Icon(
-                            Icons.lock_rounded,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                            size: 29,
-                          ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _nameFor(definition.type, loc),
-                          style: TextStyle(
-                            color: unlocked
-                                ? Colors.white
-                                : Theme.of(context).colorScheme.onSurface,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _descriptionFor(definition.type, loc),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: unlocked
-                                ? Colors.white.withValues(alpha: 0.84)
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    ManagementStatusPill(
+                      label: unlocked
+                          ? '${loc.unlocked} · ${loc.level} ${state.level}'
+                          : loc.locked,
+                      color: unlocked
+                          ? Colors.white
+                          : PoMarketPalette.muted,
+                      icon: unlocked
+                          ? Icons.check_circle_rounded
+                          : Icons.lock_rounded,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _StatusPill(
-                    unlocked: unlocked,
-                    text: unlocked
-                        ? '${loc.unlocked} · ${loc.level} ${state.level}'
-                        : loc.locked,
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(17),
-              child: unlocked
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _StockProgress(
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: unlocked
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            loc.floorStock,
+                                            style: const TextStyle(
+                                              color: PoMarketPalette.muted,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          '$stock/$capacity',
+                                          style: const TextStyle(
+                                            color: PoMarketPalette.ink,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: LinearProgressIndicator(
+                                        value: capacity <= 0
+                                            ? 0
+                                            : (stock / capacity).clamp(0, 1),
+                                        minHeight: 8,
+                                        color: definition.color,
+                                        backgroundColor: definition.color
+                                            .withValues(alpha: 0.11),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              ManagementStatusPill(
+                                label: '${loc.level} ${state.level}',
+                                color: PoMarketPalette.violet,
+                                icon: Icons.stars_rounded,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 13),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ManagementInfoTile(
+                                icon: Icons.warehouse_rounded,
+                                label: loc.warehouseStock,
+                                value: '$storage',
+                                color: PoMarketPalette.gold,
+                              ),
+                              ManagementInfoTile(
+                                icon: Icons.local_fire_department_rounded,
+                                label: loc.demand,
+                                value: '${(demand * 100).round()}%',
                                 color: definition.color,
-                                value: stock,
-                                capacity: capacity,
-                                label: loc.floorStock,
+                              ),
+                              ManagementInfoTile(
+                                icon: Icons.payments_rounded,
+                                label: _term(
+                                  context,
+                                  en: 'Order revenue',
+                                  he: 'הכנסה להזמנה',
+                                  ar: 'إيراد الطلب',
+                                ),
+                                value: '$orderRevenue',
+                                color: PoMarketPalette.blue,
+                              ),
+                              ManagementInfoTile(
+                                icon: orderProfit < 0
+                                    ? Icons.trending_down_rounded
+                                    : Icons.trending_up_rounded,
+                                label: _term(
+                                  context,
+                                  en: 'Order profit',
+                                  he: 'רווח להזמנה',
+                                  ar: 'ربح الطلب',
+                                ),
+                                value: '$orderProfit',
+                                color: PoMarketPalette.mint,
+                                negative: orderProfit < 0,
+                              ),
+                              // Keep the established localized presentation;
+                              // tests and players already know this as "Value".
+                              ManagementInfoTile(
+                                icon: Icons.sell_rounded,
+                                label: loc.estimatedProfit,
+                                value: '$profitPerItem',
+                                color: PoMarketPalette.mint,
+                                negative: profitPerItem < 0,
+                              ),
+                              ManagementInfoTile(
+                                icon: Icons.percent_rounded,
+                                label: _term(
+                                  context,
+                                  en: 'Margin',
+                                  he: 'מרווח',
+                                  ar: 'الهامش',
+                                ),
+                                value: '${(margin * 100).round()}%',
+                                color: PoMarketPalette.violet,
+                                negative: margin < 0,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 13),
+                          Container(
+                            padding: const EdgeInsets.all(11),
+                            decoration: BoxDecoration(
+                              color: PoMarketPalette.violet.withValues(
+                                alpha: 0.08,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: PoMarketPalette.violet.withValues(
+                                  alpha: 0.16,
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 14),
-                            _LevelBadge(level: state.level),
-                          ],
-                        ),
-                        const SizedBox(height: 15),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _DataChip(
-                              icon: Icons.warehouse_rounded,
-                              label: loc.warehouseStock,
-                              value: '$storage',
-                              color: const Color(0xFFF0A12B),
-                            ),
-                            _DataChip(
-                              icon: Icons.sell_rounded,
-                              label: loc.profitPerItem,
-                              value:
-                                  '${controller.departmentItemPrice(definition.type)}',
-                              color: const Color(0xFF37A877),
-                            ),
-                            _DataChip(
-                              icon: Icons.shopping_basket_rounded,
-                              label: loc.itemsSold,
-                              value: '${state.itemsSold}',
-                              color: definition.color,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 15),
-                        Wrap(
-                          spacing: 9,
-                          runSpacing: 9,
-                          children: [
-                            _ActionButton(
-                              icon: selected
-                                  ? Icons.check_circle_rounded
-                                  : Icons.inventory_rounded,
-                              label: selected
-                                  ? loc.crateSelected
-                                  : loc.prepareCrate,
-                              color: definition.color,
-                              filled: selected,
-                              onPressed: selected
-                                  ? null
-                                  : () => controller.selectRestockDepartment(
-                                      definition.type,
-                                    ),
-                            ),
-                            _ActionButton(
-                              icon: pending
-                                  ? Icons.local_shipping_rounded
-                                  : Icons.add_shopping_cart_rounded,
-                              label: pending
-                                  ? loc.deliveryInTransit
-                                  : '${loc.orderCategoryStock} · ${definition.orderCost}',
-                              color: const Color(0xFFF0A12B),
-                              filled: false,
-                              onPressed:
-                                  controller.canOrderDepartmentStock(
-                                    definition.type,
-                                  )
-                                  ? () => _order(context)
-                                  : null,
-                            ),
-                            _ActionButton(
-                              icon: Icons.upgrade_rounded,
-                              label:
-                                  '${loc.upgradeDepartment} · ${controller.departmentUpgradeCost(definition.type)}',
-                              color: const Color(0xFF7658C8),
-                              filled: false,
-                              onPressed:
-                                  state.level < 10 &&
-                                      controller.coins >=
-                                          controller.departmentUpgradeCost(
-                                            definition.type,
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.auto_graph_rounded,
+                                  color: PoMarketPalette.violet,
+                                  size: 19,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    upgradeable
+                                        ? _term(
+                                            context,
+                                            en: 'Next upgrade: +2 floor capacity and stronger department contribution.',
+                                            he: 'השדרוג הבא: ‎+2 קיבולת מדף ותרומה חזקה יותר של המחלקה.',
+                                            ar: 'الترقية التالية: +2 سعة عرض ومساهمة أقوى للقسم.',
                                           )
-                                  ? () => _upgrade(context)
-                                  : null,
+                                        : loc.maxLevel,
+                                    style: const TextStyle(
+                                      color: PoMarketPalette.ink,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                if (upgradeable)
+                                  Text(
+                                    '$upgradeCost',
+                                    style: const TextStyle(
+                                      color: PoMarketPalette.violet,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ],
-                    )
-                  : _LockedPanel(
-                      definition: definition,
-                      loc: loc,
-                      meetsLevel: meetsLevel,
-                      onUnlock: canUnlock ? () => _unlock(context) : null,
-                    ),
-            ),
-          ],
+                          ),
+                          const SizedBox(height: 14),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _ActionButton(
+                                icon: selected
+                                    ? Icons.check_circle_rounded
+                                    : Icons.inventory_rounded,
+                                label: selected
+                                    ? loc.crateSelected
+                                    : loc.prepareCrate,
+                                color: definition.color,
+                                filled: selected,
+                                onPressed: selected
+                                    ? null
+                                    : () => controller.selectRestockDepartment(
+                                        definition.type,
+                                      ),
+                              ),
+                              _ActionButton(
+                                icon: pending
+                                    ? Icons.local_shipping_rounded
+                                    : Icons.add_shopping_cart_rounded,
+                                label: pending
+                                    ? loc.deliveryInTransit
+                                    : '${loc.orderCategoryStock} · ${definition.orderCost}',
+                                color: PoMarketPalette.gold,
+                                filled: false,
+                                onPressed:
+                                    controller.canOrderDepartmentStock(
+                                      definition.type,
+                                    )
+                                    ? () => _order(context)
+                                    : null,
+                              ),
+                              _ActionButton(
+                                icon: Icons.upgrade_rounded,
+                                label: upgradeable
+                                    ? '${loc.upgradeDepartment} · $upgradeCost'
+                                    : loc.maxLevel,
+                                color: PoMarketPalette.violet,
+                                filled: false,
+                                onPressed:
+                                    upgradeable &&
+                                        controller.coins >= upgradeCost
+                                    ? () => _upgrade(context)
+                                    : null,
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    : _LockedPanel(
+                        definition: definition,
+                        loc: loc,
+                        meetsLevel: meetsLevel,
+                        onUnlock: canUnlock ? () => _unlock(context) : null,
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void _unlock(BuildContext context) {
-    if (!controller.unlockDepartment(definition.type)) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${_nameFor(definition.type, loc)} — ${loc.starterStockAdded}',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
+    if (!controller.unlockDepartment(definition.type)) return;
+    _message(
+      context,
+      '${_nameFor(definition.type, loc)} — ${loc.starterStockAdded}',
     );
   }
 
   void _upgrade(BuildContext context) {
-    if (!controller.upgradeDepartment(definition.type)) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${_nameFor(definition.type, loc)} — ${loc.departmentUpgraded}',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
+    if (!controller.upgradeDepartment(definition.type)) return;
+    _message(
+      context,
+      '${_nameFor(definition.type, loc)} — ${loc.departmentUpgraded}',
     );
   }
 
   void _order(BuildContext context) {
-    if (controller.placeDepartmentOrder(definition.type) == null) {
-      return;
-    }
+    if (controller.placeDepartmentOrder(definition.type) == null) return;
+    _message(context, loc.quickRestockOrdered);
+  }
+
+  void _message(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(loc.quickRestockOrdered),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  String _nameFor(DepartmentType type, AppLocalizations loc) {
-    return switch (type) {
-      DepartmentType.generalGoods => loc.departmentGeneralGoods,
-      DepartmentType.bakery => loc.departmentBakery,
-      DepartmentType.produce => loc.departmentProduce,
-      DepartmentType.refrigerated => loc.departmentRefrigerated,
-      DepartmentType.beauty => loc.departmentBeauty,
-      DepartmentType.electronics => loc.departmentElectronics,
-    };
-  }
-
-  String _descriptionFor(DepartmentType type, AppLocalizations loc) {
-    return switch (type) {
-      DepartmentType.generalGoods => loc.departmentGeneralGoodsDesc,
-      DepartmentType.bakery => loc.departmentBakeryDesc,
-      DepartmentType.produce => loc.departmentProduceDesc,
-      DepartmentType.refrigerated => loc.departmentRefrigeratedDesc,
-      DepartmentType.beauty => loc.departmentBeautyDesc,
-      DepartmentType.electronics => loc.departmentElectronicsDesc,
-    };
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.unlocked, required this.text});
-
-  final bool unlocked;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: unlocked
-            ? Colors.white.withValues(alpha: 0.18)
-            : Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: unlocked
-              ? Colors.white
-              : Theme.of(context).colorScheme.onSurfaceVariant,
-          fontSize: 9,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _StockProgress extends StatelessWidget {
-  const _StockProgress({
-    required this.color,
-    required this.value,
-    required this.capacity,
-    required this.label,
-  });
-
-  final Color color;
-  final int value;
-  final int capacity;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            Text(
-              '$value/$capacity',
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
-        const SizedBox(height: 7),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: LinearProgressIndicator(
-            value: capacity == 0 ? 0 : value / capacity,
-            minHeight: 9,
-            color: color,
-            backgroundColor: color.withValues(alpha: 0.13),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LevelBadge extends StatelessWidget {
-  const _LevelBadge({required this.level});
-
-  final int level;
-
-  @override
-  Widget build(BuildContext context) {
-    final loc = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEEE8FF),
-        borderRadius: BorderRadius.circular(13),
-      ),
-      child: Text(
-        '${loc.level} $level',
-        style: const TextStyle(
-          color: Color(0xFF6548B5),
-          fontSize: 11,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _DataChip extends StatelessWidget {
-  const _DataChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(13),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 6),
-          Text(
-            '$label $value',
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 }
@@ -713,16 +514,17 @@ class _ActionButton extends StatelessWidget {
       child: FilledButton.icon(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
-          backgroundColor: filled ? color : color.withValues(alpha: 0.11),
+          minimumSize: const Size(44, 44),
+          backgroundColor: filled ? color : color.withValues(alpha: 0.10),
           foregroundColor: filled ? Colors.white : color,
-          disabledBackgroundColor: color.withValues(alpha: 0.07),
-          disabledForegroundColor: color.withValues(alpha: 0.45),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-          visualDensity: VisualDensity.compact,
+          disabledBackgroundColor: color.withValues(alpha: 0.06),
+          disabledForegroundColor: color.withValues(alpha: 0.42),
         ),
         icon: Icon(icon, size: 17),
         label: Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
         ),
       ),
@@ -753,37 +555,88 @@ class _LockedPanel extends StatelessWidget {
         ),
         const SizedBox(width: 11),
         Expanded(
-          child: Text(
-            meetsLevel
-                ? loc.unlockCost.replaceFirst(
-                    '{cost}',
-                    '${definition.unlockCost}',
-                  )
-                : loc.unlockAtLevel.replaceFirst(
-                    '{level}',
-                    '${definition.unlockLevel}',
-                  ),
-            style: const TextStyle(fontWeight: FontWeight.w800),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                meetsLevel
+                    ? loc.unlockCost.replaceFirst(
+                        '{cost}',
+                        '${definition.unlockCost}',
+                      )
+                    : loc.unlockAtLevel.replaceFirst(
+                        '{level}',
+                        '${definition.unlockLevel}',
+                      ),
+                style: const TextStyle(
+                  color: PoMarketPalette.ink,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                _term(
+                  context,
+                  en: 'Unlocks a new product line, demand and upgrade path.',
+                  he: 'פותח קו מוצרים, ביקוש ומסלול שדרוג חדש.',
+                  ar: 'يفتح خط منتجات وطلباً ومسار ترقيات جديداً.',
+                ),
+                style: const TextStyle(
+                  color: PoMarketPalette.muted,
+                  fontSize: 10,
+                ),
+              ),
+            ],
           ),
         ),
         if (meetsLevel)
           FilledButton.icon(
             onPressed: onUnlock,
             icon: const Icon(Icons.add_business_rounded, size: 18),
-            label: Text(
-              '${definition.unlockCost}',
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
+            label: Text('${definition.unlockCost}'),
           )
         else
-          Text(
-            '${loc.level} ${definition.unlockLevel}',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w900,
-            ),
+          ManagementStatusPill(
+            label: '${loc.level} ${definition.unlockLevel}',
+            color: PoMarketPalette.muted,
+            icon: Icons.lock_clock_rounded,
           ),
       ],
     );
   }
+}
+
+String _nameFor(DepartmentType type, AppLocalizations loc) {
+  return switch (type) {
+    DepartmentType.generalGoods => loc.departmentGeneralGoods,
+    DepartmentType.bakery => loc.departmentBakery,
+    DepartmentType.produce => loc.departmentProduce,
+    DepartmentType.refrigerated => loc.departmentRefrigerated,
+    DepartmentType.beauty => loc.departmentBeauty,
+    DepartmentType.electronics => loc.departmentElectronics,
+  };
+}
+
+String _descriptionFor(DepartmentType type, AppLocalizations loc) {
+  return switch (type) {
+    DepartmentType.generalGoods => loc.departmentGeneralGoodsDesc,
+    DepartmentType.bakery => loc.departmentBakeryDesc,
+    DepartmentType.produce => loc.departmentProduceDesc,
+    DepartmentType.refrigerated => loc.departmentRefrigeratedDesc,
+    DepartmentType.beauty => loc.departmentBeautyDesc,
+    DepartmentType.electronics => loc.departmentElectronicsDesc,
+  };
+}
+
+String _term(
+  BuildContext context, {
+  required String en,
+  required String he,
+  required String ar,
+}) {
+  return switch (Localizations.localeOf(context).languageCode) {
+    'he' => he,
+    'ar' => ar,
+    _ => en,
+  };
 }
