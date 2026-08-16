@@ -16,18 +16,25 @@ void main(){
   testWidgets('mobile navigation has deliberate destinations and compact hub',(tester)async{
     await _pumpApp(tester,const Size(390,844));
     expect(find.byKey(const ValueKey('mobile-game-navigation')),findsOneWidget);
-    for(final name in <String>['market','upgrades','staff','shop','settings']){expect(find.byKey(ValueKey('mobile-nav-$name')),findsOneWidget);}
+    // Four permanent slots plus the overflow hub. Settings moved into the hub
+    // when the dock replaced the hamburger, so it is asserted on expand below
+    // rather than as a permanent slot.
+    for(final name in <String>['market','upgrades','staff','shop']){expect(find.byKey(ValueKey('mobile-nav-$name')),findsOneWidget);}
     expect(find.byKey(const ValueKey('mobile-nav-more')),findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('mobile-nav-upgrades')));await tester.pump(const Duration(milliseconds:220));expect(find.byType(UpgradesScreen),findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('mobile-nav-more')));await tester.pump(const Duration(milliseconds:320));
-    for(final label in <String>['Departments','Inventory','Quests','Achievements']){expect(find.text(label),findsOneWidget);}
+    for(final label in <String>['Departments','Inventory','Quests','Achievements','Settings']){expect(find.text(label),findsWidgets);}
     expect(find.byIcon(Icons.close_rounded),findsOneWidget);expect(tester.takeException(),isNull);
   });
 
-  testWidgets('wide navigation occupies the trailing side',(tester)async{
+  testWidgets('the dock spans the full width at every size',(tester)async{
+    // The trailing side rail was removed so one dock serves every breakpoint;
+    // it should sit across the bottom rather than hugging one edge.
     await _pumpApp(tester,const Size(900,700));
-    final rail=tester.getRect(find.byKey(const ValueKey('game-navigation-rail')));final viewport=tester.getRect(find.byKey(const ValueKey('pomarket-app-shell')));
-    expect(rail.center.dx,greaterThan(viewport.center.dx));expect(tester.takeException(),isNull);
+    final dock=tester.getRect(find.byKey(const ValueKey('mobile-game-navigation')));final viewport=tester.getRect(find.byKey(const ValueKey('pomarket-app-shell')));
+    expect(dock.width,closeTo(viewport.width,1));
+    expect(dock.bottom,closeTo(viewport.bottom,1));
+    expect(tester.takeException(),isNull);
   });
 
   testWidgets('HUD event and management title occupy separate vertical regions',(tester)async{

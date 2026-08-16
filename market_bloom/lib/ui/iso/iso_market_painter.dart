@@ -81,6 +81,7 @@ class IsoMarketPainter extends CustomPainter {
     // whenever it stands behind a gondola, and losing track of your own
     // character mid-shift is worse than the small break in realism.
     _paintPlayer(canvas, brush);
+    _paintFloatingEffects(canvas, projection);
 
     _paintAmbience(canvas, size, projection);
   }
@@ -325,6 +326,145 @@ class IsoMarketPainter extends CustomPainter {
       IsoProjection.depthOf(0.99, 0.99),
       (canvas) => _entrance(canvas, brush, p),
     );
+
+    // Dressing. An empty floor reads as a prototype however good the lighting
+    // is, so the corners get props that also hint at what the shop sells.
+    const planters = <Offset>[
+      Offset(0.06, 0.90),
+      Offset(0.90, 0.08),
+      Offset(0.93, 0.93),
+    ];
+    for (final spot in planters) {
+      add(
+        IsoProjection.depthOf(spot.dx, spot.dy),
+        (canvas) => _planter(canvas, brush, spot),
+      );
+    }
+
+    const carts = <Offset>[Offset(0.80, 0.94), Offset(0.88, 0.86)];
+    for (final spot in carts) {
+      add(
+        IsoProjection.depthOf(spot.dx, spot.dy),
+        (canvas) => _trolley(canvas, brush, spot),
+      );
+    }
+
+    // Produce bins in the middle of the floor break up the empty span between
+    // the gondolas and the tills.
+    const bins = <Offset>[Offset(0.62, 0.60), Offset(0.62, 0.74)];
+    for (var i = 0; i < bins.length; i++) {
+      final spot = bins[i];
+      add(
+        IsoProjection.depthOf(spot.dx + 0.05, spot.dy + 0.05),
+        (canvas) => _produceBin(canvas, brush, spot, i),
+      );
+    }
+  }
+
+  void _planter(Canvas canvas, IsoBrush brush, Offset at) {
+    brush.groundShadow(
+      canvas,
+      x: at.dx,
+      y: at.dy,
+      radiusX: 0.075,
+      radiusY: 0.075,
+      opacity: 0.28,
+    );
+    brush.box(
+      canvas,
+      x0: at.dx - 0.028,
+      y0: at.dy - 0.028,
+      x1: at.dx + 0.028,
+      y1: at.dy + 0.028,
+      height: 0.055,
+      color: const Color(0xFFA9603C),
+    );
+    // Foliage as overlapping spheres so it reads organic against the boxes.
+    brush.sphere(canvas, x: at.dx, y: at.dy, z: 0.10, radius: 0.062, color: const Color(0xFF3E8F4F));
+    brush.sphere(
+      canvas,
+      x: at.dx - 0.018,
+      y: at.dy + 0.012,
+      z: 0.135,
+      radius: 0.048,
+      color: const Color(0xFF54A85F),
+    );
+    brush.sphere(
+      canvas,
+      x: at.dx + 0.020,
+      y: at.dy - 0.010,
+      z: 0.125,
+      radius: 0.042,
+      color: const Color(0xFF2F7A44),
+    );
+  }
+
+  void _trolley(Canvas canvas, IsoBrush brush, Offset at) {
+    brush.groundShadow(
+      canvas,
+      x: at.dx,
+      y: at.dy,
+      radiusX: 0.075,
+      radiusY: 0.062,
+      opacity: 0.24,
+    );
+    brush.box(
+      canvas,
+      x0: at.dx - 0.035,
+      y0: at.dy - 0.028,
+      x1: at.dx + 0.035,
+      y1: at.dy + 0.028,
+      base: 0.028,
+      height: 0.046,
+      color: const Color(0xFFB9C6C0),
+      topColor: const Color(0xFF8FA39A),
+    );
+    brush.box(
+      canvas,
+      x0: at.dx + 0.026,
+      y0: at.dy - 0.006,
+      x1: at.dx + 0.032,
+      y1: at.dy + 0.006,
+      base: 0.074,
+      height: 0.036,
+      color: const Color(0xFF7B8B84),
+      outline: false,
+    );
+  }
+
+  void _produceBin(Canvas canvas, IsoBrush brush, Offset at, int index) {
+    brush.groundShadow(
+      canvas,
+      x: at.dx + 0.05,
+      y: at.dy + 0.05,
+      radiusX: 0.13,
+      radiusY: 0.13,
+      opacity: 0.26,
+    );
+    brush.box(
+      canvas,
+      x0: at.dx,
+      y0: at.dy,
+      x1: at.dx + 0.10,
+      y1: at.dy + 0.10,
+      height: 0.048,
+      color: index.isEven ? const Color(0xFF8C5A33) : const Color(0xFF7A6A4A),
+    );
+    // Loose produce heaped above the rim.
+    final palette = index.isEven
+        ? const [Color(0xFFE0573F), Color(0xFFEF7A4D), Color(0xFFC94430)]
+        : const [Color(0xFF7FB93E), Color(0xFF9CCB53), Color(0xFF5F9A2E)];
+    for (var i = 0; i < 5; i++) {
+      final angle = i * 1.257 + index;
+      brush.sphere(
+        canvas,
+        x: at.dx + 0.05 + math.cos(angle) * 0.024,
+        y: at.dy + 0.05 + math.sin(angle) * 0.024,
+        z: 0.062,
+        radius: 0.030,
+        color: palette[i % palette.length],
+      );
+    }
   }
 
   void _shelfRun(
@@ -604,8 +744,16 @@ class IsoMarketPainter extends CustomPainter {
     IsoBrush brush,
     IsoProjection p,
   ) {
+    final clock = game.totalPlaySeconds;
     for (final customer in game.customers) {
       final position = customer.position;
+      final moving =
+          customer.phase == CustomerPhase.entering ||
+          customer.phase == CustomerPhase.shopping ||
+          customer.phase == CustomerPhase.leaving;
+      // Offsetting each shopper's gait by their id stops the crowd marching in
+      // lockstep, which is the tell that a scene is procedurally animated.
+      final phase = moving ? clock * 6.2 + customer.id.hashCode % 7 : 0.0;
       calls.add(
         IsoDrawCall(
           IsoProjection.depthOf(position.dx, position.dy),
@@ -615,7 +763,10 @@ class IsoMarketPainter extends CustomPainter {
             position,
             body: customer.color,
             skin: const Color(0xFFF6D2AE),
-            highlight: customer.isVip ? _accentGold : null,
+            hair: _hairFor(customer.id.hashCode),
+            walkPhase: phase,
+            facingRight: position.dx < 0.5,
+            bubble: _customerBubble(customer),
           ),
         ),
       );
@@ -643,15 +794,40 @@ class IsoMarketPainter extends CustomPainter {
   }
 
   void _paintPlayer(Canvas canvas, IsoBrush brush) {
+    final moving = game.movement.distanceSquared > 0.0001;
     _person(
       canvas,
       brush,
       game.playerPosition,
       body: const Color(0xFF2FD08C),
       skin: const Color(0xFFF8D8B4),
+      hair: const Color(0xFF3A2A1E),
       highlight: game.carried > 0 ? _accentGold : null,
       isPlayer: true,
+      walkPhase: moving ? game.totalPlaySeconds * 8.4 : 0,
+      facingRight: game.movement.dx >= 0,
     );
+  }
+
+  static Color _hairFor(int seed) => switch (seed.abs() % 5) {
+    0 => const Color(0xFF3A2A1E),
+    1 => const Color(0xFF6B4A2F),
+    2 => const Color(0xFF1F1B18),
+    3 => const Color(0xFFA9702F),
+    _ => const Color(0xFF52463E),
+  };
+
+  /// Mood glyph above a shopper. Only shown when it tells the player something
+  /// they can act on — a shopper running out of patience, or a big spender.
+  String? _customerBubble(MarketCustomer customer) {
+    if (customer.phase == CustomerPhase.leaving) return null;
+    if (customer.patience < 2.2) return '😠';
+    if (customer.isVip) return '⭐';
+    if (customer.phase == CustomerPhase.checkout ||
+        customer.phase == CustomerPhase.paying) {
+      return '💰';
+    }
+    return null;
   }
 
   Offset _staffSpot(StaffRole role, int index) {
@@ -666,6 +842,12 @@ class IsoMarketPainter extends CustomPainter {
     );
   }
 
+  /// A stylised shopper drawn as a screen-space billboard anchored to its
+  /// ground point.
+  ///
+  /// Capsule-and-sphere placeholders read as chess pieces rather than people.
+  /// Limbs, an apron and a hair cap cost little and are what make the floor
+  /// feel populated.
   void _person(
     Canvas canvas,
     IsoBrush brush,
@@ -674,62 +856,241 @@ class IsoMarketPainter extends CustomPainter {
     required Color skin,
     Color? highlight,
     bool isPlayer = false,
+    Color hair = const Color(0xFF4A342A),
+    double walkPhase = 0,
+    bool facingRight = true,
+    String? bubble,
   }) {
     final x = at.dx.clamp(0.0, 1.0);
     final y = at.dy.clamp(0.0, 1.0);
+    final p = brush.projection;
+    final ground = p.project(x, y);
+
+    // Shoulder width drives every other measurement so the figure scales as a
+    // unit with the board.
+    final u = p.tileWidth * 0.052;
+    final stride = math.sin(walkPhase) * u * 0.34;
+    final bob = (math.sin(walkPhase * 2).abs()) * u * 0.10;
+    final baseY = ground.dy - bob;
+
     brush.groundShadow(
       canvas,
       x: x,
       y: y,
-      radiusX: 0.052,
-      radiusY: 0.052,
-      opacity: 0.34,
+      radiusX: 0.058,
+      radiusY: 0.058,
+      opacity: 0.36,
     );
-    if (highlight != null) {
-      brush.groundShadow(
-        canvas,
-        x: x,
-        y: y,
-        radiusX: 0.075,
-        radiusY: 0.075,
-        opacity: 0.16,
-      );
-    }
-    brush.capsule(
-      canvas,
-      x: x,
-      y: y,
-      base: 0,
-      height: 0.155,
-      radius: 0.072,
-      color: body,
+
+    final paint = Paint()..isAntiAlias = true;
+    RRect pill(double cx, double cy, double w, double h) =>
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: Offset(cx, cy), width: w, height: h),
+          Radius.circular(w / 2),
+        );
+
+    // Legs — the trailing one is darkened so the stride reads at small sizes.
+    final legColor = IsoLight.shade(body, 0.52);
+    paint.color = IsoLight.shade(legColor, 0.82);
+    canvas.drawRRect(
+      pill(ground.dx - u * 0.34 - stride, baseY - u * 0.34, u * 0.46, u * 0.86),
+      paint,
     );
+    paint.color = legColor;
+    canvas.drawRRect(
+      pill(ground.dx + u * 0.34 + stride, baseY - u * 0.34, u * 0.46, u * 0.86),
+      paint,
+    );
+
+    // Torso.
+    final torsoRect = Rect.fromCenter(
+      center: Offset(ground.dx, baseY - u * 1.28),
+      width: u * 1.62,
+      height: u * 1.44,
+    );
+    paint.shader = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [IsoLight.lift(body, 0.26), body, IsoLight.shade(body, 0.66)],
+      stops: const [0, 0.5, 1],
+    ).createShader(torsoRect);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(torsoRect, Radius.circular(u * 0.5)),
+      paint,
+    );
+    paint.shader = null;
+
     if (isPlayer) {
-      // Apron front so the player reads apart from shoppers at a glance.
-      brush.capsule(
-        canvas,
-        x: x,
-        y: y,
-        base: 0.012,
-        height: 0.085,
-        radius: 0.046,
-        color: const Color(0xFFF3F8F4),
+      // Apron marks the shop owner apart from shoppers at a glance.
+      paint.color = const Color(0xFFF6FAF7);
+      canvas.drawRRect(
+        pill(ground.dx, baseY - u * 1.12, u * 0.94, u * 1.02),
+        paint,
+      );
+      paint.color = const Color(0xFF2FD08C);
+      canvas.drawRRect(
+        pill(ground.dx, baseY - u * 1.72, u * 0.86, u * 0.20),
+        paint,
       );
     }
-    brush.sphere(canvas, x: x, y: y, z: 0.205, radius: 0.066, color: skin);
+
+    // Arms.
+    paint.color = IsoLight.shade(body, 0.86);
+    canvas.drawRRect(
+      pill(ground.dx - u * 0.92, baseY - u * 1.30 + stride * 0.5, u * 0.40, u * 1.02),
+      paint,
+    );
+    canvas.drawRRect(
+      pill(ground.dx + u * 0.92, baseY - u * 1.30 - stride * 0.5, u * 0.40, u * 1.02),
+      paint,
+    );
+
+    // Head, then a hair cap that also encodes facing.
+    final headCentre = Offset(ground.dx, baseY - u * 2.32);
+    final headRect = Rect.fromCircle(center: headCentre, radius: u * 0.66);
+    paint.shader = RadialGradient(
+      center: const Alignment(-0.3, -0.4),
+      radius: 0.95,
+      colors: [IsoLight.lift(skin, 0.24), skin, IsoLight.shade(skin, 0.74)],
+      stops: const [0, 0.55, 1],
+    ).createShader(headRect);
+    canvas.drawCircle(headCentre, u * 0.66, paint);
+    paint.shader = null;
+
+    paint.color = hair;
+    canvas.drawArc(
+      Rect.fromCircle(center: headCentre, radius: u * 0.68),
+      math.pi * (facingRight ? 0.98 : 1.06),
+      math.pi * 0.96,
+      true,
+      paint,
+    );
+
+    // Eyes give the figure a front and stop it reading as a mannequin.
+    paint.color = const Color(0xFF2A2018);
+    final eyeShift = facingRight ? u * 0.10 : -u * 0.10;
+    canvas.drawCircle(
+      headCentre + Offset(eyeShift - u * 0.20, u * 0.10),
+      u * 0.075,
+      paint,
+    );
+    canvas.drawCircle(
+      headCentre + Offset(eyeShift + u * 0.20, u * 0.10),
+      u * 0.075,
+      paint,
+    );
+
     if (highlight != null) {
-      brush.sphere(
-        canvas,
-        x: x,
-        y: y,
-        z: 0.30,
-        radius: 0.030,
-        color: highlight,
+      // Carried crate held out in front.
+      paint.color = highlight;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(ground.dx, baseY - u * 1.02),
+            width: u * 1.10,
+            height: u * 0.72,
+          ),
+          Radius.circular(u * 0.14),
+        ),
+        paint,
       );
+      paint.color = IsoLight.lift(highlight, 0.32);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(ground.dx, baseY - u * 1.28),
+            width: u * 1.10,
+            height: u * 0.20,
+          ),
+          Radius.circular(u * 0.08),
+        ),
+        paint,
+      );
+    }
+
+    if (bubble != null) {
+      _speechBubble(canvas, Offset(ground.dx, baseY - u * 3.3), u, bubble);
     }
   }
 
+  /// Small mood bubble above a shopper.
+  void _speechBubble(Canvas canvas, Offset at, double u, String glyph) {
+    final paint = Paint()..isAntiAlias = true;
+    final rect = Rect.fromCenter(center: at, width: u * 1.5, height: u * 1.2);
+    paint.color = const Color(0xF2FFFFFF);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(u * 0.42)),
+      paint,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(at.dx - u * 0.22, rect.bottom - u * 0.06)
+        ..lineTo(at.dx, rect.bottom + u * 0.34)
+        ..lineTo(at.dx + u * 0.16, rect.bottom - u * 0.06)
+        ..close(),
+      paint,
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: glyph,
+        style: TextStyle(fontSize: u * 0.82, height: 1),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(canvas, at - Offset(painter.width / 2, painter.height / 2));
+  }
+
   // ---------------------------------------------------------------- ambience
+
+  /// Earnings and status text rising off the point that produced them.
+  ///
+  /// Drawn above the depth-sorted layer so a sale is never hidden behind a
+  /// gondola — the payoff has to be visible to land.
+  void _paintFloatingEffects(Canvas canvas, IsoProjection p) {
+    for (final effect in game.floatingEffects) {
+      final progress = effect.progress;
+      final anchor = p.project(
+        effect.position.dx.clamp(0.0, 1.0),
+        effect.position.dy.clamp(0.0, 1.0),
+        0.22,
+      );
+      // Ease out on the way up, fade only over the last third.
+      final rise = (1 - math.pow(1 - progress, 3)) * p.tileHeight * 0.16;
+      final opacity = progress < 0.66 ? 1.0 : (1 - progress) / 0.34;
+      final pop = progress < 0.16
+          ? 0.72 + 0.28 * (progress / 0.16)
+          : 1.0;
+      final size = effect.fontSize * p.scale * pop;
+
+      final painter = TextPainter(
+        text: TextSpan(
+          text: effect.text,
+          style: TextStyle(
+            color: effect.color.withValues(
+              alpha: effect.color.a * opacity.clamp(0.0, 1.0),
+            ),
+            fontSize: size,
+            fontWeight: FontWeight.w900,
+            height: 1,
+            shadows: [
+              Shadow(
+                color: const Color(0xFF04211A).withValues(
+                  alpha: 0.65 * opacity.clamp(0.0, 1.0),
+                ),
+                blurRadius: 3,
+                offset: const Offset(0, 1.5),
+              ),
+            ],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      painter.paint(
+        canvas,
+        Offset(anchor.dx - painter.width / 2, anchor.dy - rise - painter.height),
+      );
+    }
+  }
 
   void _paintAmbience(Canvas canvas, Size size, IsoProjection p) {
     final rect = Offset.zero & size;

@@ -5,7 +5,7 @@ import 'package:pomarket/main.dart';
 import 'package:pomarket/services/app_settings.dart';
 import 'package:pomarket/services/game_storage.dart';
 import 'package:pomarket/services/monetization_service.dart';
-import 'package:pomarket/ui/market_painter.dart';
+import 'package:pomarket/ui/iso/iso_market_painter.dart';
 import 'package:pomarket/ui/vertical_slice_world_painter.dart';
 import 'package:pomarket/ui/widgets/main_game_phase_two.dart';
 
@@ -36,7 +36,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     final worldPaint = find.byWidgetPredicate(
-      (widget) => widget is CustomPaint && widget.painter is MarketPainter,
+      (widget) => widget is CustomPaint && widget.painter is IsoMarketPainter,
     );
     expect(worldPaint, findsOneWidget);
     expect(find.byKey(const ValueKey('world-art-polish-layer')), findsNothing);
@@ -86,7 +86,7 @@ void main() {
       expect(find.byKey(const ValueKey('market-board')), findsOneWidget);
       expect(
         find.byWidgetPredicate(
-          (widget) => widget is CustomPaint && widget.painter is MarketPainter,
+          (widget) => widget is CustomPaint && widget.painter is IsoMarketPainter,
         ),
         findsOneWidget,
       );

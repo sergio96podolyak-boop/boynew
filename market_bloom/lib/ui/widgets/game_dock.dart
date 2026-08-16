@@ -69,6 +69,10 @@ class GameDock extends StatelessWidget {
               : const SizedBox(width: double.infinity),
         ),
         DecoratedBox(
+          // Carries the key of the MobileGameNavigation bar it replaces, so
+          // callers and tests that look for "the bottom navigation" still find
+          // it after the swap.
+          key: const ValueKey('mobile-game-navigation'),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               begin: Alignment.topCenter,
@@ -95,6 +99,7 @@ class GameDock extends StatelessWidget {
                   for (final destination in primary)
                     Expanded(
                       child: _DockSlot(
+                        key: ValueKey('mobile-nav-${destination.name}'),
                         icon: iconFor(destination),
                         label: labelFor(destination),
                         active: destination == selected,
@@ -104,8 +109,9 @@ class GameDock extends StatelessWidget {
                     ),
                   Expanded(
                     child: _DockSlot(
+                      key: const ValueKey('mobile-nav-more'),
                       icon: expanded
-                          ? Icons.expand_more_rounded
+                          ? Icons.close_rounded
                           : Icons.grid_view_rounded,
                       label: moreLabel,
                       active: _overflowSelected || expanded,
@@ -126,6 +132,7 @@ class GameDock extends StatelessWidget {
 
 class _DockSlot extends StatelessWidget {
   const _DockSlot({
+    super.key,
     required this.icon,
     required this.label,
     required this.active,
