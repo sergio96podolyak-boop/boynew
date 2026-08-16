@@ -1,3 +1,5 @@
 #include "Generated.xcconfig"
-// Supply POMARKET_ADMOB_APP_ID in the release build environment.
+// Optional local/CI release settings. The populated file is gitignored.
+#include? "ReleaseSecrets.xcconfig"
+// Supply POMARKET_ADMOB_APP_ID as an Xcode build setting.
 GAD_APPLICATION_IDENTIFIER=$(POMARKET_ADMOB_APP_ID)

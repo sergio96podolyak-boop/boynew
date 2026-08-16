@@ -18,8 +18,123 @@ enum MarketEventType {
   flashSale,
 }
 
+enum ShiftOperatingCostType { payroll, department }
+
+/// Accounting-only performance ledger for one shift.
+///
+/// Recording an amount never changes the player's coin balance. Cash flow stays
+/// owned by [GameController]; this ledger only describes where the shift's
+/// revenue and costs came from.
+class ShiftLedger {
+  ShiftLedger({
+    int grossRevenue = 0,
+    int stockOrderCosts = 0,
+    int payroll = 0,
+    int departmentOperatingCosts = 0,
+    int bonuses = 0,
+    int missedSalesEstimate = 0,
+  }) : _grossRevenue = max(0, grossRevenue),
+       _stockOrderCosts = max(0, stockOrderCosts),
+       _payroll = max(0, payroll),
+       _departmentOperatingCosts = max(0, departmentOperatingCosts),
+       _bonuses = max(0, bonuses),
+       _missedSalesEstimate = max(0, missedSalesEstimate);
+
+  factory ShiftLedger.fromJson(Object? value) {
+    if (value is! Map) return ShiftLedger();
+    return ShiftLedger(
+      grossRevenue: _ledgerAmount(value['grossRevenue']),
+      stockOrderCosts: _ledgerAmount(value['stockOrderCosts']),
+      payroll: _ledgerAmount(value['payroll']),
+      departmentOperatingCosts: _ledgerAmount(
+        value['departmentOperatingCosts'],
+      ),
+      bonuses: _ledgerAmount(value['bonuses']),
+      missedSalesEstimate: _ledgerAmount(value['missedSalesEstimate']),
+    );
+  }
+
+  int _grossRevenue;
+  int _stockOrderCosts;
+  int _payroll;
+  int _departmentOperatingCosts;
+  int _bonuses;
+  int _missedSalesEstimate;
+
+  int get grossRevenue => _grossRevenue;
+  int get stockOrderCosts => _stockOrderCosts;
+  int get payroll => _payroll;
+  int get departmentOperatingCosts => _departmentOperatingCosts;
+  int get bonuses => _bonuses;
+  int get missedSalesEstimate => _missedSalesEstimate;
+
+  int get netProfit =>
+      grossRevenue +
+      bonuses -
+      stockOrderCosts -
+      payroll -
+      departmentOperatingCosts;
+
+  void recordSale(int amount) {
+    if (amount > 0) _grossRevenue += amount;
+  }
+
+  void recordStockOrderCost(int amount) {
+    if (amount > 0) _stockOrderCosts += amount;
+  }
+
+  void recordBonus(int amount) {
+    if (amount > 0) _bonuses += amount;
+  }
+
+  void recordMissedSaleEstimate(int amount) {
+    if (amount > 0) _missedSalesEstimate += amount;
+  }
+
+  void recordOperatingCost(
+    int amount, {
+    ShiftOperatingCostType type = ShiftOperatingCostType.department,
+  }) {
+    if (amount <= 0) return;
+    switch (type) {
+      case ShiftOperatingCostType.payroll:
+        _payroll += amount;
+      case ShiftOperatingCostType.department:
+        _departmentOperatingCosts += amount;
+    }
+  }
+
+  ShiftLedger snapshot() => ShiftLedger(
+    grossRevenue: grossRevenue,
+    stockOrderCosts: stockOrderCosts,
+    payroll: payroll,
+    departmentOperatingCosts: departmentOperatingCosts,
+    bonuses: bonuses,
+    missedSalesEstimate: missedSalesEstimate,
+  );
+
+  Map<String, int> toJson() => <String, int>{
+    'grossRevenue': grossRevenue,
+    'stockOrderCosts': stockOrderCosts,
+    'payroll': payroll,
+    'departmentOperatingCosts': departmentOperatingCosts,
+    'bonuses': bonuses,
+    'missedSalesEstimate': missedSalesEstimate,
+  };
+}
+
+int _ledgerAmount(Object? value) {
+  final parsed = switch (value) {
+    int amount => amount,
+    num amount when amount.isFinite => amount.round(),
+    String text => num.tryParse(text.trim())?.round(),
+    _ => null,
+  };
+  return parsed == null ? 0 : max(0, parsed);
+}
+
 class ShiftSummary {
-  const ShiftSummary({
+  ShiftSummary({
     required this.shiftNumber,
     required this.sales,
     required this.revenue,
@@ -27,7 +142,8 @@ class ShiftSummary {
     required this.satisfaction,
     required this.xp,
     required this.stockRemaining,
-  });
+    ShiftLedger? ledger,
+  }) : ledger = ledger?.snapshot() ?? ShiftLedger();
 
   final int shiftNumber;
   final int sales;
@@ -36,9 +152,22 @@ class ShiftSummary {
   final double satisfaction;
   final int xp;
   final int stockRemaining;
+  final ShiftLedger ledger;
 }
 
 enum CheckoutOperator { player, cashier }
+
+class CheckoutStationState {
+  CheckoutStationState({
+    required this.id,
+    this.unlocked = false,
+    this.active = false,
+  });
+
+  final String id;
+  bool unlocked;
+  bool active;
+}
 
 class MarketCustomer {
   MarketCustomer({
@@ -55,6 +184,8 @@ class MarketCustomer {
     this.shoppingIndex = 0,
     this.basketValue = 0,
     this.missedItems = 0,
+    this.checkoutStationId,
+    this.checkoutWaitTime = 0,
   }) : shoppingList = List<DepartmentType>.of(
          shoppingList ?? const <DepartmentType>[DepartmentType.generalGoods],
        );
@@ -75,7 +206,9 @@ class MarketCustomer {
   int shoppingIndex;
   int basketValue;
   int missedItems;
+  String? checkoutStationId;
   CheckoutOperator? checkoutOperator;
+  double checkoutWaitTime;
 
   DepartmentType? get currentDepartment =>
       shoppingIndex >= 0 && shoppingIndex < shoppingList.length
@@ -197,11 +330,8 @@ class StaffMember {
   }
 
   int get hireCost => 90 + level * 35;
-
   int get additionalHireCost => 80 + workerCount * 55 + level * 20;
-
   int get upgradeCost => 70 + level * 45;
-
   int get productivity => max(0, level) * max(0, workerCount);
 
   String get summary {
@@ -264,6 +394,17 @@ class DepartmentDefinition {
   final int orderCost;
   final int priceBonus;
   final bool autoUnlock;
+
+  int grossRevenueForBasePrice(int baseItemPrice) =>
+      max(0, baseItemPrice + priceBonus) * max(0, orderQuantity);
+
+  int grossProfitForBasePrice(int baseItemPrice) =>
+      grossRevenueForBasePrice(baseItemPrice) - max(0, orderCost);
+
+  double grossMarginForBasePrice(int baseItemPrice) {
+    final revenue = grossRevenueForBasePrice(baseItemPrice);
+    return revenue <= 0 ? 0 : grossProfitForBasePrice(baseItemPrice) / revenue;
+  }
 }
 
 class DepartmentState {
@@ -332,9 +473,7 @@ abstract final class GameBalance {
 
   static int availableWorkerSlots(StaffRole role, int storeLevel) {
     final unlockLevel = staffRoleUnlockLevel(role);
-    if (storeLevel < unlockLevel) {
-      return 0;
-    }
+    if (storeLevel < unlockLevel) return 0;
     return (1 + (storeLevel - unlockLevel) ~/ 2).clamp(1, maxWorkersPerRole);
   }
 
@@ -343,9 +482,7 @@ abstract final class GameBalance {
     int storeLevel,
     int workerCount,
   ) {
-    if (workerCount >= maxWorkersPerRole) {
-      return null;
-    }
+    if (workerCount >= maxWorkersPerRole) return null;
     final requiredLevel = staffRoleUnlockLevel(role) + workerCount * 2;
     return storeLevel >= requiredLevel ? null : requiredLevel;
   }
@@ -388,7 +525,7 @@ abstract final class DepartmentCatalog {
       starterShelfStock: 0,
       starterStorageStock: 0,
       orderQuantity: 4,
-      orderCost: 34,
+      orderCost: 22,
       priceBonus: 2,
       autoUnlock: true,
     ),
@@ -407,7 +544,7 @@ abstract final class DepartmentCatalog {
       starterShelfStock: 2,
       starterStorageStock: 6,
       orderQuantity: 6,
-      orderCost: 45,
+      orderCost: 36,
       priceBonus: 3,
     ),
     DepartmentDefinition(
@@ -425,7 +562,7 @@ abstract final class DepartmentCatalog {
       starterShelfStock: 2,
       starterStorageStock: 6,
       orderQuantity: 6,
-      orderCost: 60,
+      orderCost: 42,
       priceBonus: 5,
     ),
     DepartmentDefinition(
@@ -443,7 +580,7 @@ abstract final class DepartmentCatalog {
       starterShelfStock: 2,
       starterStorageStock: 5,
       orderQuantity: 5,
-      orderCost: 76,
+      orderCost: 50,
       priceBonus: 8,
     ),
     DepartmentDefinition(
@@ -461,7 +598,7 @@ abstract final class DepartmentCatalog {
       starterShelfStock: 1,
       starterStorageStock: 4,
       orderQuantity: 4,
-      orderCost: 100,
+      orderCost: 48,
       priceBonus: 12,
     ),
   ];
@@ -485,15 +622,20 @@ class FloatingTextEffect {
   });
 
   final String text;
-  Offset position;
+  final Offset position;
   final Color color;
   final double fontSize;
   final double lifetime;
   final bool isEmoji;
   double elapsed = 0;
 
+  double get progress =>
+      lifetime <= 0 ? 1 : (elapsed / lifetime).clamp(0.0, 1.0);
   bool get isExpired => elapsed >= lifetime;
-  double get opacity => (1.0 - (elapsed / lifetime)).clamp(0.0, 1.0);
-  Offset get currentPosition => Offset(position.dx, position.dy - (elapsed * 25));
-}
+  double get opacity => 1.0 - progress;
 
+  /// Position remains in normalized market coordinates while rising six
+  /// percent of the board height over the effect's lifetime.
+  Offset get currentPosition =>
+      Offset(position.dx, position.dy - progress * 0.06);
+}

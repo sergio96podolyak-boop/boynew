@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../widgets/management_ui.dart';
+import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
 
 class StaffScreen extends StatelessWidget {
@@ -13,174 +15,83 @@ class StaffScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
-
-    return Scaffold(
-      appBar: AppBar(title: Text(loc.staffManagement)),
-      body: AnimatedBuilder(
+    return ManagementScaffold(
+      title: loc.staffManagement,
+      icon: Icons.groups_2_rounded,
+      child: AnimatedBuilder(
         animation: controller,
-        builder: (context, _) => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-          children: [
-            _TeamOverview(controller: controller, loc: loc),
-            const SizedBox(height: 18),
-            for (final role in StaffRole.values)
-              _StaffCard(controller: controller, role: role, loc: loc),
-          ],
-        ),
-      ),
-    );
-  }
-}
+        builder: (context, _) {
+          final hired = controller.totalHiredWorkers;
+          final productivity = controller.staffMembers.fold<int>(
+            0,
+            (total, member) =>
+                total + (member.hired ? member.productivity : 0),
+          );
+          final availableSlots = StaffRole.values.fold<int>(
+            0,
+            (total, role) => total + controller.availableWorkerSlots(role),
+          );
+          final workingRoles = StaffRole.values.where((role) {
+            final status = controller.staffStatus(role);
+            return controller.isStaffHired(role) && status != StaffStatus.idle;
+          }).length;
 
-class _TeamOverview extends StatelessWidget {
-  const _TeamOverview({required this.controller, required this.loc});
-
-  final GameController controller;
-  final AppLocalizations loc;
-
-  @override
-  Widget build(BuildContext context) {
-    final power = controller.staffMembers.fold<int>(
-      0,
-      (total, member) => total + (member.hired ? member.productivity : 0),
-    );
-    final availableSlots = StaffRole.values.fold<int>(
-      0,
-      (total, role) => total + controller.availableWorkerSlots(role),
-    );
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF315F4A), Color(0xFF1FA879)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x33315F4A),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
             children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(17),
-                ),
-                child: const Icon(
-                  Icons.groups_2_rounded,
-                  color: Colors.white,
-                  size: 31,
+              ManagementHero(
+                icon: Icons.badge_rounded,
+                title: loc.teamOverview,
+                subtitle: loc.teamMembers.replaceFirst('{count}', '$hired'),
+                colors: const [Color(0xFF173F34), Color(0xFF16805C)],
+                metrics: [
+                  ManagementHeroMetric(
+                    icon: Icons.people_alt_rounded,
+                    label: loc.hireStaff,
+                    value: '$hired/$availableSlots',
+                  ),
+                  ManagementHeroMetric(
+                    icon: Icons.bolt_rounded,
+                    label: loc.teamPower.replaceFirst('{power}', ''),
+                    value: '$productivity',
+                  ),
+                  ManagementHeroMetric(
+                    icon: Icons.work_history_rounded,
+                    label: _term(
+                      context,
+                      en: 'Working roles',
+                      he: 'תפקידים פעילים',
+                      ar: 'الأدوار العاملة',
+                    ),
+                    value: '$workingRoles',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              ManagementSectionTitle(
+                title: loc.staffManagement,
+                subtitle: _term(
+                  context,
+                  en: 'Hire, assign and upgrade your store team',
+                  he: 'גייסו, שייכו ושדרגו את צוות החנות',
+                  ar: 'وظّف فريق المتجر ووزّعه وطوّره',
                 ),
               ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      loc.teamOverview,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                      ),
+              const SizedBox(height: 12),
+              ManagementResponsiveWrap(
+                children: [
+                  for (final role in StaffRole.values)
+                    _StaffCard(
+                      key: ValueKey('staff-card-${role.name}'),
+                      controller: controller,
+                      role: role,
+                      loc: loc,
                     ),
-                    Text(
-                      loc.teamMembers.replaceFirst(
-                        '{count}',
-                        '${controller.totalHiredWorkers}',
-                      ),
-                      style: const TextStyle(color: Color(0xFFDDF7EA)),
-                    ),
-                  ],
-                ),
+                ],
               ),
             ],
-          ),
-          const SizedBox(height: 17),
-          Row(
-            children: [
-              Expanded(
-                child: _OverviewMetric(
-                  icon: Icons.store_rounded,
-                  label: loc.storeLevel,
-                  value: '${controller.storeLevel}',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _OverviewMetric(
-                  icon: Icons.people_alt_rounded,
-                  label: loc.hireStaff,
-                  value: '${controller.totalHiredWorkers}/$availableSlots',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _OverviewMetric(
-                  icon: Icons.bolt_rounded,
-                  label: loc.teamPower.replaceFirst('{power}', ''),
-                  value: '$power',
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OverviewMetric extends StatelessWidget {
-  const _OverviewMetric({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: const Color(0xFFFFD278), size: 18),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Color(0xFFDDF7EA), fontSize: 9),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -188,6 +99,7 @@ class _OverviewMetric extends StatelessWidget {
 
 class _StaffCard extends StatelessWidget {
   const _StaffCard({
+    super.key,
     required this.controller,
     required this.role,
     required this.loc,
@@ -206,94 +118,78 @@ class _StaffCard extends StatelessWidget {
     final unlocked = controller.isStaffRoleUnlocked(role);
     final hired = controller.isStaffHired(role);
     final status = controller.staffStatus(role);
-    final color = _roleColor();
+    final color = _roleColor(role);
     final workerCount = controller.staffWorkerCount(role);
     final availableSlots = controller.availableWorkerSlots(role);
     final nextWorkerLevel = controller.nextWorkerSlotLevel(role);
+    final upgradeable = hired && member.level < 10;
+    final canHire = unlocked && controller.coins >= member.hireCost;
+    final canUpgrade = upgradeable && controller.coins >= member.upgradeCost;
+    final canAddWorker = hired &&
+        workerCount < GameBalance.maxWorkersPerRole &&
+        nextWorkerLevel == null &&
+        controller.coins >= member.additionalHireCost;
+    final presentation = _statusPresentation(
+      context,
+      unlocked: unlocked,
+      hired: hired,
+      status: status,
+    );
 
-    return Container(
-      key: ValueKey('staff-card-${role.name}'),
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: unlocked
-              ? [Colors.white, color.withValues(alpha: 0.08)]
-              : [const Color(0xFFF1EFEA), const Color(0xFFE8E4DC)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: unlocked
-              ? color.withValues(alpha: hired ? 0.5 : 0.22)
-              : const Color(0x22000000),
-          width: hired ? 1.5 : 1,
-        ),
-        boxShadow: unlocked
-            ? const [
-                BoxShadow(
-                  color: Color(0x14315F4A),
-                  blurRadius: 12,
-                  offset: Offset(0, 5),
-                ),
-              ]
-            : null,
-      ),
+    return ManagementCard(
+      accent: color,
+      highlighted: hired || (unlocked && !hired),
+      muted: !unlocked,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: unlocked
-                      ? color.withValues(alpha: 0.16)
-                      : const Color(0x18000000),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(
-                  unlocked ? _roleIcon() : Icons.lock_rounded,
-                  color: unlocked ? color : Colors.grey,
-                  size: 30,
-                ),
+              _StaffAvatar(
+                icon: unlocked ? _roleIcon(role) : Icons.lock_rounded,
+                color: unlocked ? color : PoMarketPalette.muted,
+                active: hired,
               ),
-              const SizedBox(width: 13),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _roleName(),
+                      _roleName(role, loc),
                       style: const TextStyle(
+                        color: PoMarketPalette.ink,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF315F4A),
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _roleSummary(),
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
+                      _roleSummary(role, loc),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: PoMarketPalette.muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (hired)
-                _StatusBadge(
-                  label: _statusLabel(status),
-                  color: _statusColor(status),
-                ),
+              const SizedBox(width: 8),
+              ManagementStatusPill(
+                label: presentation.label,
+                color: presentation.color,
+                icon: presentation.icon,
+              ),
             ],
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 14),
           if (!unlocked)
-            _LockedRoleBanner(
+            _LockedRolePanel(
+              color: color,
               label: loc.roleUnlockAtLevel.replaceFirst(
                 '{level}',
                 '${GameBalance.staffRoleUnlockLevel(role)}',
@@ -304,93 +200,97 @@ class _StaffCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _StaffDetailChip(
-                  icon: Icons.trending_up_rounded,
-                  label: '${loc.level} ${member.level}',
-                ),
-                _StaffDetailChip(
+                ManagementInfoTile(
                   icon: Icons.place_rounded,
-                  label: _assignmentLabel(member.assignment),
+                  label: _term(
+                    context,
+                    en: 'Station',
+                    he: 'עמדה',
+                    ar: 'المحطة',
+                  ),
+                  value: _assignmentLabel(member.assignment, loc),
+                  color: color,
                 ),
-                if (hired)
-                  _StaffDetailChip(
-                    icon: Icons.bolt_rounded,
-                    label: loc.teamPower.replaceFirst(
-                      '{power}',
-                      '${member.productivity}',
-                    ),
+                ManagementInfoTile(
+                  icon: Icons.payments_rounded,
+                  label: hired
+                      ? _term(
+                          context,
+                          en: 'Upgrade cost',
+                          he: 'עלות שדרוג',
+                          ar: 'تكلفة الترقية',
+                        )
+                      : _term(
+                          context,
+                          en: 'Hire cost',
+                          he: 'עלות גיוס',
+                          ar: 'تكلفة التوظيف',
+                        ),
+                  value: hired && member.level >= 10
+                      ? loc.maxLevel
+                      : '${hired ? member.upgradeCost : member.hireCost}',
+                  color: PoMarketPalette.gold,
+                ),
+                ManagementInfoTile(
+                  icon: Icons.bolt_rounded,
+                  label: _term(
+                    context,
+                    en: 'Productivity',
+                    he: 'תפוקה',
+                    ar: 'الإنتاجية',
                   ),
-                if (role == StaffRole.stocker && hired)
-                  _StaffDetailChip(
-                    icon: Icons.route_rounded,
-                    label: loc.workerRoute,
-                  ),
+                  value: hired ? '${member.productivity}' : '—',
+                  color: PoMarketPalette.mint,
+                ),
+                ManagementInfoTile(
+                  icon: Icons.stars_rounded,
+                  label: loc.level,
+                  value: '${member.level}',
+                  color: PoMarketPalette.violet,
+                ),
               ],
             ),
             if (hired) ...[
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  for (
-                    var index = 0;
-                    index < GameBalance.maxWorkersPerRole;
-                    index++
-                  ) ...[
-                    _WorkerSlot(
-                      filled: index < workerCount,
-                      available: index < availableSlots,
-                      color: color,
-                    ),
-                    if (index < GameBalance.maxWorkersPerRole - 1)
-                      const SizedBox(width: 7),
-                  ],
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      workerCount >= GameBalance.maxWorkersPerRole
-                          ? loc.maxWorkers
-                          : nextWorkerLevel != null
-                          ? loc.nextWorkerSlot.replaceFirst(
-                              '{level}',
-                              '$nextWorkerLevel',
-                            )
-                          : '${loc.teamMembers.replaceFirst('{count}', '$workerCount')} · $availableSlots',
-                      maxLines: 2,
-                      style: const TextStyle(
-                        color: Color(0xFF627068),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
+              _WorkerCapacity(
+                workerCount: workerCount,
+                availableSlots: availableSlots,
+                nextWorkerLevel: nextWorkerLevel,
+                color: color,
+                loc: loc,
               ),
             ],
-            const SizedBox(height: 15),
+            if (role == StaffRole.cashier && hired) ...[
+              const SizedBox(height: 14),
+              _CheckoutStationControls(controller: controller),
+            ],
+            const SizedBox(height: 14),
             if (!hired)
-              _PrimaryAction(
-                color: color,
+              _StaffAction(
                 icon: Icons.person_add_rounded,
                 label: '${loc.hire} — ${member.hireCost}',
-                onTap: () => _hire(context, member),
+                color: color,
+                filled: true,
+                enabled: canHire,
+                onPressed: () => _hire(context, member),
               )
             else
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _CompactAction(
+                  _StaffAction(
                     icon: Icons.upgrade_rounded,
-                    label: member.level >= 10
-                        ? loc.maxLevel
-                        : '${loc.upgradeStaff} · ${member.upgradeCost}',
+                    label: upgradeable
+                        ? '${loc.upgradeStaff} · ${member.upgradeCost}'
+                        : loc.maxLevel,
                     color: color,
-                    onTap: member.level >= 10
-                        ? null
-                        : () => _upgrade(context, member),
+                    filled: true,
+                    enabled: canUpgrade,
+                    onPressed: () => _upgrade(context),
                   ),
                   if (workerCount < GameBalance.maxWorkersPerRole)
-                    _CompactAction(
+                    _StaffAction(
                       icon: nextWorkerLevel == null
                           ? Icons.group_add_rounded
                           : Icons.lock_clock_rounded,
@@ -400,10 +300,10 @@ class _StaffCard extends StatelessWidget {
                               '{level}',
                               '$nextWorkerLevel',
                             ),
-                      color: const Color(0xFF5B8DEF),
-                      onTap: nextWorkerLevel == null
-                          ? () => _addWorker(context, member)
-                          : null,
+                      color: PoMarketPalette.blue,
+                      filled: false,
+                      enabled: canAddWorker,
+                      onPressed: () => _addWorker(context, member),
                     ),
                 ],
               ),
@@ -415,29 +315,29 @@ class _StaffCard extends StatelessWidget {
 
   void _hire(BuildContext context, StaffMember member) {
     if (controller.hireStaff(role)) {
-      _showMessage(context, '${_roleName()} ${loc.hired}!');
+      _message(context, '${_roleName(role, loc)} ${loc.hired}!');
       return;
     }
-    _showMessage(
+    _message(
       context,
       loc.staffNeedsCoins.replaceFirst('{cost}', '${member.hireCost}'),
     );
   }
 
-  void _upgrade(BuildContext context, StaffMember member) {
+  void _upgrade(BuildContext context) {
     if (controller.upgradeStaff(role)) {
-      _showMessage(context, '${_roleName()} — ${loc.upgradeStaff}');
+      _message(context, '${_roleName(role, loc)} — ${loc.upgradeStaff}');
       return;
     }
-    _showMessage(context, loc.notEnoughCoins);
+    _message(context, loc.notEnoughCoins);
   }
 
   void _addWorker(BuildContext context, StaffMember member) {
     if (controller.hireAdditionalStaff(role)) {
-      _showMessage(context, '${_roleName()} — ${loc.addWorker}');
+      _message(context, '${_roleName(role, loc)} — ${loc.addWorker}');
       return;
     }
-    _showMessage(
+    _message(
       context,
       loc.staffNeedsCoins.replaceFirst(
         '{cost}',
@@ -446,152 +346,133 @@ class _StaffCard extends StatelessWidget {
     );
   }
 
-  void _showMessage(BuildContext context, String message) {
+  void _message(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
-
-  String _roleName() {
-    return switch (role) {
-      StaffRole.cashier => loc.staffRoleCashier,
-      StaffRole.stocker => loc.staffRoleStocker,
-      StaffRole.cleaner => loc.staffRoleCleaner,
-      StaffRole.baker => loc.staffRoleBaker,
-      StaffRole.manager => loc.staffRoleManager,
-      StaffRole.courier => loc.staffRoleCourier,
-      StaffRole.promoter => loc.staffRolePromoter,
-    };
-  }
-
-  String _roleSummary() {
-    return switch (role) {
-      StaffRole.cashier => loc.staffSummaryCashier,
-      StaffRole.stocker => loc.staffSummaryStocker,
-      StaffRole.cleaner => loc.staffSummaryCleaner,
-      StaffRole.baker => loc.staffSummaryBaker,
-      StaffRole.manager => loc.staffSummaryManager,
-      StaffRole.courier => loc.staffSummaryCourier,
-      StaffRole.promoter => loc.staffSummaryPromoter,
-    };
-  }
-
-  String _assignmentLabel(StaffAssignment assignment) {
-    return switch (assignment) {
-      StaffAssignment.checkout => loc.assignmentCheckout,
-      StaffAssignment.shelves => loc.assignmentShelves,
-      StaffAssignment.floor => loc.assignmentFloor,
-      StaffAssignment.bakery => loc.assignmentBakery,
-      StaffAssignment.office => loc.assignmentOffice,
-      StaffAssignment.delivery => loc.assignmentDelivery,
-      StaffAssignment.entrance => loc.assignmentEntrance,
-    };
-  }
-
-  IconData _roleIcon() {
-    return switch (role) {
-      StaffRole.cashier => Icons.point_of_sale_rounded,
-      StaffRole.stocker => Icons.inventory_2_rounded,
-      StaffRole.cleaner => Icons.cleaning_services_rounded,
-      StaffRole.baker => Icons.bakery_dining_rounded,
-      StaffRole.manager => Icons.business_center_rounded,
-      StaffRole.courier => Icons.local_shipping_rounded,
-      StaffRole.promoter => Icons.campaign_rounded,
-    };
-  }
-
-  Color _roleColor() {
-    return switch (role) {
-      StaffRole.cashier => const Color(0xFF315F8F),
-      StaffRole.stocker => const Color(0xFF5B8DEF),
-      StaffRole.cleaner => const Color(0xFF1FA8A8),
-      StaffRole.baker => const Color(0xFFF6A623),
-      StaffRole.manager => const Color(0xFF8B66D8),
-      StaffRole.courier => const Color(0xFFE85D75),
-      StaffRole.promoter => const Color(0xFF38B879),
-    };
-  }
-
-  String _statusLabel(StaffStatus status) {
-    return switch (status) {
-      StaffStatus.notHired => loc.staffLocked,
-      StaffStatus.idle => loc.statusIdle,
-      StaffStatus.serving => loc.statusServing,
-      StaffStatus.stocking => loc.statusStocking,
-      StaffStatus.waitingForStock => loc.statusWaitingStock,
-      StaffStatus.waitingForShelf => loc.statusWaitingShelf,
-      StaffStatus.cleaning => loc.statusCleaning,
-      StaffStatus.baking => loc.statusBaking,
-      StaffStatus.managing => loc.statusManaging,
-      StaffStatus.delivering => loc.statusDelivering,
-      StaffStatus.promoting => loc.statusPromoting,
-    };
-  }
-
-  Color _statusColor(StaffStatus status) {
-    return switch (status) {
-      StaffStatus.waitingForStock ||
-      StaffStatus.waitingForShelf => const Color(0xFFE09A20),
-      StaffStatus.idle || StaffStatus.notHired => const Color(0xFF7B8580),
-      _ => const Color(0xFF2E9B5F),
-    };
-  }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.label, required this.color});
+class _StaffAvatar extends StatelessWidget {
+  const _StaffAvatar({
+    required this.icon,
+    required this.color,
+    required this.active,
+  });
 
-  final String label;
+  final IconData icon;
   final Color color;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxWidth: 105),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      width: 58,
+      height: 58,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        maxLines: 2,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: active ? 0.28 : 0.15),
+            color.withValues(alpha: 0.06),
+          ],
         ),
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Icon(icon, color: color, size: 29),
+    );
+  }
+}
+
+class _LockedRolePanel extends StatelessWidget {
+  const _LockedRolePanel({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_clock_rounded, color: color, size: 20),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: PoMarketPalette.ink,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _LockedRoleBanner extends StatelessWidget {
-  const _LockedRoleBanner({required this.label});
+class _WorkerCapacity extends StatelessWidget {
+  const _WorkerCapacity({
+    required this.workerCount,
+    required this.availableSlots,
+    required this.nextWorkerLevel,
+    required this.color,
+    required this.loc,
+  });
 
-  final String label;
+  final int workerCount;
+  final int availableSlots;
+  final int? nextWorkerLevel;
+  final Color color;
+  final AppLocalizations loc;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: const Color(0x11000000),
+        color: color.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(15),
       ),
       child: Row(
         children: [
-          const Icon(Icons.lock_clock_rounded, size: 19, color: Colors.grey),
-          const SizedBox(width: 8),
+          for (var index = 0; index < GameBalance.maxWorkersPerRole; index++) ...[
+            _WorkerSlot(
+              filled: index < workerCount,
+              available: index < availableSlots,
+              color: color,
+            ),
+            if (index < GameBalance.maxWorkersPerRole - 1)
+              const SizedBox(width: 6),
+          ],
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              label,
+              workerCount >= GameBalance.maxWorkersPerRole
+                  ? loc.maxWorkers
+                  : nextWorkerLevel != null
+                  ? loc.nextWorkerSlot.replaceFirst(
+                      '{level}',
+                      '$nextWorkerLevel',
+                    )
+                  : '${loc.teamMembers.replaceFirst('{count}', '$workerCount')} · $availableSlots',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Color(0xFF6B746E),
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
+                color: PoMarketPalette.muted,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -621,13 +502,13 @@ class _WorkerSlot extends StatelessWidget {
         color: filled
             ? color
             : available
-            ? color.withValues(alpha: 0.1)
-            : const Color(0x10000000),
+            ? color.withValues(alpha: 0.10)
+            : PoMarketPalette.line,
         shape: BoxShape.circle,
         border: Border.all(
           color: available
               ? color.withValues(alpha: 0.5)
-              : Colors.grey.shade400,
+              : PoMarketPalette.muted.withValues(alpha: 0.35),
         ),
       ),
       child: Icon(
@@ -641,109 +522,229 @@ class _WorkerSlot extends StatelessWidget {
             ? Colors.white
             : available
             ? color
-            : Colors.grey.shade500,
+            : PoMarketPalette.muted,
       ),
     );
   }
 }
 
-class _PrimaryAction extends StatelessWidget {
-  const _PrimaryAction({
-    required this.color,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final Color color;
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return PressableScale(
-      child: FilledButton.icon(
-        onPressed: onTap,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(48),
-          backgroundColor: color,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-        ),
-        icon: Icon(icon),
-        label: Text(label),
-      ),
-    );
-  }
-}
-
-class _CompactAction extends StatelessWidget {
-  const _CompactAction({
+class _StaffAction extends StatelessWidget {
+  const _StaffAction({
     required this.icon,
     required this.label,
     required this.color,
-    required this.onTap,
+    required this.filled,
+    required this.enabled,
+    required this.onPressed,
   });
 
   final IconData icon;
   final String label;
   final Color color;
-  final VoidCallback? onTap;
+  final bool filled;
+  final bool enabled;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     return PressableScale(
-      enabled: onTap != null,
+      enabled: enabled,
       child: FilledButton.icon(
-        onPressed: onTap,
+        onPressed: enabled ? onPressed : null,
         style: FilledButton.styleFrom(
-          backgroundColor: color,
-          disabledBackgroundColor: color.withValues(alpha: 0.25),
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          minimumSize: const Size(44, 46),
+          backgroundColor: filled ? color : color.withValues(alpha: 0.11),
+          foregroundColor: filled ? Colors.white : color,
+          disabledBackgroundColor: color.withValues(alpha: 0.06),
+          disabledForegroundColor: color.withValues(alpha: 0.42),
         ),
-        icon: Icon(icon, size: 18),
+        icon: Icon(icon, size: 17),
         label: Text(
           label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
         ),
       ),
     );
   }
 }
 
-class _StaffDetailChip extends StatelessWidget {
-  const _StaffDetailChip({required this.icon, required this.label});
+class _CheckoutStationControls extends StatelessWidget {
+  const _CheckoutStationControls({required this.controller});
 
-  final IconData icon;
-  final String label;
+  final GameController controller;
 
   @override
   Widget build(BuildContext context) {
+    final stations = controller.checkoutStations
+        .where((station) => station.unlocked)
+        .toList(growable: false);
     return Container(
-      constraints: const BoxConstraints(minHeight: 36),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        color: PoMarketPalette.blue.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: PoMarketPalette.blue.withValues(alpha: 0.16)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          Text(
+            _term(
+              context,
+              en: 'Assigned registers',
+              he: 'קופות משויכות',
+              ar: 'صناديق الدفع المعيّنة',
             ),
+            style: const TextStyle(
+              color: PoMarketPalette.ink,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (var index = 0; index < stations.length; index++)
+                FilterChip(
+                  label: Text(
+                    _term(
+                      context,
+                      en: 'Register ${index + 1}',
+                      he: 'קופה ${index + 1}',
+                      ar: 'صندوق ${index + 1}',
+                    ),
+                  ),
+                  avatar: Icon(
+                    controller.checkoutStationHasCashier(stations[index].id)
+                        ? Icons.person_rounded
+                        : Icons.touch_app_rounded,
+                    size: 16,
+                  ),
+                  selected: stations[index].active,
+                  onSelected:
+                      stations[index].id ==
+                          GameController.primaryCheckoutStationId
+                      ? null
+                      : (active) => controller.setCheckoutStationActive(
+                          stations[index].id,
+                          active,
+                        ),
+                ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+({String label, Color color, IconData icon}) _statusPresentation(
+  BuildContext context, {
+  required bool unlocked,
+  required bool hired,
+  required StaffStatus status,
+}) {
+  if (!unlocked) {
+    return (
+      label: _term(context, en: 'Unavailable', he: 'לא זמין', ar: 'غير متاح'),
+      color: PoMarketPalette.muted,
+      icon: Icons.lock_rounded,
+    );
+  }
+  if (!hired) {
+    return (
+      label: _term(context, en: 'Available', he: 'זמין', ar: 'متاح'),
+      color: PoMarketPalette.blue,
+      icon: Icons.person_add_alt_1_rounded,
+    );
+  }
+  if (status == StaffStatus.idle) {
+    return (
+      label: _term(context, en: 'Hired', he: 'מגויס', ar: 'موظف'),
+      color: PoMarketPalette.violet,
+      icon: Icons.badge_rounded,
+    );
+  }
+  if (status == StaffStatus.waitingForShelf ||
+      status == StaffStatus.waitingForStock) {
+    return (
+      label: _term(context, en: 'Waiting', he: 'ממתין', ar: 'بانتظار'),
+      color: PoMarketPalette.gold,
+      icon: Icons.hourglass_top_rounded,
+    );
+  }
+  return (
+    label: _term(context, en: 'Working', he: 'עובד', ar: 'يعمل'),
+    color: PoMarketPalette.mint,
+    icon: Icons.play_circle_fill_rounded,
+  );
+}
+
+String _roleName(StaffRole role, AppLocalizations loc) => switch (role) {
+  StaffRole.cashier => loc.staffRoleCashier,
+  StaffRole.stocker => loc.staffRoleStocker,
+  StaffRole.cleaner => loc.staffRoleCleaner,
+  StaffRole.baker => loc.staffRoleBaker,
+  StaffRole.manager => loc.staffRoleManager,
+  StaffRole.courier => loc.staffRoleCourier,
+  StaffRole.promoter => loc.staffRolePromoter,
+};
+
+String _roleSummary(StaffRole role, AppLocalizations loc) => switch (role) {
+  StaffRole.cashier => loc.staffSummaryCashier,
+  StaffRole.stocker => loc.staffSummaryStocker,
+  StaffRole.cleaner => loc.staffSummaryCleaner,
+  StaffRole.baker => loc.staffSummaryBaker,
+  StaffRole.manager => loc.staffSummaryManager,
+  StaffRole.courier => loc.staffSummaryCourier,
+  StaffRole.promoter => loc.staffSummaryPromoter,
+};
+
+String _assignmentLabel(StaffAssignment assignment, AppLocalizations loc) {
+  return switch (assignment) {
+    StaffAssignment.checkout => loc.assignmentCheckout,
+    StaffAssignment.shelves => loc.assignmentShelves,
+    StaffAssignment.floor => loc.assignmentFloor,
+    StaffAssignment.bakery => loc.assignmentBakery,
+    StaffAssignment.office => loc.assignmentOffice,
+    StaffAssignment.delivery => loc.assignmentDelivery,
+    StaffAssignment.entrance => loc.assignmentEntrance,
+  };
+}
+
+IconData _roleIcon(StaffRole role) => switch (role) {
+  StaffRole.cashier => Icons.point_of_sale_rounded,
+  StaffRole.stocker => Icons.inventory_2_rounded,
+  StaffRole.cleaner => Icons.cleaning_services_rounded,
+  StaffRole.baker => Icons.bakery_dining_rounded,
+  StaffRole.manager => Icons.business_center_rounded,
+  StaffRole.courier => Icons.local_shipping_rounded,
+  StaffRole.promoter => Icons.campaign_rounded,
+};
+
+Color _roleColor(StaffRole role) => switch (role) {
+  StaffRole.cashier => const Color(0xFF315F8F),
+  StaffRole.stocker => PoMarketPalette.blue,
+  StaffRole.cleaner => const Color(0xFF1FA8A8),
+  StaffRole.baker => PoMarketPalette.gold,
+  StaffRole.manager => PoMarketPalette.violet,
+  StaffRole.courier => PoMarketPalette.coral,
+  StaffRole.promoter => const Color(0xFF38B879),
+};
+
+String _term(
+  BuildContext context, {
+  required String en,
+  required String he,
+  required String ar,
+}) {
+  return switch (Localizations.localeOf(context).languageCode) {
+    'he' => he,
+    'ar' => ar,
+    _ => en,
+  };
 }

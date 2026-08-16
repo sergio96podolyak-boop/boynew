@@ -13,28 +13,14 @@ import 'screens/settings_screen.dart';
 import 'screens/shop_screen.dart';
 import 'screens/staff_screen.dart';
 import 'screens/upgrades_screen.dart';
+import 'widgets/daily_event_banner.dart';
+import 'widgets/game_dock.dart';
+import 'widgets/game_navigation.dart';
 import 'widgets/global_hud.dart';
+import 'widgets/main_game_phase_two.dart';
+import 'theme/pomarket_design.dart';
+import 'widgets/privacy_consent_layer.dart';
 
-/// The nine top-level destinations in the PoMarket experience.
-enum AppDestination {
-  market,
-  upgrades,
-  staff,
-  departments,
-  inventory,
-  quests,
-  achievements,
-  shop,
-  settings,
-}
-
-/// Responsive application shell with adaptive navigation.
-///
-/// Narrow phones use a compact floating icon menu over the destination. Wide
-/// phones, tablets, and web use a [NavigationRail].
-///
-/// The [GameController] is passed to every destination and is never
-/// recreated when switching, so game state is preserved.
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.controller, required this.settings});
 
@@ -46,23 +32,26 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _selectedIndex = 0;
+  AppDestination _selectedDestination = AppDestination.market;
+  late final ScrollController _settingsScrollController;
+  bool _worldMenuOpen = false;
 
-  static const _sideHudDestinations = <AppDestination>[
+  /// Always-visible dock slots, ordered by how often a shift needs them.
+  static const _dockDestinations = <AppDestination>[
     AppDestination.market,
     AppDestination.upgrades,
     AppDestination.staff,
-    AppDestination.inventory,
     AppDestination.shop,
-    AppDestination.settings,
   ];
 
-  static const _secondaryDestinations = <AppDestination>[
+  /// Revealed by the dock's "more" slot — one tap, no hunting.
+  static const _moreDestinations = <AppDestination>[
     AppDestination.departments,
+    AppDestination.inventory,
     AppDestination.quests,
     AppDestination.achievements,
+    AppDestination.settings,
   ];
-
   static const _allDestinations = <AppDestination>[
     AppDestination.market,
     AppDestination.upgrades,
@@ -75,449 +64,189 @@ class _AppShellState extends State<AppShell> {
     AppDestination.settings,
   ];
 
-  void _selectDestination(int index) {
-    setState(() => _selectedIndex = index);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final localizations = AppLocalizations.of(context);
-    final viewport = MediaQuery.sizeOf(context);
-    // A short landscape viewport cannot fit the full labelled rail. Treat it
-    // like a phone layout so navigation remains reachable without overflow.
-    final isWide = viewport.width >= 600 && viewport.height >= 560;
-     return Scaffold(
-      body: Column(
-        children: [
-          GlobalHud(
-            game: widget.controller,
-            settings: widget.settings,
-          ),
-          Expanded(
-            child: Row(
-              children: [
-                if (isWide) _buildRail(localizations),
-
-                Expanded(
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: IndexedStack(
-                          index: _selectedIndex,
-                          children: [
-                            for (final dest in _allDestinations)
-                              _buildDestination(dest),
-                          ],
-                        ),
-                      ),
-
-                      if (!isWide)
-                        PositionedDirectional(
-                          top: 10,
-                          end: 8,
-                          child: SafeArea(
-                            child: RepaintBoundary(
-                              child: _buildFloatingMenu(localizations),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRail(AppLocalizations loc) {
-    return NavigationRail(
-      selectedIndex: _selectedIndex,
-      onDestinationSelected: _selectDestination,
-      extended: false,
-      labelType: NavigationRailLabelType.all,
-      groupAlignment: -1,
-      destinations: [
-        for (final dest in _allDestinations)
-          NavigationRailDestination(
-            icon: Icon(_iconFor(dest)),
-            label: Text(_labelFor(dest, loc)),
-            selectedIcon: Icon(
-              _iconFor(dest),
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildFloatingMenu(AppLocalizations loc) {
-    return _FloatingHudMenu(
-      controller: widget.controller,
-      destinations: _sideHudDestinations,
-      selectedDestination: _allDestinations[_selectedIndex],
-      labelFor: (destination) => _labelFor(destination, loc),
-      iconFor: _iconFor,
-      moreLabel: loc.more,
-      secondaryDestinations: _secondaryDestinations,
-      onSelect: (destination) =>
-          _selectDestination(_allDestinations.indexOf(destination)),
-    );
-  }
-
-  Widget _buildDestination(AppDestination dest) {
-    final game = widget.controller;
-    final settings = widget.settings;
-    switch (dest) {
-      case AppDestination.market:
-        return GameScreen(controller: game, settings: settings);
-      case AppDestination.upgrades:
-        return UpgradesScreen(controller: game);
-      case AppDestination.staff:
-        return StaffScreen(controller: game);
-      case AppDestination.departments:
-        return DepartmentsScreen(controller: game);
-      case AppDestination.inventory:
-        return InventoryScreen(controller: game);
-      case AppDestination.quests:
-        return QuestsScreen(controller: game);
-      case AppDestination.achievements:
-        return AchievementsScreen(controller: game);
-      case AppDestination.shop:
-        return ShopScreen(controller: game);
-      case AppDestination.settings:
-        return SettingsScreen(controller: game, settings: settings);
-    }
-  }
-
-  static IconData _iconFor(AppDestination dest) {
-    return switch (dest) {
-      AppDestination.market => Icons.storefront_rounded,
-      AppDestination.upgrades => Icons.upgrade_rounded,
-      AppDestination.staff => Icons.groups_rounded,
-      AppDestination.departments => Icons.category_rounded,
-      AppDestination.inventory => Icons.inventory_2_rounded,
-      AppDestination.quests => Icons.flag_rounded,
-      AppDestination.achievements => Icons.emoji_events_rounded,
-      AppDestination.shop => Icons.shopping_bag_rounded,
-      AppDestination.settings => Icons.settings_rounded,
-    };
-  }
-
-  static String _labelFor(AppDestination dest, AppLocalizations loc) {
-    return switch (dest) {
-      AppDestination.market => loc.market,
-      AppDestination.upgrades => loc.upgrades,
-      AppDestination.staff => loc.staff,
-      AppDestination.departments => loc.departments,
-      AppDestination.inventory => loc.inventory,
-      AppDestination.quests => loc.quests,
-      AppDestination.achievements => loc.achievements,
-      AppDestination.shop => loc.shop,
-      AppDestination.settings => loc.settings,
-    };
-  }
-}
-
-class _FloatingHudMenu extends StatefulWidget {
-  const _FloatingHudMenu({
-    required this.controller,
-    required this.destinations,
-    required this.selectedDestination,
-    required this.labelFor,
-    required this.iconFor,
-    required this.moreLabel,
-    required this.secondaryDestinations,
-    required this.onSelect,
-  });
-
-  final GameController controller;
-  final List<AppDestination> destinations;
-  final AppDestination selectedDestination;
-  final String Function(AppDestination) labelFor;
-  final IconData Function(AppDestination) iconFor;
-  final String moreLabel;
-  final List<AppDestination> secondaryDestinations;
-  final ValueChanged<AppDestination> onSelect;
-
-  @override
-  State<_FloatingHudMenu> createState() => _FloatingHudMenuState();
-}
-
-class _FloatingHudMenuState extends State<_FloatingHudMenu> {
-  late _BadgeSnapshot _badges;
+  int get _selectedIndex => _allDestinations.indexOf(_selectedDestination);
 
   @override
   void initState() {
     super.initState();
-    _badges = _BadgeSnapshot.from(widget.controller);
-    widget.controller.addListener(_refreshBadges);
-  }
-
-  @override
-  void didUpdateWidget(covariant _FloatingHudMenu oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_refreshBadges);
-      _badges = _BadgeSnapshot.from(widget.controller);
-      widget.controller.addListener(_refreshBadges);
-    }
-  }
-
-  void _refreshBadges() {
-    final next = _BadgeSnapshot.from(widget.controller);
-    if (mounted && next != _badges) {
-      setState(() => _badges = next);
-    }
+    _settingsScrollController = ScrollController();
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_refreshBadges);
+    _settingsScrollController.dispose();
     super.dispose();
+  }
+
+  void _selectDestination(AppDestination destination) {
+    if (destination == _selectedDestination) {
+      if (_worldMenuOpen) setState(() => _worldMenuOpen = false);
+      return;
+    }
+    setState(() {
+      _selectedDestination = destination;
+      _worldMenuOpen = false;
+    });
+  }
+
+  void _toggleWorldMenu() {
+    setState(() => _worldMenuOpen = !_worldMenuOpen);
   }
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).height < 480;
-    final itemSize = compact ? 36.0 : 42.0;
-    final itemSpacing = compact ? 4.0 : 7.0;
-    return Material(
-      color: Colors.transparent,
-      child: SizedBox(
-        width: itemSize + 4,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            for (final destination in widget.destinations) ...[
-              _FloatingHudItem(
-                destination: destination,
-                selected: widget.selectedDestination == destination,
-                label: widget.labelFor(destination),
-                icon: widget.iconFor(destination),
-                badge: _badges.forDestination(destination),
-                size: itemSize,
-                onTap: () => widget.onSelect(destination),
-              ),
-              SizedBox(height: itemSpacing),
+    final loc = AppLocalizations.of(context);
+    final dailyEvent = DailyEventBannerLayer.maybeOf(context);
+    final marketSelected = _selectedDestination == AppDestination.market;
+    return Scaffold(
+      backgroundColor: PoDepthColors.deepSea,
+      body: DecoratedBox(
+        // Deep field behind the board. Bright surfaces read as premium when
+        // they float on a rich backdrop rather than another pale grey.
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              PoDepthColors.forest,
+              PoDepthColors.deepSea,
+              PoDepthColors.abyss,
             ],
-            PopupMenuButton<AppDestination>(
-              key: const ValueKey('side-hud-more'),
-              tooltip: widget.moreLabel,
-              padding: EdgeInsets.zero,
-              constraints: BoxConstraints.tightFor(
-                width: itemSize,
-                height: itemSize,
+            stops: [0, 0.45, 1],
+          ),
+        ),
+        child: Column(
+          children: [
+            GlobalHud(
+              game: widget.controller,
+              settings: widget.settings,
+              compactMode: marketSelected,
+            ),
+            if (dailyEvent != null)
+              DailyEventBanner(
+                game: dailyEvent.game,
+                settings: dailyEvent.settings,
+                compact: true,
               ),
-              onSelected: widget.onSelect,
-              itemBuilder: (context) => [
-                for (final destination in widget.secondaryDestinations)
-                  PopupMenuItem<AppDestination>(
-                    value: destination,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(widget.iconFor(destination), size: 19),
-                        const SizedBox(width: 10),
-                        Text(widget.labelFor(destination)),
-                      ],
-                    ),
-                  ),
-              ],
-              child: _HudCircle(
-                icon: Icons.apps_rounded,
-                selected: false,
-                label: widget.moreLabel,
-                size: itemSize,
+            Expanded(
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  for (final destination in _allDestinations)
+                    _buildDestination(destination),
+                ],
               ),
+            ),
+            // One dock on every screen. Previously the market hid navigation
+            // behind a floating hamburger while the management screens used a
+            // side rail, so the same action lived in two different places.
+            AnimatedBuilder(
+              animation: widget.controller,
+              builder: (context, _) {
+                final badges = _CommandBadges.from(widget.controller);
+                return GameDock(
+                  primary: _dockDestinations,
+                  overflow: _moreDestinations,
+                  selected: _selectedDestination,
+                  expanded: _worldMenuOpen,
+                  labelFor: (destination) => _labelFor(destination, loc),
+                  iconFor: _iconFor,
+                  hasBadge: badges.forDestination,
+                  moreLabel: loc.more,
+                  onSelect: _selectDestination,
+                  onToggleMore: _toggleWorldMenu,
+                );
+              },
             ),
           ],
         ),
       ),
     );
   }
-}
 
-class _FloatingHudItem extends StatelessWidget {
-  const _FloatingHudItem({
-    required this.destination,
-    required this.selected,
-    required this.label,
-    required this.icon,
-    required this.badge,
-    required this.size,
-    required this.onTap,
-  });
-
-  final AppDestination destination;
-  final bool selected;
-  final String label;
-  final IconData icon;
-  final bool badge;
-  final double size;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      key: ValueKey('side-hud-${destination.name}'),
-      button: true,
-      label: label,
-      onTap: onTap,
-      child: Tooltip(
-        message: label,
-        child: _HudCircle(
-          icon: icon,
-          selected: selected,
-          label: label,
-          badge: badge,
-          size: size,
-          onTap: onTap,
+  Widget _buildDestination(AppDestination destination) {
+    final game = widget.controller;
+    return switch (destination) {
+      AppDestination.market => MainGamePhaseTwo(
+        game: game,
+        settings: widget.settings,
+        child: GameScreen(
+          controller: game,
+          settings: widget.settings,
+          onOpenStaff: () => _selectDestination(AppDestination.staff),
+          onOpenInventory: () => _selectDestination(AppDestination.inventory),
+          onOpenDepartments: () =>
+              _selectDestination(AppDestination.departments),
         ),
       ),
-    );
-  }
-}
-
-class _HudCircle extends StatelessWidget {
-  const _HudCircle({
-    required this.icon,
-    required this.selected,
-    required this.label,
-    this.badge = false,
-    this.size = 42,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final bool selected;
-  final String label;
-  final bool badge;
-  final double size;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme;
-    return Semantics(
-      button: onTap != null,
-      label: label,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Material(
-          color: selected ? color.primary : const Color(0xEFFFFFF7),
-          elevation: selected ? 5 : 3,
-          shadowColor: const Color(0x55315F4A),
-          shape: const CircleBorder(),
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const CircleBorder(),
-            child: Align(
-              alignment: Alignment.center,
-              child: SizedBox.expand(
-                child: Stack(
-                  alignment: Alignment.center,
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(
-                      icon,
-                      size: size < 40 ? 19 : 21,
-                      color: selected ? Colors.white : color.onSurfaceVariant,
-                    ),
-                    if (badge)
-                      PositionedDirectional(
-                        top: -3,
-                        end: -3,
-                        child: Container(
-                          width: 16,
-                          height: 16,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD83B4A),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(0xFFFFFCF6),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: const Text(
-                            '!',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+      AppDestination.upgrades => UpgradesScreen(controller: game),
+      AppDestination.staff => StaffScreen(controller: game),
+      AppDestination.departments => DepartmentsScreen(controller: game),
+      AppDestination.inventory => InventoryScreen(controller: game),
+      AppDestination.quests => QuestsScreen(controller: game),
+      AppDestination.achievements => AchievementsScreen(controller: game),
+      AppDestination.shop => ShopScreen(controller: game),
+      AppDestination.settings => PrimaryScrollController(
+        controller: _settingsScrollController,
+        scrollDirection: Axis.vertical,
+        automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
+        child: PrivacySettingsLauncher(
+          settings: widget.settings,
+          child: SettingsScreen(controller: game, settings: widget.settings),
         ),
       ),
-    );
+    };
   }
+
+  static IconData _iconFor(AppDestination destination) => switch (destination) {
+    AppDestination.market => Icons.storefront_rounded,
+    AppDestination.upgrades => Icons.trending_up_rounded,
+    AppDestination.staff => Icons.groups_2_rounded,
+    AppDestination.departments => Icons.store_mall_directory_rounded,
+    AppDestination.inventory => Icons.inventory_2_rounded,
+    AppDestination.quests => Icons.flag_circle_rounded,
+    AppDestination.achievements => Icons.emoji_events_rounded,
+    AppDestination.shop => Icons.shopping_bag_rounded,
+    AppDestination.settings => Icons.tune_rounded,
+  };
+
+  static String _labelFor(AppDestination destination, AppLocalizations loc) =>
+      switch (destination) {
+        AppDestination.market => loc.market,
+        AppDestination.upgrades => loc.upgrades,
+        AppDestination.staff => loc.staff,
+        AppDestination.departments => loc.departments,
+        AppDestination.inventory => loc.inventory,
+        AppDestination.quests => loc.quests,
+        AppDestination.achievements => loc.achievements,
+        AppDestination.shop => loc.shop,
+        AppDestination.settings => loc.settings,
+      };
 }
 
-class _BadgeSnapshot {
-  const _BadgeSnapshot({
+
+class _CommandBadges {
+  const _CommandBadges({
     required this.upgrades,
     required this.staff,
     required this.inventory,
   });
 
-  factory _BadgeSnapshot.from(GameController game) {
-    return _BadgeSnapshot(
-      upgrades: game.upgrades.any((offer) => game.canBuyUpgrade(offer.type)),
-      staff: StaffRole.values.any(
-        (role) => game.isStaffRoleUnlocked(role) && !game.isStaffHired(role),
-      ),
-      inventory: game.pendingDeliveries.any(game.isDeliveryReady),
-    );
-  }
+  factory _CommandBadges.from(GameController game) => _CommandBadges(
+    upgrades: game.upgrades.any((offer) => game.canBuyUpgrade(offer.type)),
+    staff: StaffRole.values.any(
+      (role) => game.isStaffRoleUnlocked(role) && !game.isStaffHired(role),
+    ),
+    inventory: game.pendingDeliveries.any(game.isDeliveryReady),
+  );
 
   final bool upgrades;
   final bool staff;
   final bool inventory;
 
-  bool forDestination(AppDestination destination) {
-    return switch (destination) {
-      AppDestination.upgrades => upgrades,
-      AppDestination.staff => staff,
-      AppDestination.inventory => inventory,
-      _ => false,
-    };
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is _BadgeSnapshot &&
-        other.upgrades == upgrades &&
-        other.staff == staff &&
-        other.inventory == inventory;
-  }
-
-  @override
-  int get hashCode => Object.hash(upgrades, staff, inventory);
-}
-
-class CircleCaddy extends StatelessWidget {
-  const CircleCaddy({super.key, required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 16,
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      child: Icon(icon, color: Theme.of(context).colorScheme.primary),
-    );
-  }
+  bool forDestination(AppDestination destination) => switch (destination) {
+    AppDestination.staff => staff,
+    AppDestination.inventory => inventory,
+    _ => false,
+  };
 }

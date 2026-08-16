@@ -18,10 +18,12 @@ class CelebrationOverlay extends StatefulWidget {
     super.key,
     required this.controller,
     required this.child,
+    this.reducedMotion = false,
   });
 
   final CelebrationController controller;
   final Widget child;
+  final bool reducedMotion;
 
   @override
   State<CelebrationOverlay> createState() => _CelebrationOverlayState();
@@ -31,6 +33,9 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animation;
   late List<_ConfettiParticle> _particles;
+
+  bool get _motionDisabled =>
+      widget.reducedMotion || MediaQuery.disableAnimationsOf(context);
 
   @override
   void initState() {
@@ -44,16 +49,33 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_motionDisabled && _animation.isAnimating) {
+      _stopAnimation();
+    }
+  }
+
+  @override
   void didUpdateWidget(CelebrationOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onCelebrate);
       widget.controller.addListener(_onCelebrate);
     }
+    if (widget.reducedMotion && !oldWidget.reducedMotion) {
+      _stopAnimation();
+    }
+  }
+
+  void _stopAnimation() {
+    _animation.stop();
+    _animation.value = 0;
   }
 
   void _onCelebrate() {
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (_motionDisabled) {
+      _stopAnimation();
       return;
     }
     setState(() {

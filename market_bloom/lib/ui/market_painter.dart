@@ -1,177 +1,241 @@
+import 'dart:async';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../game/game_controller.dart';
 import '../game/game_models.dart';
-import '../services/season_theme.dart';
+import 'market_art_assets.dart';
+import 'vertical_slice_world_painter.dart';
 
-// --- Paints Cache ---
-// Storing paints in a map to avoid polluting the class namespace.
-// These are static and created only once.
-final _p = <String, Paint>{
-  'marketShadow': Paint()..color = const Color(0x1F243529),
-  'marketGrid': Paint()
-    ..color = const Color(0x0A315F4A)
-    ..strokeWidth = 0.6,
-  'marketDiamond': Paint()
-    ..color = const Color(0x06315F4A)
-    ..strokeWidth = 0.5,
-  'marketBorder': Paint()
-    ..color = const Color(0xFF315F4A)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 4,
-  'ambientHeaderShadow': Paint()..color = const Color(0x22000000),
-  'lightSource': Paint()..color = const Color(0xFFFFE291),
-  'planterBox': Paint()..color = const Color(0xFFC77B45),
-  'planterLeaf': Paint()..color = const Color(0xFF3A9A68),
-  'departmentShadow': Paint()..color = const Color(0x21000000),
-  'departmentCanopy': Paint()..color = const Color(0xEFFFFFFF),
-  'sparkle': Paint()..color = const Color(0xDDFFF2A8),
-  'produceGreen': Paint()..color = const Color(0xFF76C94F),
-  'produceRed': Paint()..color = const Color(0xFFEF604F),
-  'produceStem': Paint()
-    ..color = const Color(0xFF2F7A43)
-    ..strokeWidth = 1.4,
-  'refrigeratedBox': Paint()..color = const Color(0xFFEAF8FF),
-  'refrigeratedLabel': Paint()..color = const Color(0xFF69B8E7),
-  'beautyPink': Paint()..color = const Color(0xFFFFE0EA),
-  'beautyPurple': Paint()..color = const Color(0xFFF6C4FF),
-  'beautyCap': Paint()..color = const Color(0xFF67546C),
-  'electronicsBox': Paint()..color = const Color(0xFF26344F),
-  'electronicsLed': Paint()..color = const Color(0xFF72E3FF),
-  'bakeryLight': Paint()..color = const Color(0xFFFFD27A),
-  'bakeryDark': Paint()..color = const Color(0xFFDE9143),
-  'entranceDoor': Paint()..color = const Color(0xFF83D3B0),
-  'stationBoxShadow': Paint()..color = const Color(0x18000000),
-  'stationBoxGrate': Paint()
-    ..color = const Color(0x669B6230)
-    ..strokeWidth = 3,
-  'shelfDividers': Paint()
-    ..color = const Color(0xFFEAF1FF)
-    ..strokeWidth = 4,
-  'shelfProduct1': Paint()..color = const Color(0xFFF6A623),
-  'shelfProduct2': Paint()..color = const Color(0xFFE85D75),
-  'shelfProduct3': Paint()..color = const Color(0xFF43AA8B),
-  'shelfEmpty': Paint()..color = const Color(0x33E85D75),
-  'checkoutScreen': Paint()..color = const Color(0xFF3B4054),
-  'checkoutScanner': Paint()..color = const Color(0xFFFFD166),
-  'queueGuide': Paint()
-    ..color = const Color(0x1F315F4A)
-    ..strokeWidth = 2,
-  'queueCustomerSkin': Paint()..color = const Color(0xFFFFD3B6),
-  'expansionShadow': Paint()..color = const Color(0x14000000),
-  'expansionUnlocked': Paint()..color = const Color(0xFFFFE7B6),
-  'expansionLocked': Paint()..color = const Color(0xFFF0ECE3),
-  'expansionUnlockedBorder': Paint()
-    ..color = const Color(0xFFF6A623)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 2,
-  'expansionLockedBorder': Paint()
-    ..color = const Color(0xFFAAA59B)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 2,
-  'expansionHighlight': Paint()..color = Colors.white.withValues(alpha: 0.35),
-  'bakeryReady': Paint()..color = const Color(0xFFE09A20),
-  'bakeryEmpty': Paint()..color = const Color(0x33A98D62),
-  'movementTarget': Paint()..color = const Color(0xFF38B879),
-  'movementTargetRing': Paint()
-    ..color = const Color(0x6638B879)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 2,
-  'cashierShadow': Paint()..color = const Color(0x22000000),
-  'cashierUniform': Paint()..color = const Color(0xFF315F8F),
-  'cashierApron': Paint()..color = const Color(0xFFF6A623),
-  'cashierSkin': Paint()..color = const Color(0xFFFFD3B6),
-  'cashierHair': Paint()..color = const Color(0xFF473126),
-  'cashierEye': Paint()..color = const Color(0xFF382B2A),
-  'cashierFeature': Paint()
-    ..color = const Color(0xFF382B2A)
-    ..strokeWidth = 1.5
-    ..strokeCap = StrokeCap.round
-    ..style = PaintingStyle.stroke,
-  'staffShadow': Paint()..color = const Color(0x22000000),
-  'staffLegs': Paint()
-    ..color = const Color(0xFF334052)
-    ..strokeWidth = 4.5
-    ..strokeCap = StrokeCap.round,
-  'staffApron': Paint()..color = const Color(0xEFFFFFFF),
-  'staffSkin': Paint()..color = const Color(0xFFFFD3B6),
-  'staffEye': Paint()..color = const Color(0xFF382B2A),
-  'staffFeature': Paint()
-    ..color = const Color(0xFF573B35)
-    ..strokeWidth = 1.5
-    ..strokeCap = StrokeCap.round
-    ..style = PaintingStyle.stroke,
-  'staffStockerBoxLine': Paint()
-    ..color = const Color(0xFFB76E00)
-    ..strokeWidth = 1.2,
-  'staffCleanerMopStick': Paint()
-    ..color = const Color(0xFF6B5545)
-    ..strokeWidth = 2.4
-    ..strokeCap = StrokeCap.round,
-  'staffCleanerMopHead': Paint()
-    ..color = const Color(0xFF5B8DEF)
-    ..strokeWidth = 2
-    ..strokeCap = StrokeCap.round,
-  'staffBakerHat': Paint()..color = Colors.white,
-  'staffManagerClipboard': Paint()..color = const Color(0xFFFFF3D7),
-  'staffManagerClipboardLine': Paint()
-    ..color = const Color(0xFF8B66D8)
-    ..strokeWidth = 1.3,
-  'staffCourierHat': Paint()..color = const Color(0xFFFFF3D7),
-  'staffPromoterSign': Paint()..color = const Color(0xFFFFD278),
-  'staffPromoterSignStick': Paint()
-    ..color = const Color(0xFF6B5545)
-    ..strokeWidth = 2,
-  'staffLevelBadge': Paint()..color = const Color(0xFF315F4A),
-  'playerShadow': Paint()..color = const Color(0x25000000),
-  'playerLegs': Paint()
-    ..color = const Color(0xFF273043)
-    ..strokeWidth = 6
-    ..strokeCap = StrokeCap.round,
-  'playerTorso': Paint()..color = const Color(0xFF38B879),
-  'playerTorsoBorder': Paint()
-    ..color = const Color(0xFF1F6A46)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 2,
-  'playerApron': Paint()..color = const Color(0xFFFFF3D7),
-  'playerSkin': Paint()..color = const Color(0xFFFFCFAC),
-  'playerHair': Paint()..color = const Color(0xFF5A3825),
-  'playerEye': Paint()..color = const Color(0xFF273043),
-  'playerFeature': Paint()
-    ..color = const Color(0xFF56352E)
-    ..strokeWidth = 1.8
-    ..strokeCap = StrokeCap.round
-    ..style = PaintingStyle.stroke,
-  'customerShadow': Paint()..color = const Color(0x22000000),
-  'customerBorder': Paint()
-    ..color = const Color(0xFF4C3A2F)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.6,
-  'customerApron': Paint()..color = const Color(0xFFFFF3D7),
-  'customerSkin': Paint()..color = const Color(0xFFFFD3B6),
-  'customerEye': Paint()..color = const Color(0xFF382B2A),
-  'customerFeature': Paint()
-    ..color = const Color(0xFF573B35)
-    ..strokeWidth = 1.5
-    ..strokeCap = StrokeCap.round
-    ..style = PaintingStyle.stroke,
-  'customerProduct': Paint()..color = const Color(0xFFF6A623),
-  'customerVipBadge': Paint()..color = const Color(0xFFFFD95A),
-  'bubbleFill': Paint()..color = Colors.white,
-  'interactionGlowActive': Paint()
-    ..color = const Color(0x2238B879)
-    ..style = PaintingStyle.fill,
-  'interactionGlowInactive': Paint()
-    ..color = const Color(0x08315F4A)
-    ..style = PaintingStyle.fill,
-  'interactionRing': Paint()
-    ..color = const Color(0x9938B879)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 2.1,
-  'stationLabelBubble': Paint()..color = const Color(0xEFFFFFFF),
-};
+const String activeMarketWorldRenderer = 'MarketPainter';
+
+enum WorldRenderPlane { rearFixture, fixture, mobileEntity, foregroundFixture }
+
+@immutable
+class WorldDepthEntry {
+  const WorldDepthEntry({
+    required this.id,
+    required this.anchorY,
+    required this.plane,
+    required this.stableOrder,
+  });
+
+  final String id;
+  final double anchorY;
+  final WorldRenderPlane plane;
+  final int stableOrder;
+
+  static int compare(WorldDepthEntry left, WorldDepthEntry right) {
+    final depth = left.anchorY.compareTo(right.anchorY);
+    if (depth != 0) return depth;
+    final plane = left.plane.index.compareTo(right.plane.index);
+    if (plane != 0) return plane;
+    final stable = left.stableOrder.compareTo(right.stableOrder);
+    return stable != 0 ? stable : left.id.compareTo(right.id);
+  }
+}
+
+enum MarketFloorRegion { welcome, retail, checkout, storage, bakery }
+
+/// Board-local visual floor plan. The rear service departments form the back
+/// wall, the retail floor occupies the center, and the entrance opens at the
+/// front edge of the store.
+@immutable
+class MarketWorldLayout {
+  const MarketWorldLayout._({
+    required this.market,
+    required this.wall,
+    required this.welcome,
+    required this.retail,
+    required this.checkout,
+    required this.storage,
+    required this.bakery,
+    required this.mainAisle,
+    required this.crossAisle,
+    required this.entranceOpening,
+    required this.checkoutOpening,
+    required this.storageOpening,
+    required this.bakeryOpening,
+    required this.scale,
+    required this.density,
+  });
+
+  factory MarketWorldLayout.forSize(Size size) {
+    final market = Rect.fromLTWH(
+      8,
+      6,
+      max(0, size.width - 16),
+      max(0, size.height - 12),
+    );
+    final scale = MarketWorldComposition.scaleFor(market.size);
+    final density = MarketWorldComposition.densityFor(market.width);
+    Rect region(double left, double top, double right, double bottom) =>
+        Rect.fromLTRB(
+          market.left + market.width * left,
+          market.top + market.height * top,
+          market.left + market.width * right,
+          market.top + market.height * bottom,
+        );
+    return MarketWorldLayout._(
+      market: market,
+      wall: region(0, 0, 1, .12),
+      storage: region(.025, .12, .43, .32),
+      bakery: region(.43, .12, .975, .32),
+      retail: region(.025, .32, .70, .80),
+      checkout: region(.70, .32, .975, .80),
+      welcome: region(.08, .80, .92, .985),
+      mainAisle: region(.59, .27, .715, .91),
+      crossAisle: region(.025, .69, .975, .80),
+      entranceOpening: region(.42, .80, .58, .985),
+      checkoutOpening: region(.675, .48, .725, .79),
+      storageOpening: region(.275, .29, .405, .35),
+      bakeryOpening: region(.50, .29, .69, .35),
+      scale: scale,
+      density: density,
+    );
+  }
+
+  final Rect market;
+  final Rect wall;
+  final Rect welcome;
+  final Rect retail;
+  final Rect checkout;
+  final Rect storage;
+  final Rect bakery;
+  final Rect mainAisle;
+  final Rect crossAisle;
+  final Rect entranceOpening;
+  final Rect checkoutOpening;
+  final Rect storageOpening;
+  final Rect bakeryOpening;
+  final double scale;
+  final double density;
+
+  bool get compact => density < .74;
+
+  Rect region(MarketFloorRegion region) => switch (region) {
+    MarketFloorRegion.welcome => welcome,
+    MarketFloorRegion.retail => retail,
+    MarketFloorRegion.checkout => checkout,
+    MarketFloorRegion.storage => storage,
+    MarketFloorRegion.bakery => bakery,
+  };
+}
+
+/// Compatibility projection used by depth diagnostics. The active painter adds
+/// department-specific render-only placement without changing simulation data.
+abstract final class MarketWorldProjection {
+  static const floorTop = .205;
+  static const floorBottom = .965;
+
+  static Offset visualPosition(Offset gameplayPosition) {
+    final x = (.055 + gameplayPosition.dx * .89).clamp(.055, .945);
+    final sourceY = gameplayPosition.dy.clamp(0.0, 1.0);
+    final y = sourceY < .20
+        ? .205 + sourceY * .43
+        : sourceY < .70
+        ? .291 + (sourceY - .20) * .83
+        : .706 + (sourceY - .70) * .83;
+    return Offset(x, y.clamp(floorTop, floorBottom));
+  }
+
+  static double depthFor(Offset gameplayPosition) =>
+      visualPosition(gameplayPosition).dy;
+}
+
+abstract final class MarketWorldComposition {
+  static double densityFor(double width) => width <= 330
+      ? .48
+      : width <= 420
+      ? .68
+      : width <= 560
+      ? .86
+      : 1;
+
+  static double scaleFor(Size size) =>
+      min(size.width / 500, size.height / 470).clamp(.54, 1.08);
+
+  static bool supports(Size size) => size.width >= 280 && size.height >= 300;
+}
+
+enum ShelfVisualRelationship { behind, front, beside }
+
+enum MarketCharacterKind { player, customer, staff }
+
+abstract final class MarketDepthModel {
+  static const shelfRows = <double>[.445, .535, .625];
+  static const shelfLeft = .075;
+  static const shelfRight = .635;
+  static const shelfHalfDepth = .028;
+  static const shelfRearLaneOffset = .040;
+  static const shelfFrontLaneOffset = .045;
+  static const shelfForegroundOffset = .034;
+  static const checkoutRearOffset = .055;
+  static const checkoutForegroundOffset = .025;
+  static const storageRearDepth = .875;
+  static const bakeryRearDepth = .875;
+  static const bakeryForegroundDepth = .935;
+  static const cashierDepthOffset = -.018;
+  static const payingCustomerDepthOffset = .018;
+  static const queueStartDepth = .555;
+  static const storageWorkerDepth = .89;
+  static const storageInteractionDepth = .915;
+  static const bakeryWorkerDepth = .89;
+  static const bakeryInteractionDepth = .905;
+
+  static ShelfVisualRelationship shelfRelationship(Offset visual) {
+    if (visual.dx < shelfLeft || visual.dx > shelfRight) {
+      return ShelfVisualRelationship.beside;
+    }
+    final row = nearestShelfRow(visual.dy);
+    if ((visual.dy - row).abs() > shelfFrontLaneOffset + .0001) {
+      return ShelfVisualRelationship.beside;
+    }
+    return visual.dy < row
+        ? ShelfVisualRelationship.behind
+        : ShelfVisualRelationship.front;
+  }
+
+  static double nearestShelfRow(double y) => shelfRows.reduce(
+    (left, right) => (y - left).abs() <= (y - right).abs() ? left : right,
+  );
+
+  static Offset resolveShelfKeepOut(
+    Offset visual, {
+    required bool interacting,
+  }) {
+    if (visual.dx < shelfLeft || visual.dx > shelfRight) return visual;
+    final row = nearestShelfRow(visual.dy);
+    if ((visual.dy - row).abs() >= shelfHalfDepth) return visual;
+    return Offset(
+      visual.dx,
+      interacting || visual.dy >= row
+          ? row + shelfFrontLaneOffset
+          : row - shelfRearLaneOffset,
+    );
+  }
+
+  static double checkoutRearDepth(Offset station) =>
+      station.dy - checkoutRearOffset;
+  static double checkoutFrontDepth(Offset station) =>
+      station.dy + checkoutForegroundOffset;
+}
+
+abstract final class MarketCharacterScale {
+  static double heightFor(
+    MarketCharacterKind kind,
+    MarketWorldLayout layout,
+  ) {
+    final logicalHeight = switch (kind) {
+      MarketCharacterKind.player => layout.compact ? 80.0 : 88.0,
+      MarketCharacterKind.customer => layout.compact ? 72.0 : 80.0,
+      MarketCharacterKind.staff => layout.compact ? 74.0 : 82.0,
+    };
+    return logicalHeight * layout.scale;
+  }
+}
 
 class MarketPainter extends CustomPainter {
   MarketPainter({
@@ -184,12 +248,18 @@ class MarketPainter extends CustomPainter {
     required this.bakeryLockedLabel,
     required this.departmentLabels,
     required this.textDirection,
-    SeasonTheme? season,
-  })  : season = season ?? SeasonManager.current(),
-        super(repaint: game.scene);
+    bool? reducedMotion,
+  }) : _reducedMotionOverride = reducedMotion,
+       super(
+         repaint: Listenable.merge(<Listenable>[
+           game.scene,
+           MarketArtAssets.repaintNotifier,
+         ]),
+       ) {
+    unawaited(MarketArtAssets.load());
+  }
 
   final GameController game;
-  final SeasonTheme season;
   final String storageLabel;
   final String shelfLabel;
   final String checkoutLabel;
@@ -198,1529 +268,1214 @@ class MarketPainter extends CustomPainter {
   final String bakeryLockedLabel;
   final Map<DepartmentType, String> departmentLabels;
   final TextDirection textDirection;
+  final bool? _reducedMotionOverride;
 
-  // --- CACHE ---
-  final TextPainter _textPainter = TextPainter(textAlign: TextAlign.center);
-  final Paint _dynamicPaint = Paint();
-  Size? _lastSize;
+  bool get _reducedMotion =>
+      _reducedMotionOverride ?? VerticalSliceRenderSettings.reducedMotion;
 
-  // Shaders
-  final Map<String, Shader> _shaders = {};
-  final Map<DepartmentType, Shader> _departmentShaders = {};
-  final Map<DepartmentType, Paint> _departmentEdgePaints = {};
-  final Map<int, Paint> _customerHairPaints = {};
+  final Paint _paint = Paint()..isAntiAlias = true;
+  final Paint _imagePaint = Paint()
+    ..isAntiAlias = true
+    ..filterQuality = FilterQuality.high;
+  final Paint _shadowPaint = Paint()
+    ..isAntiAlias = true
+    ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 4);
 
-  void _updateCachedResources(Size size) {
-    if (size == _lastSize) return;
-    _lastSize = size;
-
-    _shaders.clear();
-    _departmentShaders.clear();
-    _departmentEdgePaints.clear();
-    _customerHairPaints.clear();
-    _p.remove('ambientArrow');
-    _p.remove('stockerRoute');
-
-    final market = Rect.fromLTWH(8, 6, size.width - 16, size.height - 12);
-    final scale = _sceneScale(market);
-
-    _shaders['marketFloor'] = const LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Color(0xFFFFF6E2),
-        Color(0xFFF3D8A6),
-        Color(0xFFE3BF76),
-      ],
-    ).createShader(market);
-
-    _shaders['glow'] = const RadialGradient(
-      center: Alignment(0.38, 0.16),
-      radius: 1.05,
-      colors: [Color(0x55FFFFFF), Color(0x00FFFFFF)],
-    ).createShader(market);
-
-    _shaders['vignette'] = const RadialGradient(
-      center: Alignment(0.5, 0.5),
-      radius: 1.2,
-      colors: [Color(0x00000000), Color(0x26000000)],
-    ).createShader(market);
-
-    final headerRect = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: _point(market, const Offset(0.5, 0.105)),
-        width: 158 * scale,
-        height: 28 * scale,
-      ),
-      Radius.circular(11 * scale),
-    );
-    _shaders['header'] = const LinearGradient(
-      colors: [Color(0xFF163F35), Color(0xFF2E8A63)],
-    ).createShader(headerRect.outerRect);
-
-    _shaders['light'] = const RadialGradient(
-      colors: [Color(0x66FFF2AF), Color(0x00FFF2AF)],
-    ).createShader(market);
-
-    _p['ambientArrow'] = Paint()
-      ..color = const Color(0x17315F4A)
-      ..strokeWidth = 2 * scale
-      ..strokeCap = StrokeCap.round;
-
-    for (final definition in DepartmentCatalog.all) {
-      if (definition.type == DepartmentType.generalGoods) continue;
-
-      final center = _point(market, definition.displayZone);
-      final bodyRect = Rect.fromCenter(
-        center: center,
-        width: 72 * scale,
-        height: 61 * scale,
-      );
-
-      _departmentShaders[definition.type] = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Color.lerp(definition.color, Colors.white, 0.34)!,
-          definition.color,
-        ],
-      ).createShader(bodyRect);
-
-      _departmentEdgePaints[definition.type] = Paint()
-        ..color = Color.lerp(definition.color, Colors.black, 0.28)!
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2 * scale;
-    }
-  }
-
-  // --- END CACHE ---
-
-  double get animationTime => game.totalPlaySeconds;
+  static const _forest = Color(0xFF245442);
+  static const _deepForest = Color(0xFF12362C);
+  static const _cream = Color(0xFFFFF4D8);
+  static const _tileLight = Color(0xFFF6E8CD);
+  static const _tileDark = Color(0xFFE1C792);
+  static const _checkoutRed = Color(0xFFA84E58);
+  static const _storageBlue = Color(0xFF526A70);
+  static const _bakeryGold = Color(0xFFD59739);
+  static const _timber = Color(0xFF82543A);
 
   @override
   void paint(Canvas canvas, Size size) {
-    _updateCachedResources(size);
-
-    final market = Rect.fromLTWH(8, 6, size.width - 16, size.height - 12);
-    _drawMarket(canvas, market);
-    _drawAmbientDetails(canvas, market);
-    _drawEntrance(canvas, market);
-    _drawStockRoom(canvas, market);
-    _drawShelf(canvas, market);
-    _drawDepartmentDisplays(canvas, market);
-    _drawCheckout(canvas, market);
-    _drawExpansion(canvas, market);
-    _drawMovementTarget(canvas, market);
-    _drawStockerRoute(canvas, market);
-
-    if (game.isStaffHired(StaffRole.cashier)) {
-      for (var index = 0;
-          index < game.staffWorkerCount(StaffRole.cashier);
-          index++) {
-        _drawCashier(canvas, market, index);
-      }
-    }
-    for (final role in StaffRole.values) {
-      if (role == StaffRole.cashier || !game.isStaffHired(role)) {
-        continue;
-      }
-      for (var index = 0; index < game.staffWorkerCount(role); index++) {
-        _drawStaffMember(canvas, market, role, index);
-      }
-    }
-    for (final customer in game.customers) {
-      _drawCustomer(canvas, _point(market, customer.position), customer);
-    }
-    _drawPlayer(canvas, _point(market, game.playerPosition));
-    _drawFloatingEffects(canvas, market);
-    _drawSeasonalParticles(canvas, market);
-  }
-
-  void _drawMarket(Canvas canvas, Rect rect) {
-    final shadow = RRect.fromRectAndRadius(
-      rect.shift(const Offset(0, 7)),
-      const Radius.circular(30),
-    );
-    canvas.drawRRect(shadow, _p['marketShadow']!);
-
-    final room = RRect.fromRectAndRadius(rect, const Radius.circular(28));
-    _dynamicPaint.shader = _shaders['marketFloor'];
-    canvas.drawRRect(room, _dynamicPaint);
-    _dynamicPaint.shader = null;
-
-    canvas.save();
-    canvas.clipRRect(room);
-
-    final gridPaint = _p['marketGrid']!;
-    final diamondPaint = _p['marketDiamond']!;
-
-    const tile = 34.0;
-    const halfTile = tile / 2;
-    for (var x = rect.left; x <= rect.right; x += tile) {
-      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), gridPaint);
-    }
-    for (var y = rect.top; y <= rect.bottom; y += tile) {
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
-    }
-
-    for (var y = rect.top + halfTile; y <= rect.bottom; y += tile) {
-      final start = Offset(rect.left + halfTile, y);
-      final end = Offset(rect.right, y + halfTile);
-      if (end.dx <= rect.right + 0.1 && end.dy <= rect.bottom + 0.1) {
-        canvas.drawLine(start, end, diamondPaint);
-      }
-    }
-    for (var y = rect.top; y <= rect.bottom - halfTile; y += tile) {
-      final start = Offset(rect.left, y + halfTile);
-      final end = Offset(rect.right - halfTile, y + tile);
-      if (start.dx >= rect.left - 0.1 && end.dx >= rect.left - 0.1) {
-        canvas.drawLine(start, end, diamondPaint);
-      }
-    }
-
-    _dynamicPaint.shader = _shaders['glow'];
-    canvas.drawRect(rect, _dynamicPaint);
-
-    _dynamicPaint.shader = _shaders['vignette'];
-    canvas.drawRect(rect, _dynamicPaint);
-    _dynamicPaint.shader = null;
-    canvas.restore();
-
-    canvas.drawRRect(room, _p['marketBorder']!);
-
-    // Seasonal floor tint — a subtle colour wash over the base floor.
-    final tintPaint = Paint()
-      ..color = season.floorColor.withValues(alpha: 0.18)
-      ..blendMode = BlendMode.srcATop;
-    canvas.save();
-    canvas.clipRRect(room);
-    canvas.drawRect(rect, tintPaint);
-    canvas.restore();
-  }
-
-  void _drawAmbientDetails(Canvas canvas, Rect market) {
-    final scale = _sceneScale(market);
-    final header = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: _point(market, const Offset(0.5, 0.105)),
-        width: 158 * scale,
-        height: 28 * scale,
-      ),
-      Radius.circular(11 * scale),
-    );
-    canvas.drawRRect(
-        header.shift(Offset(0, 3 * scale)), _p['ambientHeaderShadow']!);
-
-    _dynamicPaint.shader = _shaders['header'];
-    canvas.drawRRect(header, _dynamicPaint);
-    _dynamicPaint.shader = null;
-
-    _text(
-      canvas,
-      'PoMarket  •  FRESH & FAST',
-      header.center,
-      color: Colors.white,
-      fontSize: 10 * scale,
-      weight: FontWeight.w900,
-    );
-
-    _dynamicPaint.shader = _shaders['light'];
-    final lightSourcePaint = _p['lightSource']!;
-    for (final x in [0.16, 0.36, 0.64, 0.84]) {
-      final center = _point(market, Offset(x, 0.15));
-      canvas.drawCircle(center, 27 * scale, _dynamicPaint);
-      canvas.drawCircle(center, 3.5 * scale, lightSourcePaint);
-    }
-    _dynamicPaint.shader = null;
-
-    final arrowPaint = _p['ambientArrow']!;
-    for (var index = 0; index < 5; index++) {
-      final y = 0.38 + index * 0.09;
-      final center = _point(market, Offset(0.50, y));
-      canvas.drawLine(
-        center + Offset(-8 * scale, 0),
-        center + Offset(8 * scale, 0),
-        arrowPaint,
-      );
-      canvas.drawLine(
-        center + Offset(3 * scale, -4 * scale),
-        center + Offset(8 * scale, 0),
-        arrowPaint,
-      );
-      canvas.drawLine(
-        center + Offset(3 * scale, 4 * scale),
-        center + Offset(8 * scale, 0),
-        arrowPaint,
-      );
-    }
-
-    _drawPlanter(canvas, market, const Offset(0.08, 0.16), scale);
-    _drawPlanter(canvas, market, const Offset(0.92, 0.16), scale);
-  }
-
-  void _drawPlanter(Canvas canvas, Rect market, Offset position, double scale) {
-    final center = _point(market, position);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: center + Offset(0, 7 * scale),
-          width: 19 * scale,
-          height: 14 * scale,
-        ),
-        Radius.circular(5 * scale),
-      ),
-      _p['planterBox']!,
-    );
-    final leafPaint = _p['planterLeaf']!;
-    for (final direction in [-1.0, 0.0, 1.0]) {
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: center + Offset(direction * 5 * scale, -3 * scale),
-          width: 9 * scale,
-          height: 17 * scale,
-        ),
-        leafPaint,
-      );
-    }
-  }
-
-  void _drawDepartmentDisplays(Canvas canvas, Rect market) {
-    for (final definition in DepartmentCatalog.all) {
-      if (definition.type == DepartmentType.generalGoods ||
-          !game.isDepartmentUnlocked(definition.type)) {
-        continue;
-      }
-      _drawDepartmentDisplay(canvas, market, definition);
-    }
-  }
-
-  void _drawDepartmentDisplay(
-    Canvas canvas,
-    Rect market,
-    DepartmentDefinition definition,
-  ) {
-    final center = _point(market, definition.displayZone);
-    final scale = _sceneScale(market);
-    final width = 72 * scale;
-    final height = 61 * scale;
-    final stock = game.departmentStock(definition.type);
-    final capacity = game.departmentCapacity(definition.type);
-    final active =
-        (game.playerPosition - definition.displayZone).distance <= 0.13;
-    final pulse = (sin(animationTime * 3 + definition.type.index) + 1) / 2;
-
-    if (active) {
-      _dynamicPaint.color = definition.color.withValues(alpha: 0.18);
-      _dynamicPaint.style = PaintingStyle.fill;
-      canvas.drawCircle(center, 41 * scale + pulse * 4 * scale, _dynamicPaint);
-    }
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: center + Offset(4 * scale, 5 * scale),
-          width: width,
-          height: height,
-        ),
-        Radius.circular(14 * scale),
-      ),
-      _p['departmentShadow']!,
-    );
-    final body = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: center, width: width, height: height),
-      Radius.circular(14 * scale),
-    );
-    _dynamicPaint.shader = _departmentShaders[definition.type];
-    canvas.drawRRect(body, _dynamicPaint);
-    _dynamicPaint.shader = null;
-
-    final edgePaint = _departmentEdgePaints[definition.type];
-    if (edgePaint != null) {
-      canvas.drawRRect(body, edgePaint);
-    }
-
-    final canopy = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: center - Offset(0, 23 * scale),
-        width: width * 0.82,
-        height: 13 * scale,
-      ),
-      Radius.circular(6 * scale),
-    );
-    canvas.drawRRect(canopy, _p['departmentCanopy']!);
-    _text(
-      canvas,
-      definition.emoji,
-      center - Offset(0, 22 * scale),
-      fontSize: 12 * scale,
-    );
-
-    _drawDepartmentProducts(
-      canvas: canvas,
-      center: center + Offset(0, 5 * scale),
-      definition: definition,
-      count: min(stock, 8),
-      scale: scale,
-    );
-
-    if (stock == 0) {
-      _text(
-        canvas,
-        '!',
-        center + Offset(0, 7 * scale),
-        color: Colors.white,
-        fontSize: 20 * scale,
-        weight: FontWeight.w900,
-      );
-    } else if (definition.type == DepartmentType.produce) {
-      final sparklePaint = _p['sparkle']!;
-      for (var index = 0; index < 3; index++) {
-        final sparkle = center +
-            Offset(
-              (-22 + index * 22) * scale,
-              (-8 + sin(animationTime * 2 + index) * 4) * scale,
-            );
-        canvas.drawCircle(sparkle, (1.2 + pulse) * scale, sparklePaint);
-      }
-    }
-
-    final label = departmentLabels[definition.type] ?? definition.name;
-    _stationLabel(
-      canvas,
-      center + Offset(0, 43 * scale),
-      '$label $stock/$capacity',
-    );
-  }
-
-  void _drawDepartmentProducts({
-    required Canvas canvas,
-    required Offset center,
-    required DepartmentDefinition definition,
-    required int count,
-    required double scale,
-  }) {
-    final stemPaint = _p['produceStem']!;
-    final refrigeratedBoxPaint = _p['refrigeratedBox']!;
-    final refrigeratedLabelPaint = _p['refrigeratedLabel']!;
-    final beautyCapPaint = _p['beautyCap']!;
-    final electronicsBoxPaint = _p['electronicsBox']!;
-    final electronicsLedPaint = _p['electronicsLed']!;
-
-    for (var index = 0; index < count; index++) {
-      final row = index ~/ 4;
-      final column = index % 4;
-      final productCenter =
-          center + Offset((-20 + column * 13) * scale, (-6 + row * 15) * scale);
-      switch (definition.type) {
-        case DepartmentType.produce:
-          canvas.drawCircle(
-              productCenter,
-              5 * scale,
-              index.isEven
-                  ? _p['produceGreen']!
-                  : _p['produceRed']!);
-          canvas.drawLine(
-            productCenter - Offset(0, 4 * scale),
-            productCenter - Offset(-2 * scale, 8 * scale),
-            stemPaint,
-          );
-          break;
-        case DepartmentType.refrigerated:
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(
-                center: productCenter,
-                width: 8 * scale,
-                height: 12 * scale,
-              ),
-              Radius.circular(2 * scale),
-            ),
-            refrigeratedBoxPaint,
-          );
-          canvas.drawRect(
-            Rect.fromCenter(
-              center: productCenter - Offset(0, 3 * scale),
-              width: 8 * scale,
-              height: 3 * scale,
-            ),
-            refrigeratedLabelPaint,
-          );
-          break;
-        case DepartmentType.beauty:
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(
-                center: productCenter,
-                width: 7 * scale,
-                height: 13 * scale,
-              ),
-              Radius.circular(3 * scale),
-            ),
-            index.isEven ? _p['beautyPink']! : _p['beautyPurple']!,
-          );
-          canvas.drawRect(
-            Rect.fromCenter(
-              center: productCenter - Offset(0, 7 * scale),
-              width: 4 * scale,
-              height: 3 * scale,
-            ),
-            beautyCapPaint,
-          );
-          break;
-        case DepartmentType.electronics:
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(
-                center: productCenter,
-                width: 11 * scale,
-                height: 9 * scale,
-              ),
-              Radius.circular(2 * scale),
-            ),
-            electronicsBoxPaint,
-          );
-          canvas.drawCircle(
-            productCenter,
-            2 * scale,
-            electronicsLedPaint,
-          );
-          break;
-        case DepartmentType.bakery:
-          canvas.drawOval(
-            Rect.fromCenter(
-              center: productCenter,
-              width: 11 * scale,
-              height: 7 * scale,
-            ),
-            index.isEven ? _p['bakeryLight']! : _p['bakeryDark']!,
-          );
-          break;
-        case DepartmentType.generalGoods:
-          break;
-      }
-    }
-  }
-
-  double _sceneScale(Rect market) => (market.width / 520).clamp(0.64, 1.0);
-
-  void _drawEntrance(Canvas canvas, Rect market) {
-    final center = _point(market, GameController.entrance);
-    final door = Rect.fromCenter(center: center, width: 74, height: 34);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(door, const Radius.circular(12)),
-      _p['entranceDoor']!,
-    );
-    _text(
-      canvas,
-      'ENTRANCE',
-      center + const Offset(0, 2),
-      color: const Color(0xFF163F2E),
-      fontSize: 11,
-      weight: FontWeight.w800,
-    );
-  }
-
-  void _drawStockRoom(Canvas canvas, Rect market) {
-    final center = _point(market, GameController.stockZone);
-    _interactionGlow(canvas, market, GameController.stockZone, 0.13);
-
-    _drawStationBox(
-      canvas: canvas,
-      center: center,
-      width: 74,
-      height: 58,
-      depth: 15,
-      faceColor: const Color(0xFFE0A45B),
-      sideColor: const Color(0xFFB56B2A),
-      topColor: const Color(0xFFF2B86A),
-      edgeColor: const Color(0xFF9B6230),
-      radius: 12,
-    );
-    final gratePaint = _p['stationBoxGrate']!;
-    canvas.drawLine(
-      center + const Offset(-26, -15),
-      center + const Offset(26, 15),
-      gratePaint,
-    );
-    canvas.drawLine(
-      center + const Offset(26, -15),
-      center + const Offset(-26, 15),
-      gratePaint,
-    );
-    _stationLabel(canvas, center + const Offset(0, 39), storageLabel);
-  }
-
-  void _drawShelf(Canvas canvas, Rect market) {
-    final center = _point(market, GameController.shelfZone);
-    _interactionGlow(canvas, market, GameController.shelfZone, 0.14);
-
-    _drawStationBox(
-      canvas: canvas,
-      center: center,
-      width: 112,
-      height: 86,
-      depth: 16,
-      faceColor: const Color(0xFF5B8DEF),
-      sideColor: const Color(0xFF315EAC),
-      topColor: const Color(0xFF7FAAF0),
-      edgeColor: const Color(0xFF315EAC),
-      radius: 14,
-    );
-    final dividerPaint = _p['shelfDividers']!;
-    for (final dy in [-19.0, 5.0, 29.0]) {
-      canvas.drawLine(
-        center + Offset(-46, dy),
-        center + Offset(46, dy),
-        dividerPaint,
-      );
-    }
-
-    final productPaints = [_p['shelfProduct1']!, _p['shelfProduct2']!, _p['shelfProduct3']!];
-    final productCount = min(9, game.shelfStock);
-    for (var index = 0; index < productCount; index++) {
-      final row = index ~/ 3;
-      final column = index % 3;
-      final productCenter = center + Offset(-27 + column * 27, -28 + row * 24);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(center: productCenter, width: 15, height: 17),
-          const Radius.circular(4),
-        ),
-        productPaints[index % 3],
-      );
-    }
-    if (game.shelfStock == 0) {
-      canvas.drawRect(
-        Rect.fromCenter(
-          center: center + const Offset(0, 8),
-          width: 58,
-          height: 18,
-        ),
-        _p['shelfEmpty']!,
-      );
-    }
-    _stationLabel(
-      canvas,
-      center + const Offset(0, 55),
-      '$shelfLabel ${game.shelfStock}/${game.shelfCapacity}',
-    );
-  }
-
-  void _drawCheckout(Canvas canvas, Rect market) {
-    final center = _point(market, GameController.checkoutZone);
-    _interactionGlow(canvas, market, GameController.checkoutZone, 0.13);
-
-    _drawStationBox(
-      canvas: canvas,
-      center: center,
-      width: 96,
-      height: 62,
-      depth: 14,
-      faceColor: const Color(0xFFE85D75),
-      sideColor: const Color(0xFFB83D58),
-      topColor: const Color(0xFFF06D8A),
-      edgeColor: const Color(0xFF8E3044),
-      radius: 14,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: center + const Offset(17, -10),
-          width: 30,
-          height: 22,
-        ),
-        const Radius.circular(6),
-      ),
-      _p['checkoutScreen']!,
-    );
-    canvas.drawCircle(
-      center + const Offset(-24, -7),
-      9,
-      _p['checkoutScanner']!,
-    );
-    _drawQueueGuide(canvas, market);
-    _stationLabel(canvas, center + const Offset(0, 39), checkoutLabel);
-  }
-
-  void _drawQueueGuide(Canvas canvas, Rect market) {
-    final checkoutCenter = _point(market, GameController.checkoutZone);
-    final queueCustomers = game.checkoutQueue;
-    if (queueCustomers.isEmpty) {
+    if (game.pendingShiftSummary != null ||
+        !MarketWorldComposition.supports(size)) {
       return;
     }
-
-    final laneStart = Offset(checkoutCenter.dx - 118, checkoutCenter.dy + 4);
-    final laneEnd = Offset(checkoutCenter.dx - 118, checkoutCenter.dy + 92);
-    canvas.drawLine(
-      laneStart,
-      laneEnd,
-      _p['queueGuide']!,
+    final layout = MarketWorldLayout.forSize(size);
+    final room = RRect.fromRectAndRadius(
+      layout.market,
+      Radius.circular(22 * layout.scale),
     );
 
-    final customerSkinPaint = _p['queueCustomerSkin']!;
-    for (var index = 0; index < min(4, queueCustomers.length); index++) {
-      final offset = Offset(laneStart.dx + 6, laneStart.dy + 18 + index * 22);
-      _dynamicPaint.color = queueCustomers[index].color.withValues(alpha: 0.95);
+    _paint
+      ..shader = null
+      ..style = PaintingStyle.fill
+      ..color = const Color(0x3D20332A);
+    canvas.drawRRect(room.shift(Offset(0, 7 * layout.scale)), _paint);
+
+    canvas.save();
+    canvas.clipRRect(room);
+    _drawShell(canvas, layout);
+    _drawFloor(canvas, layout);
+    _drawRearDepartments(canvas, layout);
+    _drawFrontEntranceArchitecture(canvas, layout);
+
+    final scene = <_SceneItem>[];
+    _addRearDepartmentFixtures(scene, canvas, layout);
+    _addGeneralGoods(scene, canvas, layout);
+    _addCheckout(scene, canvas, layout);
+    _addEntrance(scene, canvas, layout);
+    _addCharacters(scene, canvas, layout);
+    scene.sort((left, right) => WorldDepthEntry.compare(left.depth, right.depth));
+    for (final item in scene) {
+      item.draw();
+    }
+
+    _drawForeground(canvas, layout);
+    _drawAtmosphere(canvas, layout);
+    _drawGameplayFeedback(canvas, layout);
+    canvas.restore();
+
+    _paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3 * layout.scale
+      ..color = _deepForest;
+    canvas.drawRRect(room, _paint);
+  }
+
+  Offset _point(Rect rect, Offset normalized) => Offset(
+    rect.left + rect.width * normalized.dx,
+    rect.top + rect.height * normalized.dy,
+  );
+
+  void _add(
+    List<_SceneItem> scene, {
+    required String id,
+    required double depth,
+    required WorldRenderPlane plane,
+    required int order,
+    required VoidCallback draw,
+  }) {
+    scene.add(
+      _SceneItem(
+        WorldDepthEntry(
+          id: id,
+          anchorY: depth,
+          plane: plane,
+          stableOrder: order,
+        ),
+        draw,
+      ),
+    );
+  }
+
+  void _drawShell(Canvas canvas, MarketWorldLayout layout) {
+    final market = layout.market;
+    final scale = layout.scale;
+    _paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[Color(0xFFF7F0DD), Color(0xFFD9B576)],
+    ).createShader(market);
+    canvas.drawRect(market, _paint);
+    _paint.shader = null;
+
+    _paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[Color(0xFFFFFEF8), Color(0xFFDBC498)],
+    ).createShader(layout.wall);
+    canvas.drawRect(layout.wall, _paint);
+    _paint.shader = null;
+
+    _paint.color = _deepForest;
+    canvas.drawRect(
+      Rect.fromLTWH(layout.wall.left, layout.wall.bottom - 7 * scale,
+          layout.wall.width, 7 * scale),
+      _paint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(market.left, layout.wall.bottom, 8 * scale, market.height),
+      _paint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(
+        market.right - 8 * scale,
+        layout.wall.bottom,
+        8 * scale,
+        market.height,
+      ),
+      _paint,
+    );
+
+    final sign = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: _point(market, const Offset(.50, .058)),
+        width: min(market.width * .36, 174 * scale),
+        height: 29 * scale,
+      ),
+      Radius.circular(9 * scale),
+    );
+    _paint.color = const Color(0x3520332A);
+    canvas.drawRRect(sign.shift(Offset(0, 3 * scale)), _paint);
+    _paint.shader = const LinearGradient(
+      colors: <Color>[Color(0xFF3C7D5F), _forest],
+    ).createShader(sign.outerRect);
+    canvas.drawRRect(sign, _paint);
+    _paint.shader = null;
+    _paint.color = const Color(0xFFFFD56A);
+    canvas.drawCircle(sign.center - Offset(55 * scale, 0), 5 * scale, _paint);
+    _text(canvas, 'PoMARKET', sign.center + Offset(5 * scale, 0),
+        12.5 * scale, Colors.white, FontWeight.w900);
+
+    final lights = layout.compact
+        ? const <double>[.16, .50, .84]
+        : const <double>[.10, .30, .50, .70, .90];
+    for (final x in lights) {
+      final center = _point(market, Offset(x, .105));
+      _paint.color = const Color(0xFFFFE6A4);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromCenter(center: offset, width: 22, height: 22),
-          const Radius.circular(8),
+          Rect.fromCenter(center: center, width: 28 * scale, height: 4 * scale),
+          Radius.circular(2 * scale),
         ),
-        _dynamicPaint,
-      );
-      canvas.drawCircle(
-        offset + const Offset(0, -5),
-        7,
-        customerSkinPaint,
+        _paint,
       );
     }
   }
 
-  void _drawStationBox({
-    required Canvas canvas,
-    required Offset center,
-    required double width,
-    required double height,
-    required double depth,
-    required Color faceColor,
-    required Color sideColor,
-    required Color topColor,
-    required Color edgeColor,
-    required double radius,
-  }) {
-    final shadowCenter = center + const Offset(6, 7);
+  void _drawFloor(Canvas canvas, MarketWorldLayout layout) {
+    final scale = layout.scale;
+    final salesFloor = Rect.fromLTRB(
+      layout.market.left,
+      layout.storage.bottom,
+      layout.market.right,
+      layout.market.bottom,
+    );
+    _paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[_tileLight, _tileDark],
+    ).createShader(salesFloor);
+    canvas.drawRect(salesFloor, _paint);
+    _paint.shader = null;
+
+    _paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .5 * scale
+      ..color = const Color(0x1E3D5149);
+    final rows = layout.compact ? 10 : 15;
+    for (var row = 1; row < rows; row++) {
+      final t = row / rows;
+      final y = salesFloor.top + salesFloor.height * pow(t, .86);
+      canvas.drawLine(
+        Offset(salesFloor.left + 7 * scale, y),
+        Offset(salesFloor.right - 7 * scale, y),
+        _paint,
+      );
+    }
+    final columns = layout.compact ? 7 : 11;
+    for (var column = 1; column < columns; column++) {
+      final x = salesFloor.left + salesFloor.width * column / columns;
+      canvas.drawLine(Offset(x, salesFloor.top), Offset(x, salesFloor.bottom), _paint);
+    }
+
+    // Wide, subtle circulation bands unify the store without reading as map
+    // overlays or debug rectangles.
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0x30FFF9EA);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: shadowCenter, width: width, height: height),
-        Radius.circular(radius),
-      ),
-      _p['stationBoxShadow']!,
+      RRect.fromRectAndRadius(layout.mainAisle, Radius.circular(6 * scale)),
+      _paint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(layout.crossAisle, Radius.circular(6 * scale)),
+      _paint,
     );
 
-    _dynamicPaint.color = topColor;
+    final checkoutInset = layout.checkout.deflate(5 * scale);
+    _paint.color = const Color(0x358D8B84);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: center + Offset(0, -depth * 0.6),
-          width: width,
-          height: depth,
-        ),
-        Radius.circular(radius - 2),
-      ),
-      _dynamicPaint,
+      RRect.fromRectAndRadius(checkoutInset, Radius.circular(7 * scale)),
+      _paint,
     );
 
-    _dynamicPaint.color = sideColor;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: center + Offset(width * 0.4, 4),
-          width: depth,
-          height: height,
-        ),
-        Radius.circular(radius - 2),
-      ),
-      _dynamicPaint,
+    // Front apron makes the storefront read as the beginning of the journey.
+    final apron = Rect.fromLTRB(
+      layout.market.left,
+      layout.welcome.top,
+      layout.market.right,
+      layout.market.bottom,
     );
-
-    final faceRect = Rect.fromCenter(center: center, width: width, height: height);
-    _dynamicPaint.color = faceColor;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(faceRect, Radius.circular(radius)),
-      _dynamicPaint,
+    _paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[Color(0x00FFFFFF), Color(0x405C8D78)],
+    ).createShader(apron);
+    canvas.drawRect(apron, _paint);
+    _paint.shader = null;
+    final mat = Rect.fromCenter(
+      center: _point(layout.market, const Offset(.50, .90)),
+      width: layout.market.width * .22,
+      height: 15 * scale,
     );
-
-    _dynamicPaint.color = edgeColor;
-    _dynamicPaint.style = PaintingStyle.stroke;
-    _dynamicPaint.strokeWidth = 3;
+    _paint.color = const Color(0xC7346654);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(faceRect, Radius.circular(radius)),
-      _dynamicPaint,
-    );
-    _dynamicPaint.style = PaintingStyle.fill; // Reset
-
-    _dynamicPaint.color = Colors.white.withValues(alpha: 0.32);
-    canvas.drawRect(
-      Rect.fromCenter(
-        center: center + Offset(-width * 0.16, -height * 0.18),
-        width: width * 0.46,
-        height: 6,
-      ),
-      _dynamicPaint,
+      RRect.fromRectAndRadius(mat, Radius.circular(3 * scale)),
+      _paint,
     );
   }
 
-  void _drawExpansion(Canvas canvas, Rect market) {
-    final center = _point(market, GameController.bakeryZone);
-    final unlocked = game.bakeryUnlocked;
-    _interactionGlow(canvas, market, GameController.bakeryZone, 0.13);
-    final zone = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: center, width: 105, height: 91),
-      const Radius.circular(18),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: center + const Offset(4, 5),
-          width: 105,
-          height: 91,
-        ),
-        const Radius.circular(18),
-      ),
-      _p['expansionShadow']!,
-    );
-    canvas.drawRRect(zone, unlocked ? _p['expansionUnlocked']! : _p['expansionLocked']!);
-    canvas.drawRRect(zone, unlocked ? _p['expansionUnlockedBorder']! : _p['expansionLockedBorder']!);
+  void _drawRearDepartments(Canvas canvas, MarketWorldLayout layout) {
+    final scale = layout.scale;
+    final storage = layout.storage;
+    final bakery = layout.bakery;
+
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFFB8BCB7);
+    canvas.drawRect(storage, _paint);
+    _paint.color = const Color(0xFFF0D49B);
+    canvas.drawRect(bakery, _paint);
+
+    // A single installed service facade joins both rear departments.
+    final beamTop = storage.bottom - 8 * scale;
+    _paint.color = const Color(0xFF40514C);
     canvas.drawRect(
-      Rect.fromCenter(
-        center: center + const Offset(0, -21),
-        width: 54,
-        height: 8,
-      ),
-      _p['expansionHighlight']!,
+      Rect.fromLTWH(layout.market.left, beamTop, layout.market.width, 10 * scale),
+      _paint,
     );
-    _text(
+    _paint.color = const Color(0xFF89958F);
+    canvas.drawRect(
+      Rect.fromLTWH(layout.market.left, beamTop, layout.market.width, 2 * scale),
+      _paint,
+    );
+    _paint.color = const Color(0xFF40514C);
+    canvas.drawRect(
+      Rect.fromLTWH(storage.right - 3 * scale, storage.top, 6 * scale,
+          storage.height),
+      _paint,
+    );
+
+    _departmentPlaque(
       canvas,
-      unlocked ? '🥐' : '🔒',
-      center - const Offset(0, 19),
-      fontSize: 23,
+      Offset(storage.left + storage.width * .20, storage.top + 12 * scale),
+      storageLabel,
+      _storageBlue,
+      scale,
     );
-    if (unlocked) {
-      final readyPaint = _p['bakeryReady']!;
-      final emptyPaint = _p['bakeryEmpty']!;
-      for (var index = 0; index < GameBalance.bakeryReadyCapacity; index++) {
-        final ready = index < game.bakeryReadyStock;
+    _departmentPlaque(
+      canvas,
+      Offset(bakery.right - bakery.width * .18, bakery.top + 12 * scale),
+      game.bakeryUnlocked ? bakeryLabel : bakeryLockedLabel,
+      _bakeryGold,
+      scale,
+    );
+
+    _paint.color = const Color(0xFF596B66);
+    for (final opening in <Rect>[layout.storageOpening, layout.bakeryOpening]) {
+      canvas.drawRect(
+        Rect.fromLTWH(opening.left - 3 * scale, beamTop, 3 * scale, 17 * scale),
+        _paint,
+      );
+      canvas.drawRect(
+        Rect.fromLTWH(opening.right, beamTop, 3 * scale, 17 * scale),
+        _paint,
+      );
+    }
+  }
+
+  void _drawFrontEntranceArchitecture(Canvas canvas, MarketWorldLayout layout) {
+    final scale = layout.scale;
+    final opening = layout.entranceOpening;
+    final y = opening.bottom - 8 * scale;
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = _deepForest;
+    canvas.drawRect(
+      Rect.fromLTWH(layout.market.left, y, opening.left - layout.market.left,
+          8 * scale),
+      _paint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(opening.right, y, layout.market.right - opening.right,
+          8 * scale),
+      _paint,
+    );
+    _paint.color = const Color(0xFF52766C);
+    canvas.drawRect(
+      Rect.fromLTWH(opening.left - 4 * scale, opening.top, 4 * scale,
+          opening.height),
+      _paint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(opening.right, opening.top, 4 * scale, opening.height),
+      _paint,
+    );
+  }
+
+  void _departmentPlaque(
+    Canvas canvas,
+    Offset center,
+    String value,
+    Color color,
+    double scale,
+  ) {
+    final width = 66 * scale;
+    final plaque = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: center, width: width, height: 15 * scale),
+      Radius.circular(4 * scale),
+    );
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0x3020332A);
+    canvas.drawRRect(plaque.shift(Offset(0, 2 * scale)), _paint);
+    _paint.color = color;
+    canvas.drawRRect(plaque, _paint);
+    _text(canvas, value, center, 5.8 * scale, _cream, FontWeight.w900,
+        maxWidth: width - 7 * scale);
+  }
+
+  void _addRearDepartmentFixtures(
+    List<_SceneItem> scene,
+    Canvas canvas,
+    MarketWorldLayout layout,
+  ) {
+    final scale = layout.scale;
+    _add(
+      scene,
+      id: 'storage-bay',
+      depth: .295,
+      plane: WorldRenderPlane.rearFixture,
+      order: 10,
+      draw: () => _drawSprite(
+        canvas,
+        MarketArtAssets.v2StoragePath,
+        _point(layout.market, const Offset(.21, .305)),
+        (layout.compact ? 100 : 121) * scale,
+        maxWidth: layout.storage.width * .70,
+        shadow: .20,
+      ),
+    );
+    _add(
+      scene,
+      id: 'storage-boxes',
+      depth: .325,
+      plane: WorldRenderPlane.fixture,
+      order: 11,
+      draw: () => _drawSprite(
+        canvas,
+        MarketArtAssets.deliveryBoxesPath,
+        _point(layout.market, const Offset(.375, .325)),
+        (layout.compact ? 37 : 47) * scale,
+        maxWidth: layout.storage.width * .22,
+        shadow: .13,
+      ),
+    );
+    _add(
+      scene,
+      id: 'bakery-backdrop',
+      depth: .255,
+      plane: WorldRenderPlane.rearFixture,
+      order: 15,
+      draw: () => _drawBakeryBackdrop(canvas, layout),
+    );
+    _add(
+      scene,
+      id: 'bakery-counter',
+      depth: .34,
+      plane: WorldRenderPlane.fixture,
+      order: 17,
+      draw: () {
+        final ground = _point(layout.market, const Offset(.70, .35));
+        _drawSprite(
+          canvas,
+          MarketArtAssets.v2BakeryPath,
+          ground,
+          (layout.compact ? 116 : 142) * scale,
+          maxWidth: layout.bakery.width * .67,
+          alpha: game.bakeryUnlocked ? 1 : .54,
+          shadow: game.bakeryUnlocked ? .24 : .13,
+        );
+        if (!game.bakeryUnlocked) {
+          _departmentPlaque(
+            canvas,
+            ground - Offset(0, 27 * scale),
+            bakeryLockedLabel,
+            const Color(0xFF675C50),
+            scale,
+          );
+        }
+      },
+    );
+  }
+
+  void _drawBakeryBackdrop(Canvas canvas, MarketWorldLayout layout) {
+    final scale = layout.scale;
+    final rect = layout.bakery.deflate(10 * scale);
+    final display = Rect.fromLTWH(
+      rect.left,
+      rect.top + 19 * scale,
+      rect.width,
+      max(24 * scale, rect.height - 31 * scale),
+    );
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFFF7E7CA);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(display, Radius.circular(4 * scale)),
+      _paint,
+    );
+    _paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2 * scale
+      ..color = _timber;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(display, Radius.circular(4 * scale)),
+      _paint,
+    );
+
+    final oven = Rect.fromLTWH(
+      display.right - 44 * scale,
+      display.top + 10 * scale,
+      34 * scale,
+      display.height - 17 * scale,
+    );
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFF66534A);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(oven, Radius.circular(4 * scale)),
+      _paint,
+    );
+    _paint.color = const Color(0xFF293432);
+    canvas.drawRect(oven.deflate(6 * scale), _paint);
+
+    for (var row = 0; row < 2; row++) {
+      final shelf = Rect.fromCenter(
+        center: Offset(
+          display.left + display.width * .31,
+          display.top + (17 + row * 15) * scale,
+        ),
+        width: min(display.width * .40, 68 * scale),
+        height: 4 * scale,
+      );
+      _paint.color = _timber;
+      canvas.drawRect(shelf, _paint);
+      for (var item = 0; item < 4; item++) {
+        _paint.color = const Color(0xFFD38C33);
         canvas.drawOval(
           Rect.fromCenter(
-            center: center + Offset(-21 + index * 14, 2),
-            width: 10,
-            height: 6,
+            center: Offset(
+              shelf.left + shelf.width * (item + .5) / 4,
+              shelf.top - 3 * scale,
+            ),
+            width: 10 * scale,
+            height: 6 * scale,
           ),
-          ready ? readyPaint : emptyPaint,
+          _paint,
         );
       }
     }
-    _text(
-      canvas,
-      unlocked ? bakeryLabel : bakeryLockedLabel,
-      center + const Offset(0, 17),
-      color: const Color(0xFF645E55),
-      fontSize: 10,
-      weight: FontWeight.w800,
-    );
-    if (unlocked) {
-      _text(
-        canvas,
-        bakeryReadyLabel,
-        center + const Offset(0, 31),
-        color: const Color(0xFF8A5B17),
-        fontSize: 9,
-        weight: FontWeight.w900,
-      );
-    }
   }
 
-  void _drawMovementTarget(Canvas canvas, Rect market) {
-    final target = game.movementTarget;
-    if (target == null) {
-      return;
-    }
-    final center = _point(market, target);
-    final pulse = 10 + sin(animationTime * 6) * 2;
-    canvas.drawCircle(
-      center,
-      pulse,
-      _p['movementTargetRing']!,
-    );
-    canvas.drawCircle(center, 3.5, _p['movementTarget']!);
-  }
-
-  void _drawStockerRoute(Canvas canvas, Rect market) {
-    if (!game.isStaffHired(StaffRole.stocker)) return;
-    
-    final department = game.stockerTargetDepartment;
-    if (department == null) return;
-    
-    _p.putIfAbsent('stockerRoute', () {
-      final color = DepartmentCatalog.find(department)?.color ?? const Color(0xFF5B8DEF);
-      return Paint()
-        ..color = color.withValues(alpha: 0.24)
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round;
-    });
-
-    final from = _point(market, GameController.stockerPickupZone);
-    final to = _point(market, game.departmentZone(department));
-    final delta = to - from;
-    final distance = delta.distance;
-    if (distance <= 0) return;
-    
-    final direction = delta / distance;
-    final paint = _p['stockerRoute']!;
-    for (var step = 0.0; step < distance; step += 12) {
-      final segmentEnd = min(step + 6, distance);
-      canvas.drawLine(
-        from + direction * step,
-        from + direction * segmentEnd,
-        paint,
-      );
-    }
-  }
-
-  void _drawCashier(Canvas canvas, Rect market, int workerIndex) {
-    final center = _point(
-      market,
-      GameController.checkoutZone +
-          Offset(0.075 + workerIndex * 0.035, 0.035 + workerIndex * 0.055),
-    );
-    final serving = game.staffStatus(StaffRole.cashier) == StaffStatus.serving;
-    final bounce = serving ? sin(animationTime * 12) * 1.2 : 0.0;
-    final bodyCenter = center + Offset(0, bounce);
-
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center + const Offset(0, 16),
-        width: 30,
-        height: 10,
-      ),
-      _p['cashierShadow']!,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: bodyCenter, width: 27, height: 34),
-        const Radius.circular(10),
-      ),
-      _p['cashierUniform']!,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: bodyCenter + const Offset(0, 5),
-          width: 19,
-          height: 17,
-        ),
-        const Radius.circular(5),
-      ),
-      _p['cashierApron']!,
-    );
-    canvas.drawCircle(
-      bodyCenter - const Offset(0, 21),
-      10,
-      _p['cashierSkin']!,
-    );
-    canvas.drawArc(
-      Rect.fromCircle(center: bodyCenter - const Offset(0, 23), radius: 11),
-      pi,
-      pi,
-      true,
-      _p['cashierHair']!,
-    );
-    final cashierFace = bodyCenter - const Offset(0, 21);
-    final eyePaint = _p['cashierEye']!;
-    canvas.drawCircle(cashierFace + const Offset(-3.4, 0.5), 1.2, eyePaint);
-    canvas.drawCircle(cashierFace + const Offset(3.4, 0.5), 1.2, eyePaint);
-    canvas.drawArc(
-      Rect.fromCenter(
-        center: cashierFace + const Offset(0, 4),
-        width: 7,
-        height: serving ? 5 : 3,
-      ),
-      0,
-      pi,
-      false,
-      _p['cashierFeature']!,
-    );
-    if (serving) {
-      final scannerAlpha = (150 + (sin(animationTime * 15) + 1) * 50).round().clamp(0, 255);
-      _dynamicPaint.color = Color.fromARGB(scannerAlpha, 255, 224, 102);
-      canvas.drawCircle(
-        _point(market, GameController.checkoutZone) + const Offset(-24, -7),
-        12,
-        _dynamicPaint,
-      );
-      _bubble(canvas, bodyCenter - const Offset(16, 39), '💳');
-    }
-  }
-
-  void _drawStaffMember(
+  void _addGeneralGoods(
+    List<_SceneItem> scene,
     Canvas canvas,
-    Rect market,
-    StaffRole role,
-    int workerIndex,
+    MarketWorldLayout layout,
   ) {
-    final status = game.staffStatus(role);
-    final active =
-        status != StaffStatus.idle &&
-        status != StaffStatus.waitingForStock &&
-        status != StaffStatus.waitingForShelf;
-    final workerOffset = Offset((workerIndex % 2) * 0.025, workerIndex * 0.035);
-    final basePosition =
-        switch (role) {
-          StaffRole.stocker => game.stockerPosition,
-          StaffRole.cleaner => Offset(
-            0.52 + sin(animationTime * 0.7) * 0.09,
-            0.84,
-          ),
-          StaffRole.baker =>
-            GameController.bakeryZone + const Offset(-0.13, -0.01),
-          StaffRole.manager => const Offset(0.22, 0.25),
-          StaffRole.courier =>
-            status == StaffStatus.delivering
-                ? Offset(
-                    0.18 + ((sin(animationTime * 1.2) + 1) / 2) * 0.25,
-                    0.61 + cos(animationTime * 1.2) * 0.035,
-                  )
-                : const Offset(0.29, 0.61),
-          StaffRole.promoter => const Offset(0.32, 0.18),
-          StaffRole.cashier => GameController.checkoutZone,
-        } +
-        workerOffset;
-    final bounce = active ? sin(animationTime * 8 + role.index) * 1.3 : 0.0;
-    final center = _point(market, basePosition);
-    final bodyCenter = center + Offset(0, bounce);
-    
-    _dynamicPaint.color = switch (role) {
-      StaffRole.stocker => const Color(0xFF5B8DEF),
-      StaffRole.cleaner => const Color(0xFF1FA8A8),
-      StaffRole.baker => const Color(0xFFF6A623),
-      StaffRole.manager => const Color(0xFF8B66D8),
-      StaffRole.courier => const Color(0xFFE85D75),
-      StaffRole.promoter => const Color(0xFF38B879),
-      StaffRole.cashier => const Color(0xFF315F8F),
-    };
-    final hairPaint = Paint()..color = switch (role) {
-      StaffRole.stocker => const Color(0xFF473126),
-      StaffRole.cleaner => const Color(0xFF2F3E52),
-      StaffRole.baker => const Color(0xFF8A623D),
-      StaffRole.manager => const Color(0xFF6B4528),
-      StaffRole.courier => const Color(0xFF2F3E52),
-      StaffRole.promoter => const Color(0xFF473126),
-      StaffRole.cashier => const Color(0xFF473126),
-    };
+    final scale = layout.scale;
 
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center + const Offset(0, 17),
-        width: 29,
-        height: 10,
-      ),
-      _p['staffShadow']!,
-    );
-
-    final legPaint = _p['staffLegs']!;
-    canvas.drawLine(bodyCenter + const Offset(-5, 9), bodyCenter + const Offset(-6, 21), legPaint);
-    canvas.drawLine(bodyCenter + const Offset(5, 9), bodyCenter + const Offset(6, 21), legPaint);
-
-    final torso = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: bodyCenter, width: 26, height: 33),
-      const Radius.circular(10),
-    );
-    canvas.drawRRect(torso, _dynamicPaint);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: bodyCenter + const Offset(0, 5), width: 18, height: 16),
-        const Radius.circular(5),
-      ),
-      _p['staffApron']!,
-    );
-
-    final face = bodyCenter - const Offset(0, 21);
-    canvas.drawCircle(face, 10, _p['staffSkin']!);
-    canvas.drawArc(
-      Rect.fromCircle(center: face - const Offset(0, 2), radius: 11),
-      pi,
-      pi,
-      true,
-      hairPaint,
-    );
-    final eyePaint = _p['staffEye']!;
-    canvas.drawCircle(face + const Offset(-3.3, 0.5), 1.1, eyePaint);
-    canvas.drawCircle(face + const Offset(3.3, 0.5), 1.1, eyePaint);
-    canvas.drawArc(
-      Rect.fromCenter(center: face + const Offset(0, 4), width: 7, height: active ? 5 : 3),
-      0,
-      pi,
-      false,
-      _p['staffFeature']!,
-    );
-
-    switch (role) {
-      case StaffRole.stocker:
-        if (game.stockerCarried > 0) {
-          final target = game.stockerTargetDepartment;
-          final targetDefinition = target == null ? null : DepartmentCatalog.find(target);
-          _dynamicPaint.color = targetDefinition?.color ?? const Color(0xFFF6A623);
-          final box = RRect.fromRectAndRadius(
-            Rect.fromCenter(center: bodyCenter + const Offset(15, 4), width: 15, height: 13),
-            const Radius.circular(3),
-          );
-          canvas.drawRRect(box, _dynamicPaint);
-          canvas.drawLine(
-            bodyCenter + const Offset(8, 1),
-            bodyCenter + const Offset(22, 1),
-            _p['staffStockerBoxLine']!,
-          );
-        }
-        if (workerIndex == 0) {
-          final bubble = switch (status) {
-            StaffStatus.waitingForStock => '📦?',
-            StaffStatus.waitingForShelf => '✓',
-            _ => game.stockerCarried > 0
-                ? DepartmentCatalog.find(game.stockerTargetDepartment ?? DepartmentType.generalGoods)?.emoji ?? '📦'
-                : '…',
-          };
-          _bubble(canvas, bodyCenter - const Offset(15, 39), bubble);
-        }
-        break;
-      case StaffRole.cleaner:
-        canvas.drawLine(
-          bodyCenter + const Offset(8, -5),
-          bodyCenter + const Offset(18, 21),
-          _p['staffCleanerMopStick']!,
-        );
-        final mopHeadPaint = _p['staffCleanerMopHead']!;
-        for (var offset = -4.0; offset <= 4; offset += 4) {
-          canvas.drawLine(
-            bodyCenter + Offset(18, 21),
-            bodyCenter + Offset(18 + offset, 25),
-            mopHeadPaint,
-          );
-        }
-        if (workerIndex == 0 && status == StaffStatus.cleaning) {
-          _bubble(canvas, bodyCenter - const Offset(15, 39), '✨');
-        }
-        break;
-      case StaffRole.baker:
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(center: bodyCenter + const Offset(0, -10), width: 22, height: 6),
-            const Radius.circular(4),
-          ),
-          _p['staffBakerHat']!,
-        );
-        if (workerIndex == 0 && status == StaffStatus.baking) {
-          _bubble(canvas, bodyCenter - const Offset(15, 39), '🥐');
-        }
-        break;
-      case StaffRole.manager:
-        final clipboard = RRect.fromRectAndRadius(
-          Rect.fromCenter(center: bodyCenter + const Offset(15, 2), width: 14, height: 18),
-          const Radius.circular(3),
-        );
-        canvas.drawRRect(clipboard, _p['staffManagerClipboard']!);
-        _dynamicPaint.color = const Color(0xFF5F477E);
-        _dynamicPaint.style = PaintingStyle.stroke;
-        _dynamicPaint.strokeWidth = 1.4;
-        canvas.drawRRect(clipboard, _dynamicPaint);
-        _dynamicPaint.style = PaintingStyle.fill;
-        canvas.drawLine(
-          bodyCenter + const Offset(11, 0),
-          bodyCenter + const Offset(19, 0),
-          _p['staffManagerClipboardLine']!,
-        );
-        if (workerIndex == 0) {
-          _bubble(canvas, bodyCenter - const Offset(15, 39), '📈');
-        }
-        break;
-      case StaffRole.courier:
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(center: bodyCenter + const Offset(0, -11), width: 24, height: 7),
-            const Radius.circular(4),
-          ),
-          _p['staffCourierHat']!,
-        );
-        if (workerIndex == 0 && status == StaffStatus.delivering) {
-          _bubble(canvas, bodyCenter - const Offset(15, 39), '🚚');
-        }
-        break;
-      case StaffRole.promoter:
-        final signCenter = bodyCenter + const Offset(17, -2);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(center: signCenter, width: 17, height: 14),
-            const Radius.circular(3),
-          ),
-          _p['staffPromoterSign']!,
-        );
-        canvas.drawLine(
-          signCenter + const Offset(0, 7),
-          signCenter + const Offset(0, 20),
-          _p['staffPromoterSignStick']!,
-        );
-        if (workerIndex == 0) {
-          _bubble(canvas, bodyCenter - const Offset(15, 39), '📣');
-        }
-        break;
-      case StaffRole.cashier:
-        break;
-    }
-
-    canvas.drawCircle(
-      bodyCenter + const Offset(-11, 12),
-      7,
-      _p['staffLevelBadge']!,
-    );
-    _text(
-      canvas,
-      '${game.staffLevel(role)}',
-      bodyCenter + const Offset(-11, 12),
-      color: Colors.white,
-      fontSize: 8,
-      weight: FontWeight.w900,
-    );
-  }
-
-  void _drawPlayer(Canvas canvas, Offset center) {
-    final walking = game.movement.distance > 0.05;
-    final bounce = walking ? sin(animationTime * 11) * 2.2 : 0.0;
-    final bodyCenter = center + Offset(0, bounce);
-
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center + const Offset(0, 19),
-        width: 39,
-        height: 14,
-      ),
-      _p['playerShadow']!,
-    );
-
-    final legPaint = _p['playerLegs']!;
-    final stride = walking ? sin(animationTime * 11) * 6 : 0.0;
-    canvas.drawLine(
-      bodyCenter + const Offset(-7, 12),
-      bodyCenter + Offset(-7 + stride, 27),
-      legPaint,
-    );
-    canvas.drawLine(
-      bodyCenter + const Offset(7, 12),
-      bodyCenter + Offset(7 - stride, 27),
-      legPaint,
-    );
-
-    final torso = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: bodyCenter, width: 34, height: 42),
-      const Radius.circular(13),
-    );
-    canvas.drawRRect(torso, _p['playerTorso']!);
-    canvas.drawRRect(torso, _p['playerTorsoBorder']!);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: bodyCenter + const Offset(0, 5),
-          width: 24,
-          height: 24,
-        ),
-        const Radius.circular(8),
-      ),
-      _p['playerApron']!,
-    );
-    canvas.drawCircle(
-      bodyCenter - const Offset(0, 27),
-      15,
-      _p['playerSkin']!,
-    );
-
-    final hair = _p['playerHair']!;
-    canvas.drawArc(
-      Rect.fromCircle(center: bodyCenter - const Offset(0, 29), radius: 17),
-      pi,
-      pi,
-      true,
-      hair,
-    );
-    canvas.drawCircle(bodyCenter + const Offset(12, -31), 6, hair);
-    final eyePaint = _p['playerEye']!;
-    canvas.drawCircle(bodyCenter + const Offset(-5, -26), 1.6, eyePaint);
-    canvas.drawCircle(bodyCenter + const Offset(5, -26), 1.6, eyePaint);
-
-    final featurePaint = _p['playerFeature']!;
-    canvas.drawLine(bodyCenter + const Offset(-8, -31), bodyCenter + const Offset(-3, -32), featurePaint);
-    canvas.drawLine(bodyCenter + const Offset(3, -32), bodyCenter + const Offset(8, -31), featurePaint);
-    canvas.drawArc(
-      Rect.fromCenter(center: bodyCenter + const Offset(0, -21), width: 11, height: 7),
-      0,
-      pi,
-      false,
-      featurePaint,
-    );
-
-    if (game.carried > 0) {
-      final carriedDefinition = DepartmentCatalog.find(
-        game.carriedDepartment ?? DepartmentType.generalGoods,
-      );
-      _dynamicPaint.color = carriedDefinition?.color ?? const Color(0xFFF6A623);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromCenter(
-            center: bodyCenter + const Offset(22, 5),
-            width: 24,
-            height: 28,
-          ),
-          const Radius.circular(6),
-        ),
-        _dynamicPaint,
-      );
-      _text(
+    _add(
+      scene,
+      id: 'cooler-bank-modular',
+      depth: .385,
+      plane: WorldRenderPlane.rearFixture,
+      order: 25,
+      draw: () => _drawSprite(
         canvas,
-        '${game.carried}',
-        bodyCenter + const Offset(22, 5),
-        fontSize: 12,
-        color: Colors.white,
-        weight: FontWeight.w900,
-      );
-      _text(
-        canvas,
-        carriedDefinition?.emoji ?? '📦',
-        bodyCenter + const Offset(30, -8),
-        fontSize: 10,
-      );
-    }
-  }
-
-  void _drawCustomer(Canvas canvas, Offset center, MarketCustomer customer) {
-    canvas.drawOval(
-      Rect.fromCenter(center: center + const Offset(0, 13), width: 31, height: 12),
-      _p['customerShadow']!,
-    );
-
-    final bodyRect = Rect.fromCenter(center: center + const Offset(0, 3), width: 26, height: 32);
-    final body = RRect.fromRectAndRadius(bodyRect, const Radius.circular(10));
-    _dynamicPaint.color = customer.color;
-    canvas.drawRRect(body, _dynamicPaint);
-    canvas.drawRRect(body, _p['customerBorder']!);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: center + const Offset(0, 2), width: 18, height: 12),
-        const Radius.circular(5),
+        MarketArtAssets.modularCoolerBankPath,
+        _point(layout.market, const Offset(.13, .395)),
+        (layout.compact ? 91 : 111) * scale,
+        maxWidth: layout.retail.width * .27,
+        shadow: .19,
       ),
-      _p['customerApron']!,
     );
-    canvas.drawCircle(center - const Offset(0, 20), 11, _p['customerSkin']!);
-    final customerFace = center - const Offset(0, 20);
 
-    const hairColors = <Color>[
-      Color(0xFF3B2A24),
-      Color(0xFF7A4F2B),
-      Color(0xFF2F3E52),
-      Color(0xFF8A623D),
+    final shelfModules = <({
+      String id,
+      String path,
+      double x,
+      double y,
+      double compactHeight,
+      double regularHeight,
+      double widthFraction,
+    })>[
+      (
+        id: 'rear-long',
+        path: MarketArtAssets.modularLongShelfPath,
+        x: .31,
+        y: .445,
+        compactHeight: 78,
+        regularHeight: 96,
+        widthFraction: .43,
+      ),
+      (
+        id: 'middle-short',
+        path: MarketArtAssets.modularShortShelfPath,
+        x: .205,
+        y: .535,
+        compactHeight: 70,
+        regularHeight: 84,
+        widthFraction: .22,
+      ),
+      (
+        id: 'middle-long',
+        path: MarketArtAssets.modularLongShelfPath,
+        x: .455,
+        y: .535,
+        compactHeight: 76,
+        regularHeight: 92,
+        widthFraction: .36,
+      ),
+      (
+        id: 'front-long',
+        path: MarketArtAssets.modularLongShelfPath,
+        x: .285,
+        y: .625,
+        compactHeight: 79,
+        regularHeight: 97,
+        widthFraction: .41,
+      ),
+      (
+        id: 'front-short',
+        path: MarketArtAssets.modularShortShelfPath,
+        x: .535,
+        y: .625,
+        compactHeight: 69,
+        regularHeight: 83,
+        widthFraction: .21,
+      ),
     ];
-    final hairPaint = _customerHairPaints.putIfAbsent(
-        customer.id.abs() % hairColors.length,
-        () => Paint()..color = hairColors[customer.id.abs() % hairColors.length]);
-    canvas.drawArc(
-      Rect.fromCircle(center: customerFace - const Offset(0, 1.5), radius: 12),
-      pi,
-      pi,
-      true,
-      hairPaint,
+
+    for (var index = 0; index < shelfModules.length; index++) {
+      final module = shelfModules[index];
+      _add(
+        scene,
+        id: 'aisle-module-${module.id}',
+        depth: module.y,
+        plane: WorldRenderPlane.fixture,
+        order: 30 + index * 2,
+        draw: () => _drawSprite(
+          canvas,
+          module.path,
+          _point(layout.market, Offset(module.x, module.y)),
+          (layout.compact ? module.compactHeight : module.regularHeight) * scale,
+          maxWidth: layout.retail.width * module.widthFraction,
+          shadow: .20,
+        ),
+      );
+    }
+
+    final endcaps = <({
+      String id,
+      String path,
+      double x,
+      double y,
+      double widthFraction,
+    })>[
+      (
+        id: 'rear-right-standard',
+        path: MarketArtAssets.v2PromoEndcapPath,
+        x: .555,
+        y: .449,
+        widthFraction: .095,
+      ),
+      (
+        id: 'middle-left-mirrored',
+        path: MarketArtAssets.modularAlternateEndcapPath,
+        x: .095,
+        y: .539,
+        widthFraction: .105,
+      ),
+      (
+        id: 'front-right-mirrored',
+        path: MarketArtAssets.modularAlternateEndcapPath,
+        x: .625,
+        y: .629,
+        widthFraction: .105,
+      ),
+    ];
+
+    for (var index = 0; index < endcaps.length; index++) {
+      final endcap = endcaps[index];
+      _add(
+        scene,
+        id: 'aisle-endcap-${endcap.id}',
+        depth: endcap.y,
+        plane: WorldRenderPlane.fixture,
+        order: 50 + index,
+        draw: () => _drawSprite(
+          canvas,
+          endcap.path,
+          _point(layout.market, Offset(endcap.x, endcap.y)),
+          (layout.compact ? 45 : 54) * scale,
+          maxWidth: layout.retail.width * endcap.widthFraction,
+          shadow: .15,
+        ),
+      );
+    }
+  }
+
+  void _addCheckout(
+    List<_SceneItem> scene,
+    Canvas canvas,
+    MarketWorldLayout layout,
+  ) {
+    final scale = layout.scale;
+    _add(
+      scene,
+      id: 'checkout-wall',
+      depth: .365,
+      plane: WorldRenderPlane.rearFixture,
+      order: 60,
+      draw: () => _drawCheckoutWall(canvas, layout),
     );
-    final eyePaint = _p['customerEye']!;
-    canvas.drawCircle(customerFace + const Offset(-3.5, 0.5), 1.1, eyePaint);
-    canvas.drawCircle(customerFace + const Offset(3.5, 0.5), 1.1, eyePaint);
 
-    final featurePaint = _p['customerFeature']!;
-    final isWorried = customer.phase == CustomerPhase.shopping && game.shelfStock == 0;
-    final isHappy = customer.hasProduct || customer.phase == CustomerPhase.paying || customer.phase == CustomerPhase.leaving;
-    if (isWorried) {
-      canvas.drawArc(
-        Rect.fromCenter(center: customerFace + const Offset(0, 6), width: 7, height: 4),
-        pi,
-        pi,
-        false,
-        featurePaint,
+    final unlocked = game.checkoutStations
+        .where((station) => station.unlocked)
+        .toList(growable: false);
+    for (var index = 0; index < unlocked.length; index++) {
+      final station = unlocked[index];
+      final visual = _checkoutStationVisual(station.id);
+      _add(
+        scene,
+        id: 'checkout-${station.id}',
+        depth: visual.dy,
+        plane: WorldRenderPlane.fixture,
+        order: 64 + index,
+        draw: () => _drawSprite(
+          canvas,
+          MarketArtAssets.modularCheckoutRegisterPath,
+          _point(layout.market, visual),
+          (station.id == GameController.primaryCheckoutStationId
+                  ? (layout.compact ? 88 : 101)
+                  : (layout.compact ? 78 : 90)) *
+              scale,
+          maxWidth: layout.checkout.width * .72,
+          alpha: station.active ? 1 : .52,
+          shadow: station.active ? .22 : .10,
+        ),
       );
-      canvas.drawLine(customerFace + const Offset(-6, -3), customerFace + const Offset(-2, -2), featurePaint);
-      canvas.drawLine(customerFace + const Offset(2, -2), customerFace + const Offset(6, -3), featurePaint);
-    } else if (isHappy) {
-      canvas.drawArc(
-        Rect.fromCenter(center: customerFace + const Offset(0, 4), width: 8, height: 5),
-        0,
-        pi,
-        false,
-        featurePaint,
-      );
-    } else {
-      canvas.drawLine(customerFace + const Offset(-3, 5), customerFace + const Offset(3, 5), featurePaint);
     }
 
-    if (customer.hasProduct) {
-      canvas.drawCircle(center + const Offset(15, 2), 7, _p['customerProduct']!);
+    _add(
+      scene,
+      id: 'queue-approach',
+      depth: .735,
+      plane: WorldRenderPlane.rearFixture,
+      order: 72,
+      draw: () => _drawQueueApproach(canvas, layout),
+    );
+    _add(
+      scene,
+      id: 'basket-return',
+      depth: .755,
+      plane: WorldRenderPlane.fixture,
+      order: 73,
+      draw: () => _drawSprite(
+        canvas,
+        MarketArtAssets.v2CartBasketsPath,
+        _point(layout.market, const Offset(.90, .755)),
+        (layout.compact ? 31 : 39) * scale,
+        maxWidth: layout.checkout.width * .29,
+        shadow: .12,
+      ),
+    );
+  }
+
+  Offset _checkoutStationVisual(String id) => switch (id) {
+    'checkout-2' => const Offset(.80, .565),
+    'checkout-3' => const Offset(.82, .645),
+    _ => const Offset(.82, .485),
+  };
+
+  void _drawCheckoutWall(Canvas canvas, MarketWorldLayout layout) {
+    final scale = layout.scale;
+    final wall = Rect.fromLTWH(
+      layout.checkout.left + 6 * scale,
+      layout.checkout.top + 7 * scale,
+      layout.checkout.width - 12 * scale,
+      31 * scale,
+    );
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFFF7EADB);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(wall, Radius.circular(5 * scale)),
+      _paint,
+    );
+    _paint.color = _checkoutRed;
+    canvas.drawRect(
+      Rect.fromLTWH(wall.left, wall.bottom - 6 * scale, wall.width, 6 * scale),
+      _paint,
+    );
+    final count = layout.compact ? 2 : 3;
+    for (var index = 0; index < count; index++) {
+      final center = Offset(
+        wall.left + wall.width * (index + .5) / count,
+        wall.center.dy - 1 * scale,
+      );
+      _paint.color = _forest;
+      canvas.drawCircle(center, 6.5 * scale, _paint);
+      _text(canvas, '${index + 1}', center, 5.8 * scale, Colors.white,
+          FontWeight.w900);
     }
-    if (customer.isVip) {
-      canvas.drawCircle(center + const Offset(15, -27), 8, _p['customerVipBadge']!);
+  }
+
+  void _drawQueueApproach(Canvas canvas, MarketWorldLayout layout) {
+    final scale = layout.scale;
+    final lane = Rect.fromLTRB(
+      _point(layout.market, const Offset(.735, .55)).dx,
+      _point(layout.market, const Offset(.5, .555)).dy,
+      _point(layout.market, const Offset(.905, .55)).dx,
+      _point(layout.market, const Offset(.5, .745)).dy,
+    );
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0x295F6D68);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(lane, Radius.circular(7 * scale)),
+      _paint,
+    );
+    _paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1 * scale
+      ..color = const Color(0x42606B66);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(lane.deflate(3 * scale), Radius.circular(5 * scale)),
+      _paint,
+    );
+  }
+
+  void _addEntrance(
+    List<_SceneItem> scene,
+    Canvas canvas,
+    MarketWorldLayout layout,
+  ) {
+    final scale = layout.scale;
+    _add(
+      scene,
+      id: 'first-aisle-endcap',
+      depth: .765,
+      plane: WorldRenderPlane.fixture,
+      order: 80,
+      draw: () => _drawSprite(
+        canvas,
+        MarketArtAssets.v2PromoEndcapPath,
+        _point(layout.market, const Offset(.36, .765)),
+        (layout.compact ? 47 : 58) * scale,
+        maxWidth: layout.market.width * .11,
+        shadow: .15,
+      ),
+    );
+    _add(
+      scene,
+      id: 'entrance-carts',
+      depth: .875,
+      plane: WorldRenderPlane.fixture,
+      order: 82,
+      draw: () => _drawSprite(
+        canvas,
+        MarketArtAssets.v2CartBasketsPath,
+        _point(layout.market, const Offset(.19, .88)),
+        (layout.compact ? 51 : 63) * scale,
+        maxWidth: layout.market.width * .18,
+        shadow: .14,
+      ),
+    );
+    _add(
+      scene,
+      id: 'storefront-entrance',
+      depth: .965,
+      plane: WorldRenderPlane.foregroundFixture,
+      order: 88,
+      draw: () => _drawSprite(
+        canvas,
+        MarketArtAssets.v2EntrancePath,
+        _point(layout.market, const Offset(.50, .975)),
+        (layout.compact ? 112 : 136) * scale,
+        maxWidth: layout.market.width * .34,
+        shadow: .15,
+      ),
+    );
+  }
+
+  void _addCharacters(
+    List<_SceneItem> scene,
+    Canvas canvas,
+    MarketWorldLayout layout,
+  ) {
+    for (var index = 0; index < game.customers.length; index++) {
+      final customer = game.customers[index];
+      final visual = _customerVisualPosition(customer);
+      _add(
+        scene,
+        id: 'customer-${customer.id}',
+        depth: visual.dy,
+        plane: WorldRenderPlane.mobileEntity,
+        order: 200 + index,
+        draw: () => _drawCustomer(canvas, layout, customer, visual),
+      );
+    }
+
+    var order = 300;
+    for (final role in StaffRole.values) {
+      if (!game.isStaffHired(role)) continue;
+      for (var index = 0; index < game.staffWorkerCount(role); index++) {
+        final gameplay = _staffGameplayPosition(role, index);
+        if (gameplay == null) continue;
+        final visual = _staffVisualPosition(role, gameplay, index);
+        _add(
+          scene,
+          id: 'staff-${role.name}-$index',
+          depth: visual.dy,
+          plane: WorldRenderPlane.mobileEntity,
+          order: order++,
+          draw: () => _drawStaff(canvas, layout, role, visual),
+        );
+      }
+    }
+
+    final visual = _playerVisualPosition(game.playerPosition);
+    _add(
+      scene,
+      id: 'player',
+      depth: visual.dy,
+      plane: WorldRenderPlane.mobileEntity,
+      order: 999,
+      draw: () => _drawPlayer(canvas, layout, visual),
+    );
+  }
+
+  Offset _playerVisualPosition(Offset gameplay) {
+    for (final station in game.checkoutStations) {
+      if (station.unlocked &&
+          (gameplay - game.checkoutStationZone(station.id)).distance <= .15) {
+        return _checkoutStationVisual(station.id) + const Offset(.035, -.018);
+      }
+    }
+    if ((gameplay - GameController.stockZone).distance <= .15 ||
+        (gameplay - GameController.stockerPickupZone).distance <= .13) {
+      return const Offset(.28, .30);
+    }
+    if ((gameplay - GameController.bakeryZone).distance <= .15) {
+      return const Offset(.64, .36);
+    }
+    if ((gameplay - GameController.entrance).distance <= .15) {
+      return const Offset(.50, .84);
+    }
+    return _openFloorPosition(gameplay, interacting: true);
+  }
+
+  Offset _customerVisualPosition(MarketCustomer customer) {
+    if (customer.phase == CustomerPhase.checkout ||
+        customer.phase == CustomerPhase.paying) {
+      final stationId = customer.checkoutStationId ??
+          GameController.primaryCheckoutStationId;
+      final station = _checkoutStationVisual(stationId);
+      final queue = game.checkoutQueueFor(stationId);
+      final index = max(0, queue.indexOf(customer));
+      if (customer.phase == CustomerPhase.paying) {
+        return station + const Offset(-.045, .018);
+      }
+      return Offset(
+        (station.dx - .055).clamp(.735, .86),
+        (.575 + index * .052).clamp(.575, .745),
+      );
+    }
+    if (customer.phase == CustomerPhase.entering) {
+      final x = .46 + (customer.id.abs() % 3) * .035;
+      return Offset(x, .84 - customer.phaseTime.clamp(0, 1) * .12);
+    }
+    if (customer.phase == CustomerPhase.leaving) {
+      return Offset(.54, (.72 + customer.phaseTime * .12).clamp(.72, .91));
+    }
+    return _openFloorPosition(customer.position, interacting: false);
+  }
+
+  Offset _openFloorPosition(Offset gameplay, {required bool interacting}) {
+    var visual = Offset(
+      (.08 + gameplay.dx * .82).clamp(.08, .90),
+      (.35 + gameplay.dy * .48).clamp(.35, .78),
+    );
+    const rows = MarketDepthModel.shelfRows;
+    if (visual.dx <= .68) {
+      final nearest = rows.reduce(
+        (left, right) =>
+            (visual.dy - left).abs() <= (visual.dy - right).abs()
+                ? left
+                : right,
+      );
+      if ((visual.dy - nearest).abs() < .029) {
+        visual = Offset(
+          visual.dx,
+          interacting || visual.dy >= nearest ? nearest + .043 : nearest - .038,
+        );
+      }
+    }
+    return visual;
+  }
+
+  Offset _staffVisualPosition(StaffRole role, Offset gameplay, int index) {
+    if (role == StaffRole.cashier) {
+      final stations = game.checkoutStations
+          .where((station) => station.unlocked && station.active)
+          .toList(growable: false);
+      final id = index < stations.length
+          ? stations[index].id
+          : GameController.primaryCheckoutStationId;
+      return _checkoutStationVisual(id) + const Offset(.035, -.018);
+    }
+    return switch (role) {
+      StaffRole.stocker => const Offset(.29, .31),
+      StaffRole.baker => Offset(.62 + index * .035, .30),
+      StaffRole.manager => Offset(.57 + index * .03, .36),
+      StaffRole.promoter => Offset(.38 + index * .035, .76),
+      StaffRole.cleaner => Offset(_openFloorPosition(gameplay,
+              interacting: false)
+          .dx, .72),
+      _ => _openFloorPosition(gameplay, interacting: false),
+    };
+  }
+
+  Offset? _staffGameplayPosition(StaffRole role, int index) {
+    final offset = Offset((index % 2) * .025, index * .035);
+    final status = game.staffStatus(role);
+    final cleanerX = _reducedMotion
+        ? .52
+        : .52 + sin(game.totalPlaySeconds * .7) * .08;
+    final courier = _reducedMotion
+        ? const Offset(.29, .61)
+        : Offset(
+            .18 + ((sin(game.totalPlaySeconds * 1.1) + 1) / 2) * .24,
+            .61 + cos(game.totalPlaySeconds * 1.1) * .03,
+          );
+    final base = switch (role) {
+      StaffRole.cashier => _cashierGameplayPosition(index),
+      StaffRole.stocker => game.stockerPosition,
+      StaffRole.cleaner => Offset(cleanerX, .84),
+      StaffRole.baker => GameController.bakeryZone + const Offset(-.13, -.01),
+      StaffRole.manager => const Offset(.22, .25),
+      StaffRole.courier => status == StaffStatus.delivering
+          ? courier
+          : const Offset(.29, .61),
+      StaffRole.promoter => const Offset(.32, .18),
+    };
+    return base == null ? null : base + offset;
+  }
+
+  Offset? _cashierGameplayPosition(int index) {
+    final stations = game.checkoutStations
+        .where((station) => station.unlocked && station.active)
+        .toList(growable: false);
+    if (index >= stations.length) return null;
+    return game.checkoutStationZone(stations[index].id) +
+        const Offset(.075, .035);
+  }
+
+  void _drawCustomer(
+    Canvas canvas,
+    MarketWorldLayout layout,
+    MarketCustomer customer,
+    Offset visual,
+  ) {
+    final moving = customer.phase != CustomerPhase.paying &&
+        !(customer.phase == CustomerPhase.shopping && customer.phaseTime > .66);
+    final sway = _reducedMotion
+        ? 0.0
+        : sin(game.totalPlaySeconds * (moving ? 7.5 : 2.2) + customer.id);
+    _drawSprite(
+      canvas,
+      MarketArtAssets.customerPaths[customer.id.abs() % 4],
+      _point(layout.market, visual),
+      MarketCharacterScale.heightFor(MarketCharacterKind.customer, layout),
+      shadow: .21,
+      rotation: moving ? sway * .008 : 0,
+      tint: const Color(0xFFFFF3DD),
+    );
+  }
+
+  void _drawStaff(
+    Canvas canvas,
+    MarketWorldLayout layout,
+    StaffRole role,
+    Offset visual,
+  ) {
+    _drawSprite(
+      canvas,
+      MarketArtAssets.staffPaths[role.index],
+      _point(layout.market, visual),
+      MarketCharacterScale.heightFor(MarketCharacterKind.staff, layout),
+      shadow: .22,
+      tint: role == StaffRole.baker
+          ? const Color(0xFFFFE8BA)
+          : const Color(0xFFF2FFF7),
+    );
+  }
+
+  void _drawPlayer(Canvas canvas, MarketWorldLayout layout, Offset visual) {
+    final walking = game.movement.distance > .05;
+    final frame = game.carried > 0
+        ? 3
+        : !walking
+        ? 0
+        : _reducedMotion
+        ? 1
+        : 1 + ((game.totalPlaySeconds * 8).floor() % 2);
+    _drawSprite(
+      canvas,
+      MarketArtAssets.playerPaths[frame],
+      _point(layout.market, visual),
+      MarketCharacterScale.heightFor(MarketCharacterKind.player, layout),
+      shadow: .25,
+      tint: const Color(0xFFFFEFD2),
+    );
+  }
+
+  void _drawForeground(Canvas canvas, MarketWorldLayout layout) {
+    final scale = layout.scale;
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = _deepForest;
+    canvas.drawRect(
+      Rect.fromLTWH(layout.market.left, layout.market.bottom - 6 * scale,
+          layout.market.width, 6 * scale),
+      _paint,
+    );
+  }
+
+  void _drawAtmosphere(Canvas canvas, MarketWorldLayout layout) {
+    _paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[Color(0x12FFFFFF), Color(0x00000000)],
+    ).createShader(
+      Rect.fromLTWH(layout.market.left, layout.market.top, layout.market.width,
+          layout.market.height * .52),
+    );
+    _paint.style = PaintingStyle.fill;
+    canvas.drawRect(layout.market, _paint);
+    _paint.shader = null;
+  }
+
+  void _drawGameplayFeedback(Canvas canvas, MarketWorldLayout layout) {
+    for (final effect in game.floatingEffects) {
       _text(
         canvas,
-        '★',
-        center + const Offset(15, -27),
-        color: const Color(0xFF8A5B17),
-        fontSize: 9,
-        weight: FontWeight.w900,
+        effect.text,
+        _point(layout.market,
+            _reducedMotion ? effect.position : effect.currentPosition),
+        effect.fontSize * layout.scale,
+        effect.color.withValues(alpha: effect.opacity),
+        FontWeight.w900,
       );
     }
-    if (customer.phase == CustomerPhase.shopping && game.shelfStock == 0) {
-      _bubble(canvas, center - const Offset(18, 45), '📦?');
-    }
-    if (customer.phase == CustomerPhase.paying) {
-      _bubble(canvas, center - const Offset(18, 45), '💰');
-    }
   }
 
-  void _interactionGlow(Canvas canvas, Rect market, Offset zone, double radius) {
-    final center = _point(market, zone);
-    final active = (game.playerPosition - zone).distance <= radius;
-    final pulse = active ? 0.55 + sin(animationTime * 4) * 0.12 : 0.35;
-    final ringRadius = min(market.width, market.height) * min(radius * 0.58, 0.075);
-    canvas.drawCircle(center, ringRadius, active ? _p['interactionGlowActive']! : _p['interactionGlowInactive']!);
-    if (active) {
-      canvas.drawCircle(center, ringRadius * pulse, _p['interactionRing']!);
+  void _drawSprite(
+    Canvas canvas,
+    String path,
+    Offset ground,
+    double height, {
+    double? maxWidth,
+    double alpha = 1,
+    double shadow = .16,
+    double rotation = 0,
+    Color tint = const Color(0xFFFFFBF3),
+  }) {
+    final image = MarketArtAssets.image(path);
+    final source = MarketArtAssets.sourceRect(path);
+    if (image == null || source == null || source.height <= 0) return;
+    var factor = height / source.height;
+    if (maxWidth != null && source.width * factor > maxWidth) {
+      factor = maxWidth / source.width;
+      height = source.height * factor;
     }
-  }
+    final width = source.width * factor;
 
-  void _stationLabel(Canvas canvas, Offset center, String label) {
-    _textPainter.textDirection = textDirection;
-    _textPainter.text = TextSpan(
-      text: label,
-      style: const TextStyle(
-        color: Color(0xFF34433C),
-        fontSize: 11,
-        fontWeight: FontWeight.w800,
-        height: 1.05,
-      ),
+    _shadowPaint.color = const Color(0xFF20332B).withValues(
+      alpha: shadow * alpha,
     );
-    _textPainter.layout();
-    final bubble = RRect.fromRectAndRadius(
+    canvas.drawOval(
       Rect.fromCenter(
-        center: center,
-        width: _textPainter.width + 18,
-        height: _textPainter.height + 9,
+        center: ground + Offset(width * .02, height * .012),
+        width: width * .70,
+        height: max(5, height * .085),
       ),
-      const Radius.circular(10),
+      _shadowPaint,
     );
-    canvas.drawRRect(bubble, _p['stationLabelBubble']!);
-    _textPainter.paint(
-      canvas,
-      center - Offset(_textPainter.width / 2, _textPainter.height / 2),
-    );
-  }
 
-  void _bubble(Canvas canvas, Offset center, String content) {
-    canvas.drawCircle(center, 17, _p['bubbleFill']!);
-    _text(canvas, content, center, fontSize: 13);
-  }
-
-  Offset _point(Rect rect, Offset normalized) {
-    return Offset(
-      rect.left + rect.width * normalized.dx,
-      rect.top + rect.height * normalized.dy,
+    _imagePaint
+      ..color = Colors.white.withValues(alpha: alpha)
+      ..colorFilter = ColorFilter.mode(tint, BlendMode.modulate);
+    canvas.save();
+    canvas.translate(ground.dx, ground.dy);
+    canvas.rotate(rotation);
+    canvas.drawImageRect(
+      image,
+      source,
+      Rect.fromLTWH(-width / 2, -height, width, height),
+      _imagePaint,
     );
+    canvas.restore();
+    _imagePaint
+      ..color = Colors.white
+      ..colorFilter = null;
   }
 
   void _text(
     Canvas canvas,
     String value,
-    Offset center, {
-    Color color = const Color(0xFF273043),
-    double fontSize = 12,
-    FontWeight weight = FontWeight.w600,
+    Offset center,
+    double size,
+    Color color,
+    FontWeight weight, {
+    double? maxWidth,
   }) {
-    _textPainter.textDirection = textDirection;
-    _textPainter.text = TextSpan(
-      text: value,
-      style: TextStyle(
-        color: color,
-        fontSize: fontSize,
-        fontWeight: weight,
-        height: 1.05,
+    final painter = TextPainter(
+      text: TextSpan(
+        text: value,
+        style: TextStyle(
+          color: color,
+          fontSize: size,
+          fontWeight: weight,
+          shadows: const <Shadow>[
+            Shadow(color: Color(0x33000000), blurRadius: 2, offset: Offset(0, 1)),
+          ],
+        ),
       ),
-    );
-    _textPainter.layout();
-    _textPainter.paint(
-      canvas,
-      center - Offset(_textPainter.width / 2, _textPainter.height / 2),
-    );
-  }
-
-  void _drawFloatingEffects(Canvas canvas, Rect market) {
-    if (game.floatingEffects.isEmpty) return;
-    for (final effect in game.floatingEffects) {
-      final pos = _point(market, effect.currentPosition);
-      final textStyle = TextStyle(
-        color: effect.color.withValues(alpha: effect.opacity),
-        fontSize: effect.fontSize,
-        fontWeight: FontWeight.bold,
-        shadows: [
-          Shadow(
-            color: Colors.black.withValues(alpha: effect.opacity * 0.5),
-            blurRadius: 3,
-            offset: const Offset(1, 1),
-          ),
-        ],
-      );
-      _textPainter.text = TextSpan(text: effect.text, style: textStyle);
-      _textPainter.textDirection = TextDirection.ltr;
-      _textPainter.layout();
-      _textPainter.paint(
-        canvas,
-        pos - Offset(_textPainter.width / 2, _textPainter.height / 2),
-      );
-    }
-  }
-
-  /// Renders drifting ambient seasonal particles on top of the scene.
-  ///
-  /// Particle positions are derived purely from [animationTime] so they
-  /// look animated without requiring any mutable state in the painter.
-  void _drawSeasonalParticles(Canvas canvas, Rect market) {
-    final count = season.maxParticles;
-    if (count == 0) return;
-
-    final speed = season.particleSpeed;
-    final emoji = season.particleEmoji;
-    final t = animationTime * speed;
-
-    for (var i = 0; i < count; i++) {
-      // Deterministic seed per particle.
-      final seed = (i * 1.618 + 0.3);
-      final xBase = (seed * 0.37 + 0.05) % 0.90 + 0.05;
-      final yPhase = (t * 0.12 + seed * 1.7) % 1.0;
-      final xWobble = sin(t * 0.8 + seed * 2.1) * 0.025;
-
-      final x = xBase + xWobble;
-      final y = yPhase;
-
-      // Fade near top/bottom edges.
-      final edgeFade = sin(y * pi).clamp(0.0, 1.0) * 0.85 + 0.15;
-      final opacity = (edgeFade * 0.55).clamp(0.0, 1.0);
-
-      final pos = _point(market, Offset(x, y));
-      final scale = _sceneScale(market);
-      final fontSize = (9.0 + (seed * 3.1) % 5.0) * scale;
-
-      final style = TextStyle(
-        fontSize: fontSize,
-        color: Colors.white.withValues(alpha: opacity),
-      );
-      _textPainter.text = TextSpan(text: emoji, style: style);
-      _textPainter.textDirection = TextDirection.ltr;
-      _textPainter.layout();
-      _textPainter.paint(
-        canvas,
-        pos - Offset(_textPainter.width / 2, _textPainter.height / 2),
-      );
-    }
+      textAlign: TextAlign.center,
+      textDirection: textDirection,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: maxWidth ?? double.infinity);
+    painter.paint(canvas, center - Offset(painter.width / 2, painter.height / 2));
   }
 
   @override
   bool shouldRepaint(covariant MarketPainter oldDelegate) =>
       oldDelegate.game != game ||
+      oldDelegate._reducedMotionOverride != _reducedMotionOverride ||
       oldDelegate.storageLabel != storageLabel ||
       oldDelegate.shelfLabel != shelfLabel ||
       oldDelegate.checkoutLabel != checkoutLabel ||
       oldDelegate.bakeryLabel != bakeryLabel ||
-      oldDelegate.bakeryReadyLabel != bakeryReadyLabel ||
       oldDelegate.bakeryLockedLabel != bakeryLockedLabel ||
       oldDelegate.departmentLabels != departmentLabels ||
-      oldDelegate.textDirection != textDirection ||
-      oldDelegate.season != season;
+      oldDelegate.textDirection != textDirection;
+}
+
+class _SceneItem {
+  const _SceneItem(this.depth, this.draw);
+
+  final WorldDepthEntry depth;
+  final VoidCallback draw;
 }

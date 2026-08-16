@@ -19,10 +19,35 @@ import 'package:pomarket/ui/screens/shop_screen.dart';
 import 'package:pomarket/ui/screens/staff_screen.dart';
 import 'package:pomarket/ui/screens/upgrades_screen.dart';
 import 'package:pomarket/ui/splash_screen.dart';
+import 'package:pomarket/ui/widgets/game_dock.dart';
 import 'package:pomarket/ui/widgets/global_hud.dart';
 
 AppSettings _testSettings() {
   return AppSettings(preferences: _MockSharedPrefs());
+}
+
+/// Navigates via the persistent [GameDock].
+///
+/// Four destinations own a permanent slot; the rest live in the overflow panel,
+/// so this expands the panel first when the label is not already on the bar.
+/// Selecting a destination collapses the panel again, which is why the lookup
+/// is repeated per call rather than expanded once up front.
+Future<void> _openDestination(
+  WidgetTester tester,
+  String label, {
+  String moreLabel = 'More',
+}) async {
+  final dock = find.byType(GameDock);
+  var target = find.descendant(of: dock, matching: find.text(label));
+  if (target.evaluate().isEmpty) {
+    await tester.tap(find.descendant(of: dock, matching: find.text(moreLabel)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 320));
+    target = find.descendant(of: dock, matching: find.text(label));
+  }
+  await tester.tap(target);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 320));
 }
 
 class _MockSharedPrefs implements SharedPreferencesAsync {
@@ -120,10 +145,7 @@ void main() {
     expect(find.text('Your mini market'), findsOneWidget);
     expect(find.text('Stock 5 products on the shelf'), findsOneWidget);
 
-    final upgradesNavigation = find.byKey(const ValueKey('side-hud-upgrades'));
-    expect(upgradesNavigation, findsOneWidget);
-    await tester.tap(upgradesNavigation);
-    await tester.pump(const Duration(milliseconds: 500));
+    await _openDestination(tester, 'Upgrades');
     expect(find.text('Upgrade Your Business'), findsOneWidget);
     expect(find.text('Bigger Bag'), findsOneWidget);
   });
@@ -475,8 +497,7 @@ void main() {
       await restored.initialize();
       expect(restored.onboardingComplete, isTrue);
 
-      await tester.tap(find.byKey(const ValueKey('side-hud-settings')));
-      await tester.pump(const Duration(milliseconds: 250));
+      await _openDestination(tester, 'Settings');
       expect(find.byType(SettingsScreen), findsOneWidget);
       await tester.drag(
         find.descendant(
@@ -552,8 +573,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.tap(find.byKey(const ValueKey('side-hud-shop')));
-    await tester.pump(const Duration(milliseconds: 150));
+    await _openDestination(tester, 'Shop');
     expect(find.text('Preview mode'), findsOneWidget);
     final shopButtons = tester.widgetList<FilledButton>(
       find.descendant(
@@ -566,8 +586,7 @@ void main() {
     expect(controller.coins, startingCoins);
     expect(controller.gems, startingGems);
 
-    await tester.tap(find.byKey(const ValueKey('side-hud-staff')));
-    await tester.pump(const Duration(milliseconds: 150));
+    await _openDestination(tester, 'Staff');
     expect(find.byType(StaffScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -743,9 +762,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    final rail = find.byType(NavigationRail);
-    await tester.tap(find.descendant(of: rail, matching: find.text('Staff')));
-    await tester.pump(const Duration(milliseconds: 180));
+    await _openDestination(tester, 'Staff');
 
     expect(find.text('Team Operations'), findsOneWidget);
     final stockerCard = find.byKey(const ValueKey('staff-card-stocker'));
@@ -787,7 +804,7 @@ void main() {
   });
 
   testWidgets(
-    'NavigationRail renders with MaterialLocalizations on wide viewports',
+    'GameDock renders with MaterialLocalizations on wide viewports',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 800);
       tester.view.devicePixelRatio = 1;
@@ -812,16 +829,16 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(GameDock), findsOneWidget);
       expect(
-        MaterialLocalizations.of(tester.element(find.byType(NavigationRail))),
+        MaterialLocalizations.of(tester.element(find.byType(GameDock))),
         isNotNull,
       );
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('NavigationRail renders with MaterialLocalizations in English', (
+  testWidgets('GameDock renders with MaterialLocalizations in English', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 800);
@@ -851,7 +868,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    final rail = find.byType(NavigationRail);
+    final rail = find.byType(GameDock);
     expect(rail, findsOneWidget);
     expect(
       find.descendant(of: rail, matching: find.text('Market')),
@@ -866,7 +883,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('NavigationRail renders with MaterialLocalizations in Hebrew', (
+  testWidgets('GameDock renders with MaterialLocalizations in Hebrew', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 800);
@@ -896,7 +913,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    final rail = find.byType(NavigationRail);
+    final rail = find.byType(GameDock);
     expect(rail, findsOneWidget);
     expect(
       find.descendant(of: rail, matching: find.text('שוק')),
@@ -911,7 +928,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('NavigationRail renders with MaterialLocalizations in Arabic', (
+  testWidgets('GameDock renders with MaterialLocalizations in Arabic', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 800);
@@ -941,7 +958,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    final rail = find.byType(NavigationRail);
+    final rail = find.byType(GameDock);
     expect(rail, findsOneWidget);
     expect(
       find.descendant(of: rail, matching: find.text('السوق')),
@@ -984,7 +1001,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      final rail = find.byType(NavigationRail);
+      expect(find.byType(GameDock), findsOneWidget);
       expect(find.byType(GlobalHud), findsOneWidget);
       expect(
         tester.widget<GameScreen>(find.byType(GameScreen)).controller,
@@ -992,8 +1009,7 @@ void main() {
       );
 
       Future<void> open(String label) async {
-        await tester.tap(find.descendant(of: rail, matching: find.text(label)));
-        await tester.pump(const Duration(milliseconds: 120));
+        await _openDestination(tester, label);
         expect(find.byType(GlobalHud), findsOneWidget);
         expect(find.text('432'), findsOneWidget);
         expect(find.text('9'), findsOneWidget);
@@ -1074,11 +1090,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    final rail = find.byType(NavigationRail);
-    await tester.tap(
-      find.descendant(of: rail, matching: find.text('Departments')),
-    );
-    await tester.pump(const Duration(milliseconds: 120));
+    await _openDestination(tester, 'Departments');
     expect(controller.bakeryUnlocked, isFalse);
     expect(find.text('Unlocks at level 3'), findsOneWidget);
 

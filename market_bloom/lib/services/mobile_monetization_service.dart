@@ -6,17 +6,19 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import 'monetization_service.dart';
+import 'purchase_verification_service.dart';
 
-typedef PurchaseVerifier =
-    Future<bool> Function(StoreProduct product, PurchaseDetails purchase);
 typedef MonetizationConsentGate = Future<bool> Function();
 
-class MobileMonetizationService implements MonetizationService {
+class MobileMonetizationService
+    implements MonetizationService, ConsentAwareMonetizationService {
   MobileMonetizationService({
-    PurchaseVerifier? purchaseVerifier,
+    PurchaseVerificationService? purchaseVerificationService,
     MonetizationConsentGate? consentGate,
-  }) : _purchaseVerifier = purchaseVerifier ?? ((_, _) async => false),
-       _consentGate = consentGate ?? (() async => true);
+  }) : _purchaseVerificationService =
+           purchaseVerificationService ??
+           const DisabledPurchaseVerificationService(),
+       _consentGate = consentGate ?? (() async => false);
 
   static const _androidTestRewardedId =
       'ca-app-pub-3940256099942544/5224354917';
@@ -25,7 +27,6 @@ class MobileMonetizationService implements MonetizationService {
       'ca-app-pub-3940256099942544/1033173712';
   static const _iosTestInterstitialId =
       'ca-app-pub-3940256099942544/4411468910';
-
   static const _androidProductionRewardedId = String.fromEnvironment(
     'ADMOB_REWARDED_ANDROID',
   );
@@ -47,11 +48,12 @@ class MobileMonetizationService implements MonetizationService {
     StoreProduct.starterPack: 'pomarket_starter_pack',
   };
 
-  final PurchaseVerifier _purchaseVerifier;
+  final PurchaseVerificationService _purchaseVerificationService;
   final MonetizationConsentGate _consentGate;
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   final Map<String, ProductDetails> _products = {};
   final Map<String, Completer<StorePurchaseResult>> _pendingPurchases = {};
+  final List<StorePurchaseResult> _restoredPurchases = <StorePurchaseResult>[];
 
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
   RewardedAd? _rewardedAd;
@@ -59,8 +61,9 @@ class MobileMonetizationService implements MonetizationService {
   InterstitialAd? _interstitialAd;
   Future<void>? _interstitialLoad;
   Completer<List<StorePurchaseResult>>? _restoreCompleter;
-  final List<StorePurchaseResult> _restoredPurchases = <StorePurchaseResult>[];
   bool _storeAvailable = false;
+  bool _initialized = false;
+  bool _adsInitialized = false;
   bool _disposed = false;
 
   String? get _rewardedId {
@@ -70,9 +73,7 @@ class MobileMonetizationService implements MonetizationService {
       }
       return kDebugMode ? _androidTestRewardedId : null;
     }
-    if (_iosProductionRewardedId.isNotEmpty) {
-      return _iosProductionRewardedId;
-    }
+    if (_iosProductionRewardedId.isNotEmpty) return _iosProductionRewardedId;
     return kDebugMode ? _iosTestRewardedId : null;
   }
 
@@ -93,63 +94,75 @@ class MobileMonetizationService implements MonetizationService {
   bool get isPreview => Platform.isAndroid
       ? _androidProductionRewardedId.isEmpty
       : _iosProductionRewardedId.isEmpty;
-
   @override
   bool get storeAvailable => _storeAvailable && _products.isNotEmpty;
-
   @override
   bool get rewardedAdsAvailable => _rewardedAd != null;
-
   @override
   bool get interstitialAdsAvailable => _interstitialAd != null;
-
   @override
-  String? priceFor(StoreProduct product) {
-    final productId = _productIds[product];
-    return _products[productId]?.price;
-  }
+  String? priceFor(StoreProduct product) =>
+      _products[_productIds[product]]?.price;
 
   @override
   Future<void> initialize() async {
-    _purchaseSubscription = _inAppPurchase.purchaseStream.listen(
-      _handlePurchases,
-      onError: (_) => _failPendingPurchases(),
-    );
-
-    if (await _consentGate() &&
-        (_rewardedId != null || _interstitialId != null)) {
-      await MobileAds.instance.initialize();
-      await Future.wait<void>([_loadRewarded(), _loadInterstitial()]);
-    }
-
-    _storeAvailable = await _inAppPurchase.isAvailable();
-    if (_storeAvailable) {
-      final response = await _inAppPurchase.queryProductDetails(
-        _productIds.values.toSet(),
+    if (_disposed) return;
+    if (!_initialized) {
+      _purchaseSubscription = _inAppPurchase.purchaseStream.listen(
+        _handlePurchases,
+        onError: (_) => _failPendingPurchases(),
       );
-      for (final product in response.productDetails) {
-        _products[product.id] = product;
+      _storeAvailable = await _inAppPurchase.isAvailable();
+      if (_storeAvailable) {
+        final response = await _inAppPurchase.queryProductDetails(
+          _productIds.values.toSet(),
+        );
+        for (final product in response.productDetails) {
+          _products[product.id] = product;
+        }
+      }
+      _initialized = true;
+    }
+    await refreshConsent();
+  }
+
+  @override
+  Future<void> refreshConsent() async {
+    if (_disposed) return;
+    var allowed = false;
+    try {
+      allowed = await _consentGate();
+    } on Object {
+      allowed = false;
+    }
+    if (!allowed) {
+      _rewardedAd?.dispose();
+      _rewardedAd = null;
+      _interstitialAd?.dispose();
+      _interstitialAd = null;
+      return;
+    }
+    if (!_adsInitialized && (_rewardedId != null || _interstitialId != null)) {
+      try {
+        await MobileAds.instance.initialize();
+        _adsInitialized = true;
+      } on Object {
+        return;
       }
     }
+    await Future.wait<void>([_loadRewarded(), _loadInterstitial()]);
   }
 
   Future<void> _loadRewarded() {
-    if (_rewardedAd != null || _disposed) {
-      return Future.value();
-    }
-    final adUnitId = _rewardedId;
-    if (adUnitId == null) {
-      return Future.value();
-    }
-    final currentLoad = _rewardedLoad;
-    if (currentLoad != null) {
-      return currentLoad;
-    }
-
+    if (_rewardedAd != null || _disposed) return Future.value();
+    final id = _rewardedId;
+    if (id == null) return Future.value();
+    final active = _rewardedLoad;
+    if (active != null) return active;
     final completer = Completer<void>();
     _rewardedLoad = completer.future;
     RewardedAd.load(
-      adUnitId: adUnitId,
+      adUnitId: id,
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
@@ -171,22 +184,15 @@ class MobileMonetizationService implements MonetizationService {
   }
 
   Future<void> _loadInterstitial() {
-    if (_interstitialAd != null || _disposed) {
-      return Future.value();
-    }
-    final adUnitId = _interstitialId;
-    if (adUnitId == null) {
-      return Future.value();
-    }
-    final currentLoad = _interstitialLoad;
-    if (currentLoad != null) {
-      return currentLoad;
-    }
-
+    if (_interstitialAd != null || _disposed) return Future.value();
+    final id = _interstitialId;
+    if (id == null) return Future.value();
+    final active = _interstitialLoad;
+    if (active != null) return active;
     final completer = Completer<void>();
     _interstitialLoad = completer.future;
     InterstitialAd.load(
-      adUnitId: adUnitId,
+      adUnitId: id,
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
@@ -209,68 +215,47 @@ class MobileMonetizationService implements MonetizationService {
 
   @override
   Future<bool> showRewardedAd(RewardPlacement placement) async {
+    if (!await _consentGate()) return false;
     await _loadRewarded();
     final ad = _rewardedAd;
-    if (ad == null || _disposed) {
-      return false;
-    }
-
+    if (ad == null || _disposed) return false;
     _rewardedAd = null;
     final completer = Completer<bool>();
-    var earnedReward = false;
-
+    var earned = false;
     ad.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (shownAd) {
-        shownAd.dispose();
-        if (!completer.isCompleted) {
-          completer.complete(earnedReward);
-        }
+      onAdDismissedFullScreenContent: (shown) {
+        shown.dispose();
+        if (!completer.isCompleted) completer.complete(earned);
         unawaited(_loadRewarded());
       },
-      onAdFailedToShowFullScreenContent: (shownAd, _) {
-        shownAd.dispose();
-        if (!completer.isCompleted) {
-          completer.complete(false);
-        }
-        unawaited(_loadRewarded());
+      onAdFailedToShowFullScreenContent: (shown, _) {
+        shown.dispose();
+        if (!completer.isCompleted) completer.complete(false);
       },
     );
-    ad.show(
-      onUserEarnedReward: (_, _) {
-        earnedReward = true;
-      },
-    );
+    ad.show(onUserEarnedReward: (_, _) => earned = true);
     return completer.future;
   }
 
   @override
   Future<bool> showInterstitial(InterstitialPlacement placement) async {
+    if (!await _consentGate()) return false;
     await _loadInterstitial();
     final ad = _interstitialAd;
-    if (ad == null || _disposed) {
-      return false;
-    }
-
+    if (ad == null || _disposed) return false;
     _interstitialAd = null;
     final completer = Completer<bool>();
     var shown = false;
     ad.fullScreenContentCallback = FullScreenContentCallback(
-      onAdShowedFullScreenContent: (_) {
-        shown = true;
-      },
-      onAdDismissedFullScreenContent: (shownAd) {
-        shownAd.dispose();
-        if (!completer.isCompleted) {
-          completer.complete(shown);
-        }
+      onAdShowedFullScreenContent: (_) => shown = true,
+      onAdDismissedFullScreenContent: (value) {
+        value.dispose();
+        if (!completer.isCompleted) completer.complete(shown);
         unawaited(_loadInterstitial());
       },
-      onAdFailedToShowFullScreenContent: (shownAd, _) {
-        shownAd.dispose();
-        if (!completer.isCompleted) {
-          completer.complete(false);
-        }
-        unawaited(_loadInterstitial());
+      onAdFailedToShowFullScreenContent: (value, _) {
+        value.dispose();
+        if (!completer.isCompleted) completer.complete(false);
       },
     );
     ad.show();
@@ -279,28 +264,22 @@ class MobileMonetizationService implements MonetizationService {
 
   @override
   Future<StorePurchaseResult> purchase(StoreProduct product) async {
-    if (!_storeAvailable || _disposed) {
-      return StorePurchaseResult.failed(product);
-    }
+    if (!_storeAvailable || _disposed) return StorePurchaseResult.failed(product);
     final productId = _productIds[product];
     final details = _products[productId];
     if (productId == null || details == null) {
       return StorePurchaseResult.failed(product);
     }
-
     final existing = _pendingPurchases[productId];
-    if (existing != null) {
-      return existing.future;
-    }
-
+    if (existing != null) return existing.future;
     final completer = Completer<StorePurchaseResult>();
     _pendingPurchases[productId] = completer;
-    final purchaseParam = PurchaseParam(productDetails: details);
+    final param = PurchaseParam(productDetails: details);
     final nonConsumable =
         product == StoreProduct.noAds || product == StoreProduct.starterPack;
     final started = nonConsumable
-        ? await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam)
-        : await _inAppPurchase.buyConsumable(purchaseParam: purchaseParam);
+        ? await _inAppPurchase.buyNonConsumable(purchaseParam: param)
+        : await _inAppPurchase.buyConsumable(purchaseParam: param);
     if (!started) {
       _completePurchaseResult(productId, StorePurchaseResult.failed(product));
     }
@@ -308,7 +287,10 @@ class MobileMonetizationService implements MonetizationService {
       const Duration(minutes: 2),
       onTimeout: () {
         _pendingPurchases.remove(productId);
-        return StorePurchaseResult.failed(product);
+        return StorePurchaseResult(
+          product: product,
+          state: PurchaseState.pending,
+        );
       },
     );
   }
@@ -316,67 +298,86 @@ class MobileMonetizationService implements MonetizationService {
   Future<void> _handlePurchases(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
       final product = _productForId(purchase.productID);
-      if (product == null) {
-        continue;
-      }
-      StorePurchaseResult? result;
+      if (product == null) continue;
       switch (purchase.status) {
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
-          final verified = await _purchaseVerifier(product, purchase);
-          result = StorePurchaseResult(
+          final requested =
+              _pendingPurchases.containsKey(purchase.productID) ||
+              _restoreCompleter != null;
+          final verification = await _purchaseVerificationService.verify(
+            PurchaseVerificationRequest(
+              product: product,
+              productId: purchase.productID,
+              transactionId: purchase.purchaseID ?? '',
+              source: purchase.verificationData.source,
+              serverVerificationData:
+                  purchase.verificationData.serverVerificationData,
+              localVerificationData:
+                  purchase.verificationData.localVerificationData,
+              restored: purchase.status == PurchaseStatus.restored,
+              transactionDate: purchase.transactionDate,
+            ),
+          );
+          final verified = verification.isVerified;
+          final result = StorePurchaseResult(
             product: product,
-            state: purchase.status == PurchaseStatus.restored
-                ? PurchaseState.restored
-                : PurchaseState.purchased,
-            transactionId: purchase.purchaseID,
+            state: verified
+                ? purchase.status == PurchaseStatus.restored
+                      ? PurchaseState.restored
+                      : PurchaseState.purchased
+                : verification.canRetry
+                ? PurchaseState.pending
+                : PurchaseState.failed,
+            transactionId: verification.transactionId ?? purchase.purchaseID,
             verified: verified,
           );
           _completePurchaseResult(purchase.productID, result);
           if (purchase.status == PurchaseStatus.restored) {
             _restoredPurchases.add(result);
           }
-          if (verified && purchase.pendingCompletePurchase) {
+          if (verified && requested && purchase.pendingCompletePurchase) {
             await _inAppPurchase.completePurchase(purchase);
           }
         case PurchaseStatus.error:
-          result = StorePurchaseResult.failed(product);
-          _completePurchaseResult(purchase.productID, result);
-        case PurchaseStatus.canceled:
-          result = StorePurchaseResult(
-            product: product,
-            state: PurchaseState.cancelled,
+          _completePurchaseResult(
+            purchase.productID,
+            StorePurchaseResult.failed(product),
           );
-          _completePurchaseResult(purchase.productID, result);
+        case PurchaseStatus.canceled:
+          _completePurchaseResult(
+            purchase.productID,
+            StorePurchaseResult(
+              product: product,
+              state: PurchaseState.cancelled,
+            ),
+          );
         case PurchaseStatus.pending:
           break;
       }
     }
   }
 
-  StoreProduct? _productForId(String productId) {
+  StoreProduct? _productForId(String id) {
     for (final entry in _productIds.entries) {
-      if (entry.value == productId) {
-        return entry.key;
-      }
+      if (entry.value == id) return entry.key;
     }
     return null;
   }
 
-  void _completePurchaseResult(String productId, StorePurchaseResult result) {
-    final completer = _pendingPurchases.remove(productId);
-    if (completer != null && !completer.isCompleted) {
-      completer.complete(result);
-    }
+  void _completePurchaseResult(String id, StorePurchaseResult result) {
+    final completer = _pendingPurchases.remove(id);
+    if (completer != null && !completer.isCompleted) completer.complete(result);
   }
 
   void _failPendingPurchases() {
     for (final entry in _pendingPurchases.entries) {
-      final product = _productForId(entry.key);
-      final completer = entry.value;
-      if (!completer.isCompleted) {
-        completer.complete(
-          StorePurchaseResult.failed(product ?? StoreProduct.noAds),
+      if (!entry.value.isCompleted) {
+        entry.value.complete(
+          StorePurchaseResult(
+            product: _productForId(entry.key) ?? StoreProduct.noAds,
+            state: PurchaseState.pending,
+          ),
         );
       }
     }
@@ -385,23 +386,17 @@ class MobileMonetizationService implements MonetizationService {
 
   @override
   Future<List<StorePurchaseResult>> restorePurchases() async {
-    if (_disposed || !_storeAvailable) {
-      return const <StorePurchaseResult>[];
-    }
-    final activeRestore = _restoreCompleter;
-    if (activeRestore != null) {
-      return activeRestore.future;
-    }
+    if (_disposed || !_storeAvailable) return const <StorePurchaseResult>[];
+    final active = _restoreCompleter;
+    if (active != null) return active.future;
     final completer = Completer<List<StorePurchaseResult>>();
     _restoreCompleter = completer;
     _restoredPurchases.clear();
     try {
       await _inAppPurchase.restorePurchases();
       await Future<void>.delayed(const Duration(seconds: 1));
-      completer.complete(
-        List<StorePurchaseResult>.unmodifiable(_restoredPurchases),
-      );
-    } catch (_) {
+      completer.complete(List.unmodifiable(_restoredPurchases));
+    } on Object {
       completer.complete(const <StorePurchaseResult>[]);
     } finally {
       _restoreCompleter = null;
@@ -413,8 +408,8 @@ class MobileMonetizationService implements MonetizationService {
   void dispose() {
     _disposed = true;
     _rewardedAd?.dispose();
-    _rewardedAd = null;
     _interstitialAd?.dispose();
+    _rewardedAd = null;
     _interstitialAd = null;
     unawaited(_purchaseSubscription?.cancel());
     _failPendingPurchases();

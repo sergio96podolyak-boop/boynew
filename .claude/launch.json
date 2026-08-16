@@ -57,6 +57,16 @@
       "port": 3000
     },
     {
+      "name": "PoMarket (Web)",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd market_bloom/build/web && python3 -m http.server 5959"
+      ],
+      "port": 5959,
+      "url": "http://localhost:5959"
+    },
+    {
       "name": "Dashboard Preview (8511)",
       "runtimeExecutable": "./venv/bin/streamlit",
       "runtimeArgs": [
