@@ -23,7 +23,12 @@ class IsoMarketPainter extends CustomPainter {
     required this.checkoutLabel,
     required this.shelfLabel,
     required this.textDirection,
-  }) : super(repaint: game);
+    // Repaint on the per-frame scene channel, not the controller's visible-
+    // state notifier. The player and customers move every tick but the
+    // controller only calls notifyListeners on visible state changes, so
+    // binding to `game` left the board frozen between those — which read as
+    // "the player doesn't move" even though its position was updating.
+  }) : super(repaint: game.scene);
 
   final GameController game;
   final String storageLabel;
