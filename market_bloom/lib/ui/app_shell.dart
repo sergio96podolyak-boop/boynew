@@ -111,46 +111,54 @@ class _AppShellState extends State<AppShell> {
             // in it rather than a game.
             ? Stack(
                 children: [
+                  // The market screen owns one layout column for every
+                  // persistent layer, and the shell hands it the chrome to
+                  // place. Positioning the HUD and dock separately here, while
+                  // the screen positioned its own pods against guessed offsets,
+                  // is what let the banners collide.
                   Positioned.fill(
-                    child: _buildDestination(AppDestination.market),
-                  ),
-                  PositionedDirectional(
-                    top: 0,
-                    start: 0,
-                    end: 0,
-                    child: GlobalHud(
+                    child: MainGamePhaseTwo(
                       game: widget.controller,
                       settings: widget.settings,
-                      compactMode: true,
-                      floating: true,
-                    ),
-                  ),
-                  // Today's modifier is ambient context, not something the
-                  // player acts on every second, so it sits at the foot of the
-                  // world rather than taking a full-width slot at the top.
-                  PositionedDirectional(
-                    bottom: 0,
-                    start: 0,
-                    end: 0,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (dailyEvent != null)
-                          Padding(
-                            padding: const EdgeInsetsDirectional.fromSTEB(
-                              10,
-                              0,
-                              10,
-                              6,
-                            ),
-                            child: DailyEventBanner(
-                              game: dailyEvent.game,
-                              settings: dailyEvent.settings,
-                              compact: true,
-                            ),
-                          ),
-                        _dock(loc),
-                      ],
+                      child: GameScreen(
+                        controller: widget.controller,
+                        settings: widget.settings,
+                        onOpenStaff: () =>
+                            _selectDestination(AppDestination.staff),
+                        onOpenInventory: () =>
+                            _selectDestination(AppDestination.inventory),
+                        onOpenDepartments: () =>
+                            _selectDestination(AppDestination.departments),
+                        topChrome: GlobalHud(
+                          game: widget.controller,
+                          settings: widget.settings,
+                          compactMode: true,
+                          floating: true,
+                        ),
+                        bottomChrome: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Ambient context, so it sits at the foot of the
+                            // world rather than taking a slot at the top.
+                            if (dailyEvent != null)
+                              Padding(
+                                padding:
+                                    const EdgeInsetsDirectional.fromSTEB(
+                                      10,
+                                      0,
+                                      10,
+                                      6,
+                                    ),
+                                child: DailyEventBanner(
+                                  game: dailyEvent.game,
+                                  settings: dailyEvent.settings,
+                                  compact: true,
+                                ),
+                              ),
+                            _dock(loc),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                   // Keeps the other destinations mounted so their state and

@@ -112,7 +112,7 @@ class IsoMarketPainter extends CustomPainter {
     if (game.shelfStock < 3) {
       _alertMarker(canvas, projection, GameController.shelfZone, 0.74);
     }
-    _paintZoneLabels(canvas, projection);
+    _paintZoneLabels(canvas, projection, size);
     _paintFloatingEffects(canvas, projection);
 
     _paintAmbience(canvas, size, projection);
@@ -124,7 +124,7 @@ class IsoMarketPainter extends CustomPainter {
   /// its zones so a new player knows the storeroom from the tills at a glance.
   /// The painter already receives these strings; it just never drew them, which
   /// is a large part of why the board read as unreadable.
-  void _paintZoneLabels(Canvas canvas, IsoProjection p) {
+  void _paintZoneLabels(Canvas canvas, IsoProjection p, Size size) {
     void tag(Offset zone, double lift, String text, Color color) {
       final anchor = p.project(zone.dx, zone.dy, lift);
       final painter = TextPainter(
@@ -142,11 +142,19 @@ class IsoMarketPainter extends CustomPainter {
       )..layout();
       final w = painter.width + 20 * p.scale;
       final h = painter.height + 6 * p.scale;
-      final rect = Rect.fromCenter(
-        center: Offset(anchor.dx, anchor.dy),
-        width: w,
-        height: h,
-      );
+      // Clamped into the frame: the camera is zoomed into the room, so a tag
+      // anchored to a fixture near the edge would otherwise be cut in half by
+      // the viewport.
+      final margin = 6 * p.scale;
+      final cx = anchor.dx.clamp(
+        w / 2 + margin,
+        math.max(w / 2 + margin, size.width - w / 2 - margin),
+      ).toDouble();
+      final cy = anchor.dy.clamp(
+        h / 2 + margin,
+        math.max(h / 2 + margin, size.height - h / 2 - margin),
+      ).toDouble();
+      final rect = Rect.fromCenter(center: Offset(cx, cy), width: w, height: h);
       final rrect = RRect.fromRectAndRadius(rect, Radius.circular(h / 2));
       canvas.drawRRect(
         rrect.shift(Offset(0, 1.5 * p.scale)),
@@ -171,10 +179,7 @@ class IsoMarketPainter extends CustomPainter {
       );
       painter.paint(
         canvas,
-        Offset(
-          rect.left + h * 0.72,
-          anchor.dy - painter.height / 2,
-        ),
+        Offset(rect.left + h * 0.72, rect.center.dy - painter.height / 2),
       );
     }
 

@@ -45,6 +45,8 @@ class GameScreen extends StatefulWidget {
     this.onOpenStaff,
     this.onOpenInventory,
     this.onOpenDepartments,
+    this.topChrome,
+    this.bottomChrome,
   });
 
   final GameController controller;
@@ -52,6 +54,16 @@ class GameScreen extends StatefulWidget {
   final VoidCallback? onOpenStaff;
   final VoidCallback? onOpenInventory;
   final VoidCallback? onOpenDepartments;
+
+  /// Persistent chrome the shell owns, placed in this screen's layout column.
+  ///
+  /// The HUD and the dock used to be positioned separately by the shell while
+  /// this screen positioned its own pods with hardcoded offsets, so nothing
+  /// knew how tall anything else was and the layers collided. Handing them in
+  /// means one column owns every persistent layer and overlap is structurally
+  /// impossible rather than tuned out by hand.
+  final Widget? topChrome;
+  final Widget? bottomChrome;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -323,22 +335,6 @@ class _GameScreenState extends State<GameScreen>
                                                 ).projectOffset(world),
                                           ),
                                         ),
-                                        PositionedDirectional(
-                                          start: 10,
-                                          end: 10,
-                                          // Clears the floating navigation
-                                          // pill, which now overlaps the world
-                                          // instead of sitting under it.
-                                          bottom: 104,
-                                          child: _WorldContextActions(
-                                            game: game,
-                                            onOpenStaff: widget.onOpenStaff,
-                                            onOpenInventory:
-                                                widget.onOpenInventory,
-                                            onOpenDepartments:
-                                                widget.onOpenDepartments,
-                                          ),
-                                        ),
                                         if (game.pendingShiftSummary != null)
                                           Positioned.fill(
                                             child: Padding(
@@ -432,59 +428,104 @@ class _GameScreenState extends State<GameScreen>
                   ],
                 ),
               ),
-                  // Objectives moved from a full-width strip above the board
-                  // into a collapsible pod anchored over it. A permanent bar
-                  // spent 60px of every frame on one line of text; a pod shows
-                  // the same headline, and opens for detail on demand.
-                  PositionedDirectional(
-                    // Sits under the HUD pods, on the leading edge, where the
-                    // eye lands after reading identity and resources.
-                    top: 98,
-                    start: 10,
-                    child: AnimatedBuilder(
-                      animation: game,
-                      builder: (context, _) => _MissionPod(
-                        key: const ValueKey('objective-strip'),
-                        quest: game.quest,
-                        title: AppLocalizations.of(
-                          context,
-                        ).questTitle(game.questStage, game.quest.target),
-                        onClaim: _claimQuest,
-                        reducedMotion:
-                            settings.reducedMotion ||
-                            MediaQuery.disableAnimationsOf(context),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 112,
-                    left: 12,
-                    right: 12,
-                    child: IgnorePointer(
-                      ignoring: _achievementToast == null,
-                      child: AnimatedSlide(
-                        duration: const Duration(milliseconds: 360),
-                        curve: Curves.easeOutBack,
-                        offset: _achievementToast == null
-                            ? const Offset(0, -1.4)
-                            : Offset.zero,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 220),
-                          opacity: _achievementToast == null ? 0 : 1,
-                          child: _achievementToast == null
-                              ? const SizedBox.shrink()
-                              : _AchievementToast(
-                                  achievement: _achievementToast!,
-                                  title: AppLocalizations.of(
-                                    context,
-                                  ).achievementTitle(_achievementToast!.id),
-                                  description: AppLocalizations.of(context)
-                                      .achievementDescription(
-                                        _achievementToast!.id,
-                                      ),
+                  // Every persistent layer lives in one column: top chrome,
+                  // one upper contextual element, the world's breathing room,
+                  // one lower contextual element, then bottom chrome. A column
+                  // cannot overlap itself, so the ordering is the guarantee —
+                  // no offsets to keep in sync as content changes.
+                  Positioned.fill(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // Short viewports drop the optional layers rather than
+                        // letting them collide. Less UI beats overlapping UI.
+                        final height = constraints.maxHeight;
+                        final showActions = height >= 560;
+                        final showMission = height >= 460;
+                        return Column(
+                          children: [
+                            ?widget.topChrome,
+                            if (showMission)
+                              Padding(
+                                padding: const EdgeInsetsDirectional.fromSTEB(
+                                  10,
+                                  8,
+                                  10,
+                                  0,
                                 ),
-                        ),
-                      ),
+                                child: Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: AnimatedBuilder(
+                                    animation: game,
+                                    builder: (context, _) => _MissionPod(
+                                      key: const ValueKey('objective-strip'),
+                                      quest: game.quest,
+                                      title: AppLocalizations.of(
+                                        context,
+                                      ).questTitle(
+                                        game.questStage,
+                                        game.quest.target,
+                                      ),
+                                      onClaim: _claimQuest,
+                                      reducedMotion:
+                                          settings.reducedMotion ||
+                                          MediaQuery.disableAnimationsOf(
+                                            context,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            // Transient, but still in the column so it can
+                            // never land on the pod above or the world below.
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              child: _achievementToast == null
+                                  ? const SizedBox(width: double.infinity)
+                                  : Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        12,
+                                        8,
+                                        12,
+                                        0,
+                                      ),
+                                      child: _AchievementToast(
+                                        achievement: _achievementToast!,
+                                        title: AppLocalizations.of(
+                                          context,
+                                        ).achievementTitle(
+                                          _achievementToast!.id,
+                                        ),
+                                        description: AppLocalizations.of(
+                                          context,
+                                        ).achievementDescription(
+                                          _achievementToast!.id,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                            // The world's share of the screen. Nothing is
+                            // painted here, so taps fall through to the board.
+                            const Expanded(child: SizedBox.expand()),
+                            if (showActions)
+                              Padding(
+                                padding: const EdgeInsetsDirectional.fromSTEB(
+                                  10,
+                                  0,
+                                  10,
+                                  8,
+                                ),
+                                child: _WorldContextActions(
+                                  game: game,
+                                  onOpenStaff: widget.onOpenStaff,
+                                  onOpenInventory: widget.onOpenInventory,
+                                  onOpenDepartments: widget.onOpenDepartments,
+                                ),
+                              ),
+                            ?widget.bottomChrome,
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -527,6 +568,8 @@ class _GameScreenState extends State<GameScreen>
     return true;
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -607,6 +650,8 @@ class _GameScreenState extends State<GameScreen>
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showUpgrades() {
     return showModalBottomSheet<void>(
       context: context,
@@ -628,6 +673,8 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -1665,6 +1712,8 @@ void _showContextHint(BuildContext context, String message) {
   );
 }
 
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
 // ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
