@@ -47,21 +47,11 @@ class IsoMarketPainter extends CustomPainter {
   // near-white interiors.
   static const _wallBack = Color(0xFFE6EAE2);
   static const _wallSide = Color(0xFFD2DAD1);
-  static const _shelfBody = Color(0xFF2F7B58);
-  static const _fridgeBody = Color(0xFF356F98);
+  static const _fridgeBody = Color(0xFF3D8FC4);
   static const _counterBody = Color(0xFF3C4F58);
   static const _crateBody = Color(0xFFB07C43);
-  static const _bakeryBody = Color(0xFFC98A3C);
+  static const _bakeryBody = Color(0xFFE0A542);
   static const _accentGold = Color(0xFFFFC33D);
-
-  static const _productPalette = <Color>[
-    Color(0xFFE0573F),
-    Color(0xFFF0A93B),
-    Color(0xFF52A85E),
-    Color(0xFF4A8FD4),
-    Color(0xFFB268D6),
-    Color(0xFFE8C34A),
-  ];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -402,18 +392,29 @@ class IsoMarketPainter extends CustomPainter {
         calls.add(IsoDrawCall(depth, paint));
 
     // Gondola runs across the sales floor. Stock level drives how full the
-    // shelves look, so the board reflects play state at a glance.
-    const runs = <({double x, double y, double length})>[
-      (x: 0.16, y: 0.30, length: 0.26),
-      (x: 0.16, y: 0.52, length: 0.26),
-      (x: 0.44, y: 0.30, length: 0.22),
-      (x: 0.44, y: 0.52, length: 0.22),
+    // shelves look, so the board reflects play state at a glance. Each run is a
+    // different category so the aisles read as a colourful shop, not a row of
+    // identical green blocks.
+    const runs = <({double x, double y, double length, int category})>[
+      (x: 0.15, y: 0.28, length: 0.28, category: 0),
+      (x: 0.15, y: 0.54, length: 0.28, category: 1),
+      (x: 0.45, y: 0.28, length: 0.24, category: 2),
+      (x: 0.45, y: 0.54, length: 0.24, category: 3),
     ];
     final fillRatio = (game.shelfStock / 12).clamp(0.0, 1.0);
     for (final run in runs) {
       add(
-        IsoProjection.depthOf(run.x + 0.06, run.y + run.length),
-        (canvas) => _shelfRun(canvas, brush, p, run.x, run.y, run.length, fillRatio),
+        IsoProjection.depthOf(run.x + 0.07, run.y + run.length),
+        (canvas) => _shelfRun(
+          canvas,
+          brush,
+          p,
+          run.x,
+          run.y,
+          run.length,
+          fillRatio,
+          run.category,
+        ),
       );
     }
 
@@ -599,6 +600,52 @@ class IsoMarketPainter extends CustomPainter {
     }
   }
 
+  /// A category colour theme for one gondola: the header/kick trim plus the
+  /// palette its products are drawn from.
+  static ({Color trim, List<Color> products}) _category(int index) =>
+      switch (index % 4) {
+        // Produce — greens and a splash of fruit.
+        0 => (
+          trim: const Color(0xFF3FA85C),
+          products: const [
+            Color(0xFF66C24E),
+            Color(0xFFF2B134),
+            Color(0xFFE0573F),
+            Color(0xFF8ED04F),
+          ],
+        ),
+        // Snacks — warm reds and oranges.
+        1 => (
+          trim: const Color(0xFFE8663C),
+          products: const [
+            Color(0xFFF07A3D),
+            Color(0xFFE0453B),
+            Color(0xFFF2B134),
+            Color(0xFFD98BC0),
+          ],
+        ),
+        // Drinks — blues and teals.
+        2 => (
+          trim: const Color(0xFF3D8FD4),
+          products: const [
+            Color(0xFF4FA3E8),
+            Color(0xFF43C7C7),
+            Color(0xFF6E7BE0),
+            Color(0xFFE8C34A),
+          ],
+        ),
+        // Household — violets and cool tones.
+        _ => (
+          trim: const Color(0xFF9B6FD4),
+          products: const [
+            Color(0xFFB07CE8),
+            Color(0xFF5FB0E0),
+            Color(0xFFEF8FB0),
+            Color(0xFFE8C34A),
+          ],
+        ),
+      };
+
   void _shelfRun(
     Canvas canvas,
     IsoBrush brush,
@@ -607,16 +654,32 @@ class IsoMarketPainter extends CustomPainter {
     double y,
     double length,
     double fill,
+    int category,
   ) {
-    const width = 0.085;
-    const bodyHeight = 0.085;
+    const width = 0.10;
+    const deckHeight = 0.05;
+    final theme = _category(category);
+
     brush.groundShadow(
       canvas,
       x: x + width / 2,
       y: y + length / 2,
-      radiusX: width * 1.9,
-      radiusY: length * 1.5,
-      opacity: 0.26,
+      radiusX: width * 1.7,
+      radiusY: length * 1.35,
+      opacity: 0.24,
+    );
+
+    // White cabinet with a coloured kick strip — real gondolas read as bright
+    // fixtures, not solid slabs.
+    brush.box(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + width,
+      y1: y + length,
+      height: deckHeight,
+      color: const Color(0xFFF3F1EA),
+      topColor: const Color(0xFFFBFAF5),
     );
     brush.box(
       canvas,
@@ -624,28 +687,55 @@ class IsoMarketPainter extends CustomPainter {
       y0: y,
       x1: x + width,
       y1: y + length,
-      height: bodyHeight,
-      color: _shelfBody,
+      base: 0,
+      height: 0.014,
+      color: theme.trim,
+      outline: false,
     );
 
-    // Product blocks sitting on the deck.
-    final rows = (length / 0.045).floor();
-    final stocked = (rows * fill).round();
-    for (var i = 0; i < stocked; i++) {
-      final cy = y + 0.006 + i * 0.045;
-      final colour = _productPalette[(i + (x * 37).round()) % _productPalette.length];
-      brush.box(
-        canvas,
-        x0: x + 0.012,
-        y0: cy,
-        x1: x + width - 0.012,
-        y1: cy + 0.032,
-        base: bodyHeight,
-        height: 0.05 + (i % 3) * 0.008,
-        color: colour,
-        outline: false,
-      );
+    // Products in two dense columns, brightly coloured with a lighter cap so
+    // each item catches the light.
+    const cols = 2;
+    final gap = 0.011;
+    final colW = (width - gap * (cols + 1)) / cols;
+    final rows = (length / 0.03).floor();
+    final stocked = (rows * fill).clamp(0, rows).round();
+    for (var r = 0; r < stocked; r++) {
+      final cy = y + gap + r * 0.03;
+      for (var c = 0; c < cols; c++) {
+        final cx = x + gap + c * (colW + gap);
+        final seed = r * cols + c + (x * 53).round() + category * 7;
+        final colour = theme.products[seed % theme.products.length];
+        final h = 0.052 + (seed % 3) * 0.007;
+        brush.box(
+          canvas,
+          x0: cx,
+          y0: cy,
+          x1: cx + colW,
+          y1: cy + 0.022,
+          base: deckHeight,
+          height: h,
+          color: colour,
+          topColor: IsoLight.lift(colour, 0.30),
+          outline: false,
+        );
+      }
     }
+
+    // Coloured header board standing at the back of the run — the aisle's
+    // category banner.
+    brush.box(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + 0.012,
+      y1: y + length,
+      base: deckHeight + 0.10,
+      height: 0.03,
+      color: theme.trim,
+      topColor: IsoLight.lift(theme.trim, 0.25),
+      outline: false,
+    );
   }
 
   void _fridge(
@@ -672,7 +762,31 @@ class IsoMarketPainter extends CustomPainter {
       y1: y1,
       height: 0.20,
       color: _fridgeBody,
+      topColor: const Color(0xFF6FB8DE),
     );
+    // Colourful stock standing inside, seen through the glass.
+    const drinks = [
+      Color(0xFFE0453B),
+      Color(0xFFF2B134),
+      Color(0xFF66C24E),
+      Color(0xFF4FA3E8),
+      Color(0xFFD98BC0),
+    ];
+    final slots = ((y1 - y0 - 0.03) / 0.03).floor();
+    for (var i = 0; i < slots; i++) {
+      final sy = y0 + 0.03 + i * 0.03;
+      brush.box(
+        canvas,
+        x0: x + 0.03,
+        y0: sy,
+        x1: x + 0.078,
+        y1: sy + 0.02,
+        base: 0.04,
+        height: 0.12,
+        color: drinks[(i + (y0 * 40).round()) % drinks.length],
+        outline: false,
+      );
+    }
     // Glass door on the face turned toward the shop floor.
     brush.panel(
       canvas,
@@ -681,8 +795,20 @@ class IsoMarketPainter extends CustomPainter {
       x1: x + 0.09,
       y1: y1 - 0.02,
       base: 0.035,
-      top: 0.175,
-      color: const Color(0x8FBFE6F5),
+      top: 0.185,
+      color: const Color(0x66CDECF7),
+    );
+    // Bright frame highlight along the top of the unit.
+    brush.box(
+      canvas,
+      x0: x,
+      y0: y0,
+      x1: x + 0.09,
+      y1: y0 + 0.012,
+      base: 0.20,
+      height: 0.016,
+      color: const Color(0xFF8FD0EC),
+      outline: false,
     );
   }
 
@@ -714,6 +840,18 @@ class IsoMarketPainter extends CustomPainter {
       color: body,
       topColor: unlocked ? const Color(0xFF6E8A93) : const Color(0xFF8A948F),
     );
+    // Bright counter top so the till reads as the shop's focal point.
+    brush.box(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + 0.15,
+      y1: y + 0.11,
+      base: 0.072,
+      height: 0.008,
+      color: const Color(0xFF37C88E),
+      outline: false,
+    );
     if (!unlocked) return;
     // Register block and its screen.
     brush.box(
@@ -722,9 +860,9 @@ class IsoMarketPainter extends CustomPainter {
       y0: y + 0.02,
       x1: x + 0.062,
       y1: y + 0.07,
-      base: 0.072,
+      base: 0.08,
       height: 0.055,
-      color: const Color(0xFF25333A),
+      color: const Color(0xFF2C3B44),
       outline: false,
     );
     brush.panel(
@@ -733,20 +871,34 @@ class IsoMarketPainter extends CustomPainter {
       y0: y + 0.025,
       x1: x + 0.062,
       y1: y + 0.065,
-      base: 0.09,
-      top: 0.125,
+      base: 0.098,
+      top: 0.133,
       color: const Color(0xFF6FE3B4),
     );
-    // Belt stripe.
+    // Belt with a few grocery items riding along it.
     brush.groundQuad(
       canvas,
       x0: x + 0.075,
       y0: y + 0.018,
       x1: x + 0.142,
       y1: y + 0.092,
-      color: const Color(0xFF1D2A30),
-      z: 0.0725,
+      color: const Color(0xFF25333A),
+      z: 0.081,
     );
+    const items = [Color(0xFFE0453B), Color(0xFFF2B134), Color(0xFF66C24E)];
+    for (var i = 0; i < 3; i++) {
+      brush.box(
+        canvas,
+        x0: x + 0.088 + i * 0.018,
+        y0: y + 0.04,
+        x1: x + 0.10 + i * 0.018,
+        y1: y + 0.066,
+        base: 0.081,
+        height: 0.028,
+        color: items[i],
+        outline: false,
+      );
+    }
   }
 
   void _stockroom(Canvas canvas, IsoBrush brush, IsoProjection p) {
