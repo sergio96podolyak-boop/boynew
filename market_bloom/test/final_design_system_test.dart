@@ -8,6 +8,7 @@ import 'package:pomarket/services/game_storage.dart';
 import 'package:pomarket/services/monetization_service.dart';
 import 'package:pomarket/ui/screens/upgrades_screen.dart';
 import 'package:pomarket/ui/widgets/management_ui.dart';
+import 'package:pomarket/ui/theme/po_system.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -98,7 +99,7 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('more coins'), findsWidgets);
-    final button = tester.widget<FilledButton>(
+    final button = tester.widget<PoBtn>(
       find.byKey(const ValueKey('upgrade-buy-bag')),
     );
     expect(button.onPressed, isNull);

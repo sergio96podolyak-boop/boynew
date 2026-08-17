@@ -7,6 +7,7 @@ import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
 import '../../services/app_settings.dart';
 import '../theme/po_system.dart';
+import '../theme/pomarket_design.dart';
 
 /// Persistent HUD for the playable market and the management screens.
 ///
@@ -27,6 +28,7 @@ class GlobalHud extends StatelessWidget {
     required this.game,
     required this.settings,
     this.compactMode = false,
+    this.floating = false,
   });
 
   final GameController game;
@@ -35,16 +37,37 @@ class GlobalHud extends StatelessWidget {
   /// Set on the market board, where the board itself should own the height.
   final bool compactMode;
 
+  /// Renders as transparent corner pods over the world instead of a solid bar.
+  ///
+  /// The market screen uses this so the board runs edge to edge behind the
+  /// chrome; the management screens keep the bar, where a solid header is the
+  /// right frame for a scrolling list.
+  final bool floating;
+
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
     final reducedMotion =
         settings.reducedMotion || MediaQuery.disableAnimationsOf(context);
 
+    if (floating) {
+      return _FloatingHud(
+        game: game,
+        loc: loc,
+        reducedMotion: reducedMotion,
+      );
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(boxShadow: PoElevate.e3),
-      child: ColoredBox(
-        color: PoColor.chrome,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [PoColor.chromeLift, PoColor.chrome],
+          ),
+        ),
         child: SafeArea(
           bottom: false,
           child: LayoutBuilder(
@@ -168,6 +191,178 @@ class GlobalHud extends StatelessWidget {
   }
 }
 
+/// Corner-pod HUD for the world screen.
+///
+/// No bar, no background: a brand pod on the leading edge, the wallet cluster
+/// on the trailing edge, and a compact shift pod beneath. The board runs behind
+/// all of it, which is the point — the previous full-width bar plus event strip
+/// plus objective strip consumed roughly a quarter of the screen before the
+/// player saw any of the shop.
+class _FloatingHud extends StatelessWidget {
+  const _FloatingHud({
+    required this.game,
+    required this.loc,
+    required this.reducedMotion,
+  });
+
+  final GameController game;
+  final AppLocalizations loc;
+  final bool reducedMotion;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 430;
+    return IgnorePointer(
+      ignoring: false,
+      child: SafeArea(
+        bottom: false,
+        child: AnimatedBuilder(
+          animation: game,
+          builder: (context, _) => Semantics(
+            container: true,
+            label:
+                'PoMarket, ${loc.levelLabel} ${game.storeLevel}, ${game.coins} ${loc.coinsShort}, ${game.gems} ${loc.gemsShort}',
+            child: Padding(
+              padding: EdgeInsetsDirectional.fromSTEB(10, 8, _cloudBadgeLane, 0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _BrandPod(subtitle: loc.yourMiniMarket, compact: compact),
+                      Expanded(
+                        child: Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (game.shelfStock < 3) ...[
+                                  _LowStockFlag(message: loc.lowStock),
+                                  const SizedBox(width: 7),
+                                ],
+                                _LevelMedallion(
+                                  level: game.storeLevel,
+                                  progress: game.levelProgress,
+                                  label: loc.levelLabel,
+                                  compact: compact,
+                                  reducedMotion: reducedMotion,
+                                ),
+                                const SizedBox(width: 7),
+                                _WalletCapsule(
+                                  icon: Icons.monetization_on_rounded,
+                                  value: game.coins,
+                                  face: PoColor.goldFace,
+                                  compact: compact,
+                                  semanticLabel: loc.coinsShort,
+                                  reducedMotion: reducedMotion,
+                                ),
+                                const SizedBox(width: 7),
+                                _WalletCapsule(
+                                  icon: Icons.diamond_rounded,
+                                  value: game.gems,
+                                  face: PoColor.accentFace,
+                                  compact: compact,
+                                  semanticLabel: loc.gemsShort,
+                                  reducedMotion: reducedMotion,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: _ShiftPod(game: game, loc: loc),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Brand identity as a single glass pod rather than a logo floating on a bar.
+class _BrandPod extends StatelessWidget {
+  const _BrandPod({required this.subtitle, required this.compact});
+
+  final String subtitle;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => PoPod(
+    padding: const EdgeInsetsDirectional.fromSTEB(5, 5, 12, 5),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _BrandMark(compact: compact),
+        const SizedBox(width: 9),
+        SizedBox(width: 86, child: _BrandWordmark(subtitle: subtitle)),
+      ],
+    ),
+  );
+}
+
+/// Shift phase and timing as a compact pod that hugs its content.
+class _ShiftPod extends StatelessWidget {
+  const _ShiftPod({required this.game, required this.loc});
+
+  final GameController game;
+  final AppLocalizations loc;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _phaseStyle(game.shiftPhase, loc);
+    return Semantics(
+      label: '${style.label}, ${loc.shift} ${game.shiftNumber}',
+      child: PoPod(
+        padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 12, 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(style.icon, size: 14, color: style.face),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 116),
+              child: Text(
+                '${style.label} · ${game.shiftNumber}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PoText.caption.copyWith(
+                  color: PoColor.onChrome,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(width: 9),
+            SizedBox(
+              width: 92,
+              child: PoGauge(
+                value: game.shiftProgress,
+                face: style.face,
+                height: 9,
+                segments: 8,
+                onChrome: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Caps and centres HUD contents on wide windows.
 class _HudMeasure extends StatelessWidget {
   const _HudMeasure({required this.child});
@@ -187,16 +382,8 @@ class _HudBackdrop extends StatelessWidget {
   const _HudBackdrop();
 
   @override
-  Widget build(BuildContext context) => const DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFFFFFFFF), Color(0xFFF3F8F4)],
-      ),
-    ),
-    child: CustomPaint(painter: _HudGlowPainter()),
-  );
+  Widget build(BuildContext context) =>
+      const CustomPaint(painter: _HudGlowPainter());
 }
 
 class _HudGlowPainter extends CustomPainter {
@@ -205,19 +392,34 @@ class _HudGlowPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    // A whisper of brand tint behind the wordmark. Normal blend, not additive:
-    // on light chrome an additive bloom just clips to white.
-    canvas.drawRect(
-      rect,
+    // Two light pools: a brand bloom behind the wordmark and a cool one behind
+    // the wallet, so the dark shell has depth instead of being a flat slab.
+    for (final (align, radius, color, alpha)
+        in <(Alignment, double, Color, double)>[
+          (const Alignment(-0.95, -0.9), 1.2, PoColor.primaryFace, 0.22),
+          (const Alignment(0.95, 1.0), 0.9, PoColor.secondaryFace, 0.14),
+        ]) {
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..shader = RadialGradient(
+            center: align,
+            radius: radius,
+            colors: [
+              color.withValues(alpha: alpha),
+              Colors.transparent,
+            ],
+          ).createShader(rect),
+      );
+    }
+    // Lit top edge — the standard cue that a dark bar is a raised surface.
+    canvas.drawLine(
+      Offset(0, 0.5),
+      Offset(size.width, 0.5),
       Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.9, -0.6),
-          radius: 1.15,
-          colors: [
-            PoColor.primaryFace.withValues(alpha: 0.20),
-            Colors.transparent,
-          ],
-        ).createShader(rect),
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.10),
     );
   }
 
@@ -255,14 +457,18 @@ class _BrandWordmark extends StatelessWidget {
         'POMARKET',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: PoText.h3.copyWith(letterSpacing: 0.7, height: 1),
+        style: PoText.h3.copyWith(
+          letterSpacing: 0.9,
+          height: 1,
+          color: PoColor.onChrome,
+        ),
       ),
-      const SizedBox(height: 2),
+      const SizedBox(height: 3),
       Text(
         subtitle,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: PoText.caption.copyWith(height: 1),
+        style: PoText.caption.copyWith(height: 1, color: PoColor.onChromeMuted),
       ),
     ],
   );
@@ -312,7 +518,7 @@ class _LevelMedallion extends StatelessWidget {
                   textDirection: TextDirection.ltr,
                   style: PoText.numeralSm.copyWith(
                     fontSize: compact ? 13.5 : 15,
-                    color: PoColor.deepen(PoColor.primaryFace, 0.58),
+                    color: PoColor.deepen(PoColor.primaryFace, 0.62),
                   ),
                 ),
               ),
@@ -345,7 +551,7 @@ class _RingPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [PoColor.lighten(face, 0.52), PoColor.lighten(face, 0.14)],
+          colors: [PoColor.lighten(face, 0.44), PoColor.deepen(face, 0.10)],
         ).createShader(Offset.zero & size),
     );
     // Gloss cap, matching the icon medallions elsewhere.
@@ -365,7 +571,7 @@ class _RingPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
-      ..color = PoColor.deepen(face, 0.46).withValues(alpha: 0.28);
+      ..color = const Color(0xFF07190F).withValues(alpha: 0.42);
     canvas.drawCircle(centre, radius, track);
 
     // Outer rim keeps the medallion crisp against the white chrome.
@@ -374,8 +580,8 @@ class _RingPainter extends CustomPainter {
       radius + stroke / 2,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
-        ..color = Colors.white.withValues(alpha: 0.9),
+        ..strokeWidth = 1.4
+        ..color = Colors.white.withValues(alpha: 0.55),
     );
 
     if (progress <= 0) return;
@@ -407,7 +613,7 @@ class _RingPainter extends CustomPainter {
 /// Saturated body with white numerals, rather than the previous white pill on
 /// white chrome — currency has to be the highest-contrast element in the bar or
 /// players stop trusting it.
-class _WalletCapsule extends StatelessWidget {
+class _WalletCapsule extends StatefulWidget {
   const _WalletCapsule({
     required this.icon,
     required this.value,
@@ -425,28 +631,62 @@ class _WalletCapsule extends StatelessWidget {
   final bool reducedMotion;
 
   @override
+  State<_WalletCapsule> createState() => _WalletCapsuleState();
+}
+
+class _WalletCapsuleState extends State<_WalletCapsule> {
+  int? _previous;
+  int _gain = 0;
+  int _burst = 0;
+
+  @override
+  void didUpdateWidget(covariant _WalletCapsule oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final before = _previous ?? oldWidget.value;
+    _previous = widget.value;
+    if (widget.reducedMotion || widget.value <= before) return;
+    setState(() {
+      _gain = widget.value - before;
+      _burst++;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final compact = widget.compact;
+    final face = widget.face;
+    final icon = widget.icon;
+    final value = widget.value;
+    final semanticLabel = widget.semanticLabel;
+    final reducedMotion = widget.reducedMotion;
     final height = compact ? 32.0 : 36.0;
     final medallion = height - 8;
-    return _PopOnChange(
+    final capsule = _PopOnChange(
       value: value,
       reducedMotion: reducedMotion,
       child: Semantics(
         label: '$semanticLabel $value',
         child: Container(
           height: height,
-          padding: EdgeInsetsDirectional.fromSTEB(4, 4, compact ? 10 : 12, 4),
+          padding: EdgeInsetsDirectional.fromSTEB(4, 4, compact ? 11 : 13, 4),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [PoColor.lighten(face, 0.14), PoColor.deepen(face, 0.26)],
+              colors: [PoColor.lighten(face, 0.20), PoColor.deepen(face, 0.30)],
             ),
             borderRadius: BorderRadius.circular(PoRadius.pill),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.45),
+              width: 1.4,
+            ),
             boxShadow: [
-              ...PoElevate.e1,
-              ...PoElevate.glow(face, strength: 0.42),
+              BoxShadow(
+                color: PoColor.chromeDeep.withValues(alpha: 0.5),
+                blurRadius: 7,
+                offset: const Offset(0, 3),
+              ),
+              ...PoElevate.glow(face, strength: 0.55),
             ],
           ),
           child: Row(
@@ -462,42 +702,53 @@ class _WalletCapsule extends StatelessWidget {
                   gradient: const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.white, Color(0xFFEDF2EE)],
+                    colors: [Colors.white, Color(0xFFE7EEEA)],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: PoColor.deepen(face, 0.5).withValues(alpha: 0.32),
+                      color: PoColor.deepen(face, 0.55).withValues(alpha: 0.45),
                       blurRadius: 3,
-                      offset: const Offset(0, 1),
+                      offset: const Offset(0, 1.5),
                     ),
                   ],
                 ),
                 child: Icon(
                   icon,
                   size: medallion * 0.62,
-                  color: PoColor.deepen(face, 0.24),
+                  color: PoColor.deepen(face, 0.30),
                 ),
               ),
-              SizedBox(width: compact ? 6 : 7),
-              Text(
+              SizedBox(width: compact ? 7 : 8),
+              PoValue(
                 poShort(value),
-                textDirection: TextDirection.ltr,
-                style: PoText.numeralSm.copyWith(
-                  fontSize: compact ? 13 : 14,
-                  color: Colors.white,
-                  shadows: [
-                    Shadow(
-                      color: PoColor.deepen(face, 0.62).withValues(alpha: 0.55),
-                      blurRadius: 2,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
+                size: compact ? 15 : 16.5,
+                rim: PoColor.deepen(face, 0.62),
               ),
             ],
           ),
         ),
       ),
+    );
+
+    if (_gain <= 0) return capsule;
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        capsule,
+        Positioned(
+          top: -20,
+          child: PoFloatingNumber(
+            key: ValueKey('gain-$_burst'),
+            text: '+${poShort(_gain)}',
+            face: face,
+            icon: icon,
+            onDone: () {
+              if (mounted) setState(() => _gain = 0);
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -632,21 +883,37 @@ class _ShiftStrip extends StatelessWidget {
         child: Row(
           children: [
             if (showTag) ...[
-              PoTag(
-                label: '${style.label} · ${game.shiftNumber}',
-                icon: style.icon,
-                face: style.face,
-                tone: PoTagTone.soft,
-                dense: true,
-                maxWidth: 168,
+              PoPod(
+                padding: const EdgeInsetsDirectional.fromSTEB(9, 5, 11, 5),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(style.icon, size: 13, color: style.face),
+                    const SizedBox(width: 5),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 132),
+                      child: Text(
+                        '${style.label} · ${game.shiftNumber}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PoText.caption.copyWith(
+                          color: PoColor.onChrome,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(width: PoSpace.sm),
             ],
             Expanded(
-              child: PoMeter(
+              child: PoGauge(
                 value: game.shiftProgress,
                 face: style.face,
-                height: 8,
+                height: compact ? 11 : 13,
+                segments: 10,
+                onChrome: true,
               ),
             ),
           ],

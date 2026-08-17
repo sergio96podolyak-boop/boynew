@@ -104,54 +104,123 @@ class _AppShellState extends State<AppShell> {
         // Softer on the board screen: the market art supplies its own colour,
         // so a strong page wash behind it would compete with the shelves.
         aurora: marketSelected ? 0.5 : 1,
-        child: Column(
-          children: [
-            GlobalHud(
-              game: widget.controller,
-              settings: widget.settings,
-              compactMode: marketSelected,
-            ),
-            if (dailyEvent != null)
-              DailyEventBanner(
-                game: dailyEvent.game,
-                settings: dailyEvent.settings,
-                compact: true,
-              ),
-            Expanded(
-              child: IndexedStack(
-                index: _selectedIndex,
+        child: marketSelected
+            // The world is full-bleed and the chrome floats over it. Stacking
+            // the HUD, event banner and dock as bars above and below the board
+            // is what kept the composition feeling like a form with a picture
+            // in it rather than a game.
+            ? Stack(
                 children: [
-                  for (final destination in _allDestinations)
-                    _buildDestination(destination),
+                  Positioned.fill(
+                    child: _buildDestination(AppDestination.market),
+                  ),
+                  PositionedDirectional(
+                    top: 0,
+                    start: 0,
+                    end: 0,
+                    child: GlobalHud(
+                      game: widget.controller,
+                      settings: widget.settings,
+                      compactMode: true,
+                      floating: true,
+                    ),
+                  ),
+                  // Today's modifier is ambient context, not something the
+                  // player acts on every second, so it sits at the foot of the
+                  // world rather than taking a full-width slot at the top.
+                  PositionedDirectional(
+                    bottom: 0,
+                    start: 0,
+                    end: 0,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (dailyEvent != null)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              10,
+                              0,
+                              10,
+                              6,
+                            ),
+                            child: DailyEventBanner(
+                              game: dailyEvent.game,
+                              settings: dailyEvent.settings,
+                              compact: true,
+                            ),
+                          ),
+                        _dock(loc),
+                      ],
+                    ),
+                  ),
+                  // Keeps the other destinations mounted so their state and
+                  // controllers survive navigation exactly as before.
+                  Offstage(
+                    offstage: true,
+                    child: TickerMode(
+                      enabled: false,
+                      child: IndexedStack(
+                        index: _selectedIndex,
+                        children: [
+                          for (final destination in _allDestinations)
+                            if (destination == AppDestination.market)
+                              const SizedBox.shrink()
+                            else
+                              _buildDestination(destination),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  GlobalHud(
+                    game: widget.controller,
+                    settings: widget.settings,
+                    compactMode: false,
+                  ),
+                  if (dailyEvent != null)
+                    DailyEventBanner(
+                      game: dailyEvent.game,
+                      settings: dailyEvent.settings,
+                      compact: true,
+                    ),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _selectedIndex,
+                      children: [
+                        for (final destination in _allDestinations)
+                          _buildDestination(destination),
+                      ],
+                    ),
+                  ),
+                  _dock(loc),
                 ],
               ),
-            ),
-            // One dock on every screen. Previously the market hid navigation
-            // behind a floating hamburger while the management screens used a
-            // side rail, so the same action lived in two different places.
-            AnimatedBuilder(
-              animation: widget.controller,
-              builder: (context, _) {
-                final badges = _CommandBadges.from(widget.controller);
-                return GameDock(
-                  primary: _dockDestinations,
-                  overflow: _moreDestinations,
-                  selected: _selectedDestination,
-                  expanded: _worldMenuOpen,
-                  labelFor: (destination) => _labelFor(destination, loc),
-                  iconFor: _iconFor,
-                  hasBadge: badges.forDestination,
-                  moreLabel: loc.more,
-                  onSelect: _selectDestination,
-                  onToggleMore: _toggleWorldMenu,
-                );
-              },
-            ),
-          ],
-        ),
       ),
     );
   }
+
+  /// One dock, built the same way for both compositions.
+  Widget _dock(AppLocalizations loc) => AnimatedBuilder(
+    animation: widget.controller,
+    builder: (context, _) {
+      final badges = _CommandBadges.from(widget.controller);
+      return GameDock(
+        primary: _dockDestinations,
+        overflow: _moreDestinations,
+        selected: _selectedDestination,
+        expanded: _worldMenuOpen,
+        labelFor: (destination) => _labelFor(destination, loc),
+        iconFor: _iconFor,
+        hasBadge: badges.forDestination,
+        moreLabel: loc.more,
+        onSelect: _selectDestination,
+        onToggleMore: _toggleWorldMenu,
+      );
+    },
+  );
 
   Widget _buildDestination(AppDestination destination) {
     final game = widget.controller;

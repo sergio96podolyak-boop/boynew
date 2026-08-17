@@ -62,8 +62,27 @@ abstract final class PoColor {
   /// Unavailable / locked content.
   static const surfaceMuted = Color(0xFFEFF2EF);
 
-  /// Chrome behind the HUD and dock.
-  static const chrome = Color(0xFFFFFFFF);
+  // -- Chrome. Deliberately dark: the previous pass made chrome and content
+  // both near-white, which left the interface with no structural contrast and
+  // read as a dashboard. Framing bright content in a rich dark shell is what
+  // separates a game HUD from a settings page.
+  /// Deep shell behind the HUD, dock and screen headers.
+  static const chrome = Color(0xFF0D2A21);
+
+  /// Lit stop for chrome gradients.
+  static const chromeLift = Color(0xFF17402F);
+
+  /// Deepest chrome, for the underside of floating chrome.
+  static const chromeDeep = Color(0xFF07190F);
+
+  /// Fills that sit on chrome.
+  static const chromeGlass = Color(0x1FFFFFFF);
+  static const chromeGlassStrong = Color(0x33FFFFFF);
+  static const chromeHairline = Color(0x24FFFFFF);
+
+  /// Text on chrome.
+  static const onChrome = Color(0xFFF2FBF6);
+  static const onChromeMuted = Color(0xB3CFE6DA);
 
   /// Hairline used only where a true edge is needed (dividers, insets).
   static const hairline = Color(0x140B1F1A);
@@ -1095,6 +1114,7 @@ class PoStatWell extends StatelessWidget {
     this.face = PoColor.primaryFace,
     this.emphasis = false,
     this.minWidth,
+    this.onChrome = false,
   });
 
   final String label;
@@ -1106,6 +1126,9 @@ class PoStatWell extends StatelessWidget {
   /// emphasised stat per group, otherwise nothing stands out.
   final bool emphasis;
   final double? minWidth;
+
+  /// Renders for the dark hero block instead of a bright card.
+  final bool onChrome;
 
   @override
   Widget build(BuildContext context) {
@@ -1124,13 +1147,19 @@ class PoStatWell extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color.lerp(const Color(0xFFE4EBE6), face, 0.10)!,
-            Color.lerp(const Color(0xFFF1F6F2), face, 0.05)!,
-          ],
+          colors: onChrome
+              ? const [Color(0x24FFFFFF), Color(0x12FFFFFF)]
+              : [
+                  Color.lerp(const Color(0xFFE4EBE6), face, 0.10)!,
+                  Color.lerp(const Color(0xFFF1F6F2), face, 0.05)!,
+                ],
         ),
         borderRadius: BorderRadius.circular(PoRadius.sm),
-        border: Border.all(color: face.withValues(alpha: 0.16)),
+        border: Border.all(
+          color: onChrome
+              ? Colors.white.withValues(alpha: 0.14)
+              : face.withValues(alpha: 0.16),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1144,7 +1173,9 @@ class PoStatWell extends StatelessWidget {
                 Icon(
                   glyph,
                   size: dense ? 11 : 12,
-                  color: PoColor.deepen(face, 0.22),
+                  color: onChrome
+                      ? PoColor.lighten(face, 0.30)
+                      : PoColor.deepen(face, 0.22),
                 ),
                 const SizedBox(width: 4),
               ],
@@ -1153,7 +1184,9 @@ class PoStatWell extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: PoText.overline,
+                  style: PoText.overline.copyWith(
+                    color: onChrome ? PoColor.onChromeMuted : null,
+                  ),
                 ),
               ),
             ],
@@ -1163,8 +1196,13 @@ class PoStatWell extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: (dense ? PoText.numeralSm : PoText.numeral).copyWith(
-              color: emphasis ? PoColor.deepen(face, 0.26) : PoColor.ink,
+            style: (dense ? PoText.numeral : PoText.numeralLg).copyWith(
+              fontSize: dense ? 15 : 18,
+              color: onChrome
+                  ? PoColor.onChrome
+                  : emphasis
+                  ? PoColor.deepen(face, 0.34)
+                  : PoColor.ink,
             ),
           ),
         ],
@@ -1365,6 +1403,7 @@ class PoBtn extends StatefulWidget {
     required this.label,
     this.icon,
     this.kind = PoBtnKind.primary,
+    this.face,
     this.dense = false,
     this.expand = false,
     this.loading = false,
@@ -1379,6 +1418,7 @@ class PoBtn extends StatefulWidget {
     required IconData this.icon,
     required String this.semanticLabel,
     this.kind = PoBtnKind.secondary,
+    this.face,
     this.dense = false,
   }) : label = null,
        expand = false,
@@ -1389,6 +1429,10 @@ class PoBtn extends StatefulWidget {
   final String? label;
   final IconData? icon;
   final PoBtnKind kind;
+
+  /// Overrides the colour [kind] would supply. Screens use it so a card's
+  /// action carries the same accent as the rest of the card.
+  final Color? face;
   final bool dense;
   final bool expand;
   final bool loading;
@@ -1401,17 +1445,20 @@ class PoBtn extends StatefulWidget {
 
 class _PoBtnState extends State<PoBtn> {
   bool _down = false;
+  bool _focused = false;
 
   bool get _enabled => widget.onPressed != null && !widget.loading;
 
   @override
   Widget build(BuildContext context) {
     final iconOnly = widget.label == null;
-    final thickness = widget.dense ? 3.0 : 4.0;
+    // Thicker than a Material button on purpose: the visible edge under the
+    // face is what makes a control feel pressable rather than printed.
+    final thickness = widget.dense ? 4.0 : 6.0;
     final radius = widget.dense ? PoRadius.sm : PoRadius.md;
 
     final (
-      Color face,
+      Color kindFace,
       Color? edgeOverride,
       Color? inkOverride,
     ) = switch (widget.kind) {
@@ -1430,6 +1477,7 @@ class _PoBtnState extends State<PoBtn> {
       ),
     };
 
+    final face = widget.face ?? kindFace;
     final enabled = _enabled;
     final effFace = enabled
         ? face
@@ -1486,28 +1534,47 @@ class _PoBtnState extends State<PoBtn> {
         ? EdgeInsets.all(widget.dense ? 8 : 11)
         : EdgeInsets.symmetric(
             horizontal: widget.dense ? 12 : 18,
-            vertical: widget.dense ? 8 : 12,
+            vertical: widget.dense ? 9 : 13,
           );
+    final minHeight = widget.dense ? 44.0 : 48.0;
 
     final isGhost = widget.kind == PoBtnKind.ghost;
+
+    void activate() {
+      HapticFeedback.lightImpact();
+      widget.onPressed!();
+    }
 
     return Semantics(
       button: true,
       enabled: enabled,
       label: widget.semanticLabel,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: enabled ? (_) => setState(() => _down = true) : null,
-        onTapUp: enabled ? (_) => setState(() => _down = false) : null,
-        onTapCancel: enabled ? () => setState(() => _down = false) : null,
-        onTap: enabled
-            ? () {
-                HapticFeedback.lightImpact();
-                widget.onPressed!();
-              }
-            : null,
-        child: MouseRegion(
-          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      // FocusableActionDetector rather than a bare GestureDetector: a
+      // custom-painted control still has to be reachable and activatable from a
+      // keyboard, which is what the Material button it replaces provided for
+      // free. It also draws the focus ring below.
+      child: FocusableActionDetector(
+        enabled: enabled,
+        mouseCursor: enabled
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
+        onShowFocusHighlight: (value) {
+          if (mounted && value != _focused) setState(() => _focused = value);
+        },
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              if (enabled) activate();
+              return null;
+            },
+          ),
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: enabled ? (_) => setState(() => _down = true) : null,
+          onTapUp: enabled ? (_) => setState(() => _down = false) : null,
+          onTapCancel: enabled ? () => setState(() => _down = false) : null,
+          onTap: enabled ? activate : null,
           child: AnimatedPadding(
             duration: duration,
             curve: Curves.easeOut,
@@ -1516,6 +1583,9 @@ class _PoBtnState extends State<PoBtn> {
               decoration: BoxDecoration(
                 color: isGhost ? Colors.transparent : edge,
                 borderRadius: BorderRadius.circular(radius),
+                border: _focused
+                    ? Border.all(color: PoColor.infoFace, width: 2.5)
+                    : null,
                 boxShadow: enabled && !_down && !isGhost
                     ? [
                         ...PoElevate.e1,
@@ -1527,6 +1597,7 @@ class _PoBtnState extends State<PoBtn> {
               ),
               child: Container(
                 width: widget.expand ? double.infinity : null,
+                constraints: BoxConstraints(minHeight: minHeight - thickness),
                 margin: EdgeInsets.only(bottom: thickness),
                 padding: padding,
                 decoration: BoxDecoration(
@@ -1658,4 +1729,632 @@ String poShort(num value) {
             ? scaled.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '')
             : scaled.round().toString());
   return '${negative ? '-' : ''}$body$suffix';
+}
+
+// ---------------------------------------------------------------------------
+// Game-grade primitives
+// ---------------------------------------------------------------------------
+
+/// Display numeral with a dark rim and drop shadow.
+///
+/// Currency and score in a commercial game are *objects*, not text: they carry
+/// an outline so they stay legible over any background and read as minted
+/// value. Plain coloured text is the single clearest tell of a dashboard.
+class PoValue extends StatelessWidget {
+  const PoValue(
+    this.text, {
+    super.key,
+    this.size = 18,
+    this.color = Colors.white,
+    this.rim = const Color(0xFF0A2018),
+    this.rimWidth = 2.6,
+  });
+
+  final String text;
+  final double size;
+  final Color color;
+  final Color rim;
+  final double rimWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = TextStyle(
+      fontSize: size,
+      height: 1,
+      fontWeight: FontWeight.w900,
+      letterSpacing: -0.4,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Stack(
+      children: [
+        // The rim is decoration only. Drawn with RichText rather than Text so
+        // it contributes no second text node — a screen reader (and a finder)
+        // should see one value here, not two.
+        ExcludeSemantics(
+          child: RichText(
+            textDirection: TextDirection.ltr,
+            text: TextSpan(
+              text: text,
+              style: base.copyWith(
+                foreground: Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = rimWidth
+                  ..strokeJoin = StrokeJoin.round
+                  ..color = rim,
+              ),
+            ),
+          ),
+        ),
+        Text(
+          text,
+          textDirection: TextDirection.ltr,
+          style: base.copyWith(
+            color: color,
+            shadows: [
+              Shadow(
+                color: rim.withValues(alpha: 0.55),
+                offset: const Offset(0, 1.5),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Floating capsule that sits on the dark chrome.
+///
+/// One shape for every HUD element, so level, wallet and status all read as
+/// members of the same set instead of five differently-shaped pills.
+class PoPod extends StatelessWidget {
+  const PoPod({
+    super.key,
+    required this.child,
+    this.face,
+    this.padding = const EdgeInsetsDirectional.fromSTEB(4, 4, 12, 4),
+    this.onTap,
+  });
+
+  final Widget child;
+
+  /// When set the pod is filled with the accent; otherwise it is dark glass.
+  final Color? face;
+  final EdgeInsetsGeometry padding;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final face = this.face;
+    final body = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: face == null
+              ? const [Color(0x2BFFFFFF), Color(0x14FFFFFF)]
+              : [PoColor.lighten(face, 0.16), PoColor.deepen(face, 0.24)],
+        ),
+        borderRadius: BorderRadius.circular(PoRadius.pill),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: face == null ? 0.16 : 0.40),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: PoColor.chromeDeep.withValues(alpha: 0.45),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+          if (face != null) ...PoElevate.glow(face, strength: 0.45),
+        ],
+      ),
+      child: child,
+    );
+    return onTap == null
+        ? body
+        : PoPressable(onTap: onTap, radius: PoRadius.pill, child: body);
+  }
+}
+
+/// Chunky segmented progress bar.
+///
+/// Notches give a sense of "how many steps left" that a smooth bar cannot, and
+/// the inner shine plus rim is what makes it read as a moulded game gauge
+/// rather than a browser progress element.
+class PoGauge extends StatelessWidget {
+  const PoGauge({
+    super.key,
+    required this.value,
+    this.face = PoColor.primaryFace,
+    this.height = 14,
+    this.segments = 12,
+    this.onChrome = false,
+  });
+
+  final double value;
+  final Color face;
+  final double height;
+
+  /// 0 disables the notches (use for very short bars).
+  final int segments;
+
+  /// Recolours the track for use on the dark shell.
+  final bool onChrome;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = value.clamp(0.0, 1.0);
+    return SizedBox(
+      height: height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(PoRadius.pill),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: onChrome
+                        ? const [Color(0xFF0A2118), Color(0xFF123227)]
+                        : const [Color(0xFFC8D6CE), Color(0xFFDDE7E1)],
+                  ),
+                ),
+              ),
+            ),
+            AnimatedFractionallySizedBox(
+              duration: PoMotion.respect(context, PoMotion.normal),
+              curve: PoMotion.curve,
+              widthFactor: ratio,
+              alignment: AlignmentDirectional.centerStart,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      PoColor.lighten(face, 0.46),
+                      face,
+                      PoColor.deepen(face, 0.22),
+                    ],
+                    stops: const [0, 0.5, 1],
+                  ),
+                  boxShadow: ratio <= 0
+                      ? null
+                      : PoElevate.glow(face, strength: 0.5),
+                ),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: 0.38,
+                    widthFactor: 1,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.42),
+                          borderRadius: BorderRadius.circular(PoRadius.pill),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (segments > 1)
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _NotchPainter(
+                    segments: segments,
+                    color: (onChrome ? Colors.black : Colors.white).withValues(
+                      alpha: onChrome ? 0.35 : 0.55,
+                    ),
+                  ),
+                ),
+              ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(PoRadius.pill),
+                    border: Border.all(
+                      color: onChrome
+                          ? Colors.white.withValues(alpha: 0.18)
+                          : PoColor.ink.withValues(alpha: 0.10),
+                      width: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotchPainter extends CustomPainter {
+  const _NotchPainter({required this.segments, required this.color});
+
+  final int segments;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.4;
+    for (var i = 1; i < segments; i++) {
+      final x = size.width * i / segments;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _NotchPainter old) =>
+      old.segments != segments || old.color != color;
+}
+
+/// Content card built as a tray: saturated header, bright body, action footer.
+///
+/// Replaces the "white rounded rectangle with a border" that every screen used
+/// for every purpose. The header carries the card's identity colour and its
+/// icon medallion breaks the edge, which is what makes a card look designed
+/// rather than generated.
+class PoTray extends StatelessWidget {
+  const PoTray({
+    super.key,
+    required this.face,
+    required this.title,
+    required this.body,
+    this.icon,
+    this.subtitle,
+    this.badge,
+    this.footer,
+    this.locked = false,
+    this.onTap,
+  });
+
+  final Color face;
+  final String title;
+  final String? subtitle;
+  final IconData? icon;
+
+  /// Rendered at the trailing edge of the header band.
+  final Widget? badge;
+  final Widget body;
+
+  /// Full-width action area under the body.
+  final Widget? footer;
+  final bool locked;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tier = PoBreak.of(context);
+    final accent = locked ? PoColor.neutral : face;
+    final lit = PoColor.vivid(accent, lightness: 0.56);
+    final deep = PoColor.vivid(accent, lightness: 0.27);
+    final onBand = PoColor.onFace(deep);
+    final pad = tier.isCompact ? 12.0 : 14.0;
+
+    final card = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(PoRadius.lg),
+        boxShadow: [
+          ...PoElevate.e2,
+          if (!locked) ...PoElevate.glow(accent, strength: 0.26),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(PoRadius.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header band.
+            Container(
+              padding: EdgeInsetsDirectional.fromSTEB(pad, 10, pad, 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: AlignmentDirectional.topStart,
+                  end: AlignmentDirectional.bottomEnd,
+                  colors: [lit, deep],
+                ),
+              ),
+              child: Row(
+                children: [
+                  if (icon case final glyph?) ...[
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(PoRadius.xs),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.42),
+                          width: 1.3,
+                        ),
+                      ),
+                      child: Icon(glyph, size: 20, color: onBand),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: PoText.h3.copyWith(color: onBand),
+                        ),
+                        if (subtitle case final text?) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            text,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PoText.caption.copyWith(
+                              color: onBand.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (badge case final widget?) ...[
+                    const SizedBox(width: 8),
+                    widget,
+                  ],
+                ],
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.fromLTRB(
+                pad,
+                pad,
+                pad,
+                footer == null ? pad : 10,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: locked
+                      ? const [Color(0xFFF3F6F3), PoColor.surfaceMuted]
+                      : const [PoColor.surfaceLift, PoColor.surface],
+                ),
+              ),
+              child: body,
+            ),
+            if (footer case final widget?)
+              Container(
+                padding: EdgeInsets.fromLTRB(pad, 0, pad, pad),
+                color: locked ? PoColor.surfaceMuted : PoColor.surface,
+                child: widget,
+              ),
+          ],
+        ),
+      ),
+    );
+
+    return onTap == null
+        ? card
+        : PoPressable(onTap: onTap, radius: PoRadius.lg, child: card);
+  }
+}
+
+/// Section label rendered as a dark chip.
+///
+/// Bare heavy text floating on the page ground gave sections no anchor; a chip
+/// reads as a tab on a physical divider and ties the bright content back to the
+/// dark shell.
+class PoRibbon extends StatelessWidget {
+  const PoRibbon({
+    super.key,
+    required this.label,
+    this.icon,
+    this.trailing,
+    this.subtitle,
+  });
+
+  final String label;
+  final IconData? icon;
+  final Widget? trailing;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Row(
+        children: [
+          Flexible(
+            child: Container(
+              padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 14, 8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: AlignmentDirectional.topStart,
+                  end: AlignmentDirectional.bottomEnd,
+                  colors: [PoColor.chromeLift, PoColor.chrome],
+                ),
+                borderRadius: BorderRadius.circular(PoRadius.sm),
+                boxShadow: PoElevate.e1,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon case final glyph?) ...[
+                    Icon(glyph, size: 15, color: PoColor.primaryFace),
+                    const SizedBox(width: 7),
+                  ],
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PoText.h3.copyWith(color: PoColor.onChrome),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (trailing case final widget?) ...[
+            const SizedBox(width: PoSpace.sm),
+            widget,
+          ],
+        ],
+      ),
+      if (subtitle case final text?) ...[
+        const SizedBox(height: 7),
+        Text(
+          text,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: PoText.bodySm,
+        ),
+      ],
+    ],
+  );
+}
+
+/// Illustrated empty / locked state.
+class PoEmpty extends StatelessWidget {
+  const PoEmpty({
+    super.key,
+    required this.icon,
+    required this.message,
+    this.face = PoColor.primaryFace,
+    this.action,
+  });
+
+  final IconData icon;
+  final String message;
+  final Color face;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(
+      horizontal: PoSpace.lg,
+      vertical: PoSpace.xl,
+    ),
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [face.withValues(alpha: 0.10), face.withValues(alpha: 0.03)],
+      ),
+      borderRadius: BorderRadius.circular(PoRadius.lg),
+      border: Border.all(color: face.withValues(alpha: 0.22), width: 1.4),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PoIconBadge(icon: icon, face: face, size: 56, tinted: true),
+        const SizedBox(height: PoSpace.md),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: PoText.body.copyWith(fontWeight: FontWeight.w700),
+        ),
+        if (action case final widget?) ...[
+          const SizedBox(height: PoSpace.md),
+          widget,
+        ],
+      ],
+    ),
+  );
+}
+
+/// Header band for modals and bottom sheets.
+class PoSheetHeader extends StatelessWidget {
+  const PoSheetHeader({
+    super.key,
+    required this.title,
+    required this.icon,
+    this.subtitle,
+    this.face = PoColor.primaryFace,
+    this.onClose,
+  });
+
+  final String title;
+  final String? subtitle;
+  final IconData icon;
+  final Color face;
+  final VoidCallback? onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final lit = PoColor.vivid(face, lightness: 0.55);
+    final deep = PoColor.vivid(face, lightness: 0.26);
+    final ink = PoColor.onFace(deep);
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 10, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: AlignmentDirectional.topStart,
+          end: AlignmentDirectional.bottomEnd,
+          colors: [lit, deep],
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(PoRadius.sm),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.42),
+                width: 1.3,
+              ),
+            ),
+            child: Icon(icon, color: ink, size: 22),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PoText.h1.copyWith(color: ink),
+                ),
+                if (subtitle case final text?)
+                  Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PoText.caption.copyWith(
+                      color: ink.withValues(alpha: 0.82),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (onClose != null)
+            IconButton(
+              onPressed: onClose,
+              icon: Icon(Icons.close_rounded, color: ink),
+              tooltip: MaterialLocalizations.of(context).closeButtonLabel,
+            ),
+        ],
+      ),
+    );
+  }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
@@ -553,22 +554,14 @@ class _StaffAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return PressableScale(
       enabled: enabled,
-      child: FilledButton.icon(
+      child: PoBtn(
         onPressed: enabled ? onPressed : null,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(44, 46),
-          backgroundColor: filled ? color : color.withValues(alpha: 0.11),
-          foregroundColor: filled ? Colors.white : color,
-          disabledBackgroundColor: color.withValues(alpha: 0.06),
-          disabledForegroundColor: color.withValues(alpha: 0.42),
-        ),
-        icon: Icon(icon, size: 17),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
-        ),
+        expand: true,
+        dense: true,
+        kind: filled ? PoBtnKind.primary : PoBtnKind.secondary,
+        face: filled ? color : null,
+        icon: icon,
+        label: label,
       ),
     );
   }

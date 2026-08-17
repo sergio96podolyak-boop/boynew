@@ -11,6 +11,7 @@ import 'package:pomarket/services/monetization_service.dart';
 import 'package:pomarket/ui/screens/departments_screen.dart';
 import 'package:pomarket/ui/screens/inventory_screen.dart';
 import 'package:pomarket/ui/screens/staff_screen.dart';
+import 'package:pomarket/ui/theme/po_system.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -116,7 +117,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: card, matching: find.byType(FilledButton)),
+      find.descendant(of: card, matching: find.byType(PoBtn)),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -234,7 +235,7 @@ void main() {
     await tester.pump();
     final hire = find.descendant(
       of: stocker,
-      matching: find.widgetWithText(FilledButton, 'Hire — 90'),
+      matching: find.widgetWithText(PoBtn, 'Hire — 90'),
     );
     expect(hire, findsOneWidget);
     await tester.tap(hire);

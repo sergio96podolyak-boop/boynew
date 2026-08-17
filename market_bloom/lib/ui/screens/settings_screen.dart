@@ -5,6 +5,7 @@ import '../../game/game_controller.dart';
 import '../../services/app_localizations.dart';
 import '../../services/app_settings.dart';
 import '../../services/sfx/sfx_manager.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
@@ -752,25 +753,7 @@ class _ActionSettingTile extends StatelessWidget {
         ),
         control: PressableScale(
           enabled: onPressed != null,
-          child: FilledButton(
-            onPressed: onPressed,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(112, 48),
-              backgroundColor: color,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: PoMarketPalette.muted.withValues(
-                alpha: 0.28,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-            ),
-            child: Text(
-              actionLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          child: PoBtn(onPressed: onPressed, face: color, label: actionLabel),
         ),
       ),
     );

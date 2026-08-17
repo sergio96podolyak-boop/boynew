@@ -4,6 +4,7 @@ import '../../game/economy_calculator.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
@@ -369,30 +370,19 @@ class _ProductCard extends StatelessWidget {
               Expanded(
                 child: PressableScale(
                   enabled: controller.canOrderDepartmentStock(definition.type),
-                  child: FilledButton.icon(
+                  child: PoBtn(
                     onPressed:
                         controller.canOrderDepartmentStock(definition.type)
                         ? () => _order(context)
                         : null,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: lowStock
-                          ? PoMarketPalette.coral
-                          : definition.color,
-                      minimumSize: const Size(44, 46),
-                    ),
-                    icon: Icon(
-                      pending
-                          ? Icons.local_shipping_rounded
-                          : Icons.add_shopping_cart_rounded,
-                      size: 17,
-                    ),
-                    label: Text(
-                      pending
-                          ? loc.deliveryInTransit
-                          : '${definition.orderQuantity} · ${definition.orderCost}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    expand: true,
+                    face: lowStock ? PoColor.danger : definition.color,
+                    icon: pending
+                        ? Icons.local_shipping_rounded
+                        : Icons.add_shopping_cart_rounded,
+                    label: pending
+                        ? loc.deliveryInTransit
+                        : '${definition.orderQuantity} · ${definition.orderCost}',
                   ),
                 ),
               ),
@@ -465,10 +455,7 @@ class _DeliveryCard extends StatelessWidget {
               ],
             ),
           ),
-          FilledButton(
-            onPressed: ready ? onFulfill : null,
-            child: Text(loc.fulfill),
-          ),
+          PoBtn(onPressed: ready ? onFulfill : null, label: loc.fulfill),
         ],
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../game/game_controller.dart';
 import '../../services/app_localizations.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
@@ -748,23 +749,13 @@ class _QuestActionArea extends StatelessWidget {
         button: true,
         label: loc.claimReward,
         child: PressableScale(
-          child: FilledButton.icon(
+          child: PoBtn(
             key: const ValueKey('quest-claim-action'),
             onPressed: onClaim,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              backgroundColor: PoMarketPalette.forest,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-            ),
-            icon: const Icon(Icons.card_giftcard_rounded, size: 19),
-            label: Text(
-              loc.claimReward,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            expand: true,
+            kind: PoBtnKind.success,
+            icon: Icons.card_giftcard_rounded,
+            label: loc.claimReward,
           ),
         ),
       );

@@ -21,6 +21,7 @@ import 'package:pomarket/ui/screens/upgrades_screen.dart';
 import 'package:pomarket/ui/splash_screen.dart';
 import 'package:pomarket/ui/widgets/game_dock.dart';
 import 'package:pomarket/ui/widgets/global_hud.dart';
+import 'package:pomarket/ui/theme/po_system.dart';
 
 AppSettings _testSettings() {
   return AppSettings(preferences: _MockSharedPrefs());
@@ -575,10 +576,10 @@ void main() {
 
     await _openDestination(tester, 'Shop');
     expect(find.text('Preview mode'), findsOneWidget);
-    final shopButtons = tester.widgetList<FilledButton>(
+    final shopButtons = tester.widgetList<PoBtn>(
       find.descendant(
         of: find.byType(ShopScreen),
-        matching: find.byType(FilledButton),
+        matching: find.byType(PoBtn),
       ),
     );
     expect(shopButtons, isNotEmpty);
@@ -771,7 +772,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: stockerCard,
-        matching: find.widgetWithText(FilledButton, 'Hire — 90'),
+        matching: find.widgetWithText(PoBtn, 'Hire — 90'),
       ),
     );
     await tester.pump(const Duration(milliseconds: 150));
@@ -780,7 +781,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: stockerCard,
-        matching: find.widgetWithText(FilledButton, 'Add worker · 155'),
+        matching: find.widgetWithText(PoBtn, 'Add worker · 155'),
       ),
     );
     await tester.pump(const Duration(milliseconds: 150));

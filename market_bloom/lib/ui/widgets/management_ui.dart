@@ -70,14 +70,7 @@ class _ScreenHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFFFFF), Color(0xFFF6FAF7)],
-        ),
-        boxShadow: PoElevate.e1,
-      ),
+      decoration: const BoxDecoration(color: PoColor.chrome),
       child: Column(
         children: [
           Center(
@@ -86,45 +79,32 @@ class _ScreenHeader extends StatelessWidget {
               child: Padding(
                 padding: EdgeInsetsDirectional.fromSTEB(
                   tier.isCompact ? 12 : 16,
-                  9,
+                  6,
                   tier.isCompact ? 12 : 16,
-                  9,
+                  8,
                 ),
                 child: Row(
                   children: [
                     PoIconBadge(
                       icon: icon,
-                      size: tier.isCompact ? 32 : 36,
+                      size: 26,
+                      iconSize: 15,
                       radius: PoRadius.xs,
                     ),
-                    const SizedBox(width: PoSpace.md),
+                    const SizedBox(width: PoSpace.sm),
                     Expanded(
                       child: Text(
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: tier.isCompact ? PoText.h2 : PoText.h1,
+                        style: PoText.label.copyWith(
+                          color: PoColor.onChromeMuted,
+                          letterSpacing: 0.6,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ),
-          ),
-          // A single lit rule under the bar. Cheaper and calmer than a border,
-          // and it ties the header to the brand accent on every screen.
-          Container(
-            height: 2,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: AlignmentDirectional.centerStart,
-                end: AlignmentDirectional.centerEnd,
-                colors: [
-                  PoColor.primaryFace,
-                  PoColor.primaryFace.withValues(alpha: 0.15),
-                  PoColor.primaryFace.withValues(alpha: 0),
-                ],
-                stops: const [0, 0.45, 1],
               ),
             ),
           ),
@@ -151,74 +131,135 @@ class ManagementHero extends StatelessWidget {
   });
 
   final IconData icon;
+
+  /// The hero's headline — the message, not the screen's name. The scaffold
+  /// header above carries the screen name as a compact breadcrumb, so these two
+  /// no longer compete for the same rank.
   final String title;
   final String subtitle;
   final List<Widget> metrics;
 
-  /// Face/deep pair driving the band. Screens pass their own so each area of
-  /// the game reads as a distinct place.
+  /// Accent for this area of the game, used for the hero's lit base rule.
   final List<Color> colors;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final compact = constraints.maxWidth < 520;
-      // Screens pass their pair in whichever order reads best in source, and
-      // several pass dark-first. Sorting by luminance means the band is always
-      // lit at the top and shaded at the bottom, so no screen can end up with a
-      // murky, inverted gradient.
-      final sorted = colors.length > 1
-          ? (colors.toList()..sort(
-              (a, b) => b.computeLuminance().compareTo(a.computeLuminance()),
-            ))
-          : colors;
-      final face = sorted.first;
-      final deep = sorted.length > 1 ? sorted.last : PoColor.deepen(face, 0.42);
-      return DecoratedBox(
+      final accent = PoColor.vivid(colors.first);
+      return Container(
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [PoColor.chromeLift, PoColor.chromeDeep],
+          ),
           borderRadius: BorderRadius.circular(PoRadius.lg),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.10),
+            width: 1.2,
+          ),
           boxShadow: [
-            ...PoElevate.e2,
-            ...PoElevate.glow(PoColor.vivid(face), strength: 0.22),
+            BoxShadow(
+              color: PoColor.chromeDeep.withValues(alpha: 0.42),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(PoRadius.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              PoIdentityBand(
-                icon: icon,
-                title: title,
-                subtitle: subtitle,
-                face: face,
-                deep: deep,
-                compact: compact,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                compact ? 13 : 16,
+                compact ? 12 : 14,
+                compact ? 13 : 16,
+                compact ? 13 : 15,
               ),
-              if (metrics.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.fromLTRB(
-                    compact ? 11 : 14,
-                    compact ? 11 : 13,
-                    compact ? 11 : 14,
-                    compact ? 12 : 14,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: compact ? 40 : 46,
+                        height: compact ? 40 : 46,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(PoRadius.xs),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.45),
+                            width: 1.3,
+                          ),
+                        ),
+                        child: Icon(
+                          icon,
+                          size: compact ? 21 : 24,
+                          color: PoColor.lighten(accent, 0.24),
+                        ),
+                      ),
+                      SizedBox(width: compact ? 11 : 13),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: (compact ? PoText.h1 : PoText.display)
+                                  .copyWith(color: PoColor.onChrome),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: PoText.bodySm.copyWith(
+                                color: PoColor.onChromeMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [PoColor.surfaceLift, PoColor.surface],
+                  if (metrics.isNotEmpty) ...[
+                    const SizedBox(height: PoSpace.md),
+                    Wrap(
+                      spacing: PoSpace.sm,
+                      runSpacing: PoSpace.sm,
+                      children: metrics,
                     ),
-                  ),
-                  child: Wrap(
-                    spacing: PoSpace.sm,
-                    runSpacing: PoSpace.sm,
-                    children: metrics,
-                  ),
+                  ],
+                ],
+              ),
+            ),
+            // Lit base rule: the single point where the dark hero hands off to
+            // the bright working area below it.
+            Container(
+              height: 3,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: AlignmentDirectional.centerStart,
+                  end: AlignmentDirectional.centerEnd,
+                  colors: [
+                    accent,
+                    accent.withValues(alpha: 0.25),
+                    accent.withValues(alpha: 0),
+                  ],
+                  stops: const [0, 0.5, 1],
                 ),
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
       );
     },
@@ -244,6 +285,7 @@ class ManagementHeroMetric extends StatelessWidget {
     label: label,
     value: value,
     face: PoColor.primaryFace,
+    onChrome: true,
   );
 }
 
@@ -262,7 +304,7 @@ class ManagementSectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      PoSectionHead(title: title, subtitle: subtitle, trailing: trailing);
+      PoRibbon(label: title, subtitle: subtitle, trailing: trailing);
 }
 
 /// Content card.
@@ -298,17 +340,60 @@ class ManagementCard extends StatelessWidget {
         padding == const EdgeInsets.all(16) && tier.isCompact
         ? const EdgeInsets.all(13)
         : padding;
-    return PoPanel(
-      kind: muted
-          ? PoSurfaceKind.muted
-          : highlighted
-          ? PoSurfaceKind.featured
-          : PoSurfaceKind.card,
-      accent: accent,
-      radius: tier.isCompact ? PoRadius.md : PoRadius.lg,
-      padding: effectivePadding,
-      onTap: onTap,
-      child: child,
+    // Every card gets a saturated top rail in its own accent. It is the
+    // cheapest way to give a list of cards identity and rhythm without each
+    // screen hand-rolling a header.
+    final radius = tier.isCompact ? PoRadius.md : PoRadius.lg;
+    final rail = muted ? PoColor.neutral : PoColor.vivid(accent);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          ...(muted ? PoElevate.e1 : PoElevate.e2),
+          if (highlighted) ...PoElevate.glow(rail, strength: 0.34),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: PoPressable(
+          onTap: onTap,
+          radius: radius,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                height: highlighted ? 6 : 4,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: AlignmentDirectional.centerStart,
+                    end: AlignmentDirectional.centerEnd,
+                    colors: [
+                      PoColor.lighten(rail, 0.24),
+                      PoColor.deepen(rail, 0.14),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: effectivePadding,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: muted
+                        ? const [Color(0xFFF3F6F3), PoColor.surfaceMuted]
+                        : highlighted
+                        ? [PoColor.lighten(accent, 0.93), PoColor.surface]
+                        : const [PoColor.surfaceLift, PoColor.surface],
+                  ),
+                ),
+                child: child,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

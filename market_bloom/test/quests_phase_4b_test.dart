@@ -7,6 +7,7 @@ import 'package:pomarket/services/app_localizations_delegate.dart';
 import 'package:pomarket/services/game_storage.dart';
 import 'package:pomarket/services/monetization_service.dart';
 import 'package:pomarket/ui/screens/quests_screen.dart';
+import 'package:pomarket/ui/theme/po_system.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -127,7 +128,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Locked'), findsNWidgets(6));
-    expect(find.byType(FilledButton), findsNothing);
+    expect(find.byType(PoBtn), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsNWidgets(3));
     expect(tester.takeException(), isNull);
   });
@@ -153,7 +154,7 @@ void main() {
       final shiftCard = find.byKey(const ValueKey('quest-card-shift'));
       final claimButton = find.descendant(
         of: shiftCard,
-        matching: find.widgetWithText(FilledButton, 'Claim Reward'),
+        matching: find.widgetWithText(PoBtn, 'Claim Reward'),
       );
       await tester.scrollUntilVisible(
         claimButton,

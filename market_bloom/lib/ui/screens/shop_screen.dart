@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../game/game_controller.dart';
 import '../../services/app_localizations.dart';
 import '../../services/monetization_service.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 
@@ -433,18 +434,11 @@ class _ShopHero extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              FilledButton.icon(
+              PoBtn(
                 onPressed: null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(44),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
-                icon: const Icon(Icons.storefront_rounded, size: 18),
-                label: Text(
-                  loc.shop,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                expand: true,
+                icon: Icons.storefront_rounded,
+                label: loc.shop,
               ),
             ],
           );
@@ -683,22 +677,13 @@ class _ShopItemCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 8),
-          FilledButton.icon(
+          PoBtn(
             key: ValueKey('shop-buy-${item.id}'),
             onPressed: item.onPressed,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(46),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              backgroundColor: item.color,
-              disabledBackgroundColor: item.color.withValues(alpha: .10),
-              disabledForegroundColor: item.color.withValues(alpha: .52),
-            ),
-            icon: const Icon(Icons.shopping_cart_checkout_rounded, size: 18),
-            label: Text(
-              item.price,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            expand: true,
+            face: item.color,
+            icon: Icons.shopping_cart_checkout_rounded,
+            label: item.price,
           ),
         ],
       ),

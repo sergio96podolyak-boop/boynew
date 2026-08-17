@@ -4,6 +4,7 @@ import '../../game/economy_calculator.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
@@ -507,22 +508,14 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return PressableScale(
       enabled: onPressed != null,
-      child: FilledButton.icon(
+      child: PoBtn(
         onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(44, 44),
-          backgroundColor: filled ? color : color.withValues(alpha: 0.10),
-          foregroundColor: filled ? Colors.white : color,
-          disabledBackgroundColor: color.withValues(alpha: 0.06),
-          disabledForegroundColor: color.withValues(alpha: 0.42),
-        ),
-        icon: Icon(icon, size: 17),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
-        ),
+        expand: true,
+        dense: true,
+        kind: filled ? PoBtnKind.primary : PoBtnKind.secondary,
+        face: filled ? color : null,
+        icon: icon,
+        label: label,
       ),
     );
   }
@@ -586,10 +579,10 @@ class _LockedPanel extends StatelessWidget {
           ),
         ),
         if (meetsLevel)
-          FilledButton.icon(
+          PoBtn(
             onPressed: onUnlock,
-            icon: const Icon(Icons.add_business_rounded, size: 18),
-            label: Text('${definition.unlockCost}'),
+            icon: Icons.add_business_rounded,
+            label: '${definition.unlockCost}',
           )
         else
           ManagementStatusPill(

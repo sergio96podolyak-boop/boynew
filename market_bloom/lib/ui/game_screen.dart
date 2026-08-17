@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -255,65 +256,24 @@ class _GameScreenState extends State<GameScreen>
         ),
         child: SafeArea(
           top: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Stack(
-                key: const ValueKey('market-page-viewport'),
-                children: [
-                  AnimatedBuilder(
-                    animation: game,
-                    builder: (context, _) => Column(
-                      children: [
-                        Container(
-                          key: const ValueKey('objective-strip'),
-                          height: MediaQuery.sizeOf(context).width <= 420
-                              ? 52
-                              : 64,
-                          // Trailing gap clears the floating world menu that
-                          // AppShell pins to the top-end corner, which was
-                          // sitting on top of the objective text.
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            8,
-                            2,
-                            72,
-                            2,
-                          ),
-                          alignment: Alignment.center,
-                          child: _QuestCard(
-                            quest: game.quest,
-                            title: AppLocalizations.of(
-                              context,
-                            ).questTitle(game.questStage, game.quest.target),
-                            onClaim: _claimQuest,
-                            compact: MediaQuery.sizeOf(context).width <= 420,
-                            reducedMotion:
-                                settings.reducedMotion ||
-                                MediaQuery.disableAnimationsOf(context),
-                          ),
-                        ),
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              // Let the board grow tall on phones so it fills
-                              // the space under the HUD instead of floating as a
-                              // small square with dead margins above and below.
-                              final availableRatio =
-                                  constraints.maxWidth / constraints.maxHeight;
-                              final boardAspectRatio = availableRatio.clamp(
-                                0.50,
-                                1.08,
-                              );
-                              return Center(
-                                child: AspectRatio(
-                                  aspectRatio: boardAspectRatio,
-                                  child: Container(
-                                    key: const ValueKey('market-board'),
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                    ),
-                                    child: Stack(
-                                      children: [
+          // Structural change: the board used to be a letterboxed square under
+          // a column of chrome bars, capped at 560px, so the world was the
+          // smallest thing on screen. It now fills the whole stage and every
+          // other element floats over it — the world is the subject, the UI is
+          // an overlay on it.
+          child: Stack(
+            key: const ValueKey('market-page-viewport'),
+            fit: StackFit.expand,
+            children: [
+              AnimatedBuilder(
+                animation: game,
+                builder: (context, _) => Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned.fill(
+                      key: const ValueKey('market-board'),
+                      child: Stack(
+                        children: [
                                         Positioned.fill(
                                           child: RepaintBoundary(
                                             child: CustomPaint(
@@ -366,7 +326,10 @@ class _GameScreenState extends State<GameScreen>
                                         PositionedDirectional(
                                           start: 10,
                                           end: 10,
-                                          bottom: 8,
+                                          // Clears the floating navigation
+                                          // pill, which now overlaps the world
+                                          // instead of sitting under it.
+                                          bottom: 104,
                                           child: _WorldContextActions(
                                             game: game,
                                             onOpenStaff: widget.onOpenStaff,
@@ -463,15 +426,34 @@ class _GameScreenState extends State<GameScreen>
                                               ),
                                             ),
                                           ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+                  // Objectives moved from a full-width strip above the board
+                  // into a collapsible pod anchored over it. A permanent bar
+                  // spent 60px of every frame on one line of text; a pod shows
+                  // the same headline, and opens for detail on demand.
+                  PositionedDirectional(
+                    // Sits under the HUD pods, on the leading edge, where the
+                    // eye lands after reading identity and resources.
+                    top: 98,
+                    start: 10,
+                    child: AnimatedBuilder(
+                      animation: game,
+                      builder: (context, _) => _MissionPod(
+                        key: const ValueKey('objective-strip'),
+                        quest: game.quest,
+                        title: AppLocalizations.of(
+                          context,
+                        ).questTitle(game.questStage, game.quest.target),
+                        onClaim: _claimQuest,
+                        reducedMotion:
+                            settings.reducedMotion ||
+                            MediaQuery.disableAnimationsOf(context),
+                      ),
                     ),
                   ),
                   Positioned(
@@ -507,8 +489,6 @@ class _GameScreenState extends State<GameScreen>
                   ),
                 ],
               ),
-            ),
-          ),
         ),
       ),
     );
@@ -569,6 +549,14 @@ class _GameScreenState extends State<GameScreen>
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showRewardCenter() {
     return showModalBottomSheet<void>(
       context: context,
@@ -581,6 +569,14 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -624,6 +620,14 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -1189,134 +1193,171 @@ class _CurrencyPill extends StatelessWidget {
   }
 }
 
-class _QuestCard extends StatelessWidget {
-  const _QuestCard({
+/// Collapsible objective pod anchored over the world.
+///
+/// Replaces the full-width objective strip that used to sit above the board.
+/// Collapsed it is a compact badge with a ring showing progress; tapping it
+/// expands the detail — progressive disclosure, so the objective is always
+/// visible but only occupies the screen when the player asks for it.
+class _MissionPod extends StatefulWidget {
+  const _MissionPod({
+    super.key,
     required this.quest,
     required this.title,
     required this.onClaim,
-    required this.compact,
     required this.reducedMotion,
   });
 
   final Quest quest;
   final String title;
   final VoidCallback onClaim;
-  final bool compact;
   final bool reducedMotion;
 
   @override
+  State<_MissionPod> createState() => _MissionPodState();
+}
+
+class _MissionPodState extends State<_MissionPod> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
-    final motionDuration = reducedMotion
+    final quest = widget.quest;
+    final ratio = quest.target == 0
+        ? 0.0
+        : (quest.progress / quest.target).clamp(0.0, 1.0);
+    final ready = quest.completed;
+    final face = ready ? PoColor.goldFace : PoColor.primaryFace;
+    final duration = widget.reducedMotion
         ? Duration.zero
-        : const Duration(milliseconds: 220);
-    return TweenAnimationBuilder<double>(
-      key: ValueKey(quest.completed),
-      tween: Tween(begin: quest.completed ? 0.97 : 1, end: 1),
-      duration: motionDuration,
-      curve: Curves.easeOut,
-      builder: (context, scale, child) =>
-          Transform.scale(scale: scale, child: child),
-      child: Material(
-        elevation: compact ? 3 : 5,
-        color: const Color(0xFCFFFFFF),
-        shadowColor: const Color(0x330B3B2C),
-        borderRadius: BorderRadius.circular(compact ? 15 : 18),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 9 : 12,
-            vertical: compact ? 5 : 9,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: compact ? 30 : 39,
-                height: compact ? 30 : 39,
-                decoration: BoxDecoration(
-                  color: quest.completed
-                      ? const Color(0xFF2FD98F)
-                      : const Color(0xFFFFE9B4),
-                  borderRadius: BorderRadius.circular(compact ? 10 : 13),
-                ),
-                child: Icon(
-                  quest.completed ? Icons.check_rounded : Icons.flag_rounded,
-                  size: compact ? 18 : 24,
-                  color: quest.completed
-                      ? Colors.white
-                      : const Color(0xFFB06A04),
-                ),
+        : const Duration(milliseconds: 260);
+
+    return AnimatedSize(
+      duration: duration,
+      curve: PoMotion.curve,
+      alignment: AlignmentDirectional.topStart,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: _open
+              ? (MediaQuery.sizeOf(context).width - 96).clamp(200.0, 320.0)
+              : 232,
+        ),
+        child: PoPressable(
+          onTap: () => setState(() => _open = !_open),
+          radius: PoRadius.lg,
+          semanticLabel: widget.title,
+          child: Container(
+            padding: const EdgeInsetsDirectional.fromSTEB(8, 8, 12, 8),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: AlignmentDirectional.topStart,
+                end: AlignmentDirectional.bottomEnd,
+                colors: [Color(0xF217402F), Color(0xF20D2A21)],
               ),
-              SizedBox(width: compact ? 7 : 10),
-              Expanded(
-                child: compact
-                    ? _CompactQuestDetails(quest: quest, title: title)
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              borderRadius: BorderRadius.circular(PoRadius.lg),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: ready ? 0.34 : 0.16),
+                width: 1.4,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: PoColor.chromeDeep.withValues(alpha: 0.5),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+                if (ready) ...PoElevate.glow(PoColor.goldFace, strength: 0.7),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _MissionRing(ratio: ratio, face: face, ready: ready),
+                    const SizedBox(width: 9),
+                    Flexible(
+                      child: Column(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            title,
+                            AppLocalizations.of(context).quests.toUpperCase(),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
+                            style: PoText.overline.copyWith(
+                              color: PoColor.lighten(face, 0.24),
                             ),
                           ),
-                          const SizedBox(height: 5),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: quest.fraction,
-                              minHeight: 6,
-                              color: const Color(0xFFFFCB45),
-                              backgroundColor: const Color(0xFFDCE6E0),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.title,
+                            maxLines: _open ? 3 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PoText.title.copyWith(
+                              color: PoColor.onChrome,
                             ),
                           ),
                         ],
                       ),
-              ),
-              SizedBox(width: compact ? 6 : 10),
-              if (quest.completed && compact)
-                Semantics(
-                  label: AppLocalizations.of(context).claimReward,
-                  button: true,
-                  child: IconButton(
-                    onPressed: onClaim,
-                    tooltip: AppLocalizations.of(context).claimReward,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 30,
-                      height: 30,
                     ),
-                    icon: const Icon(
-                      Icons.card_giftcard_rounded,
-                      size: 19,
-                      color: Color(0xFF2FD98F),
+                    const SizedBox(width: 6),
+                    Icon(
+                      _open
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: PoColor.onChromeMuted,
                     ),
-                  ),
-                )
-              else if (quest.completed)
-                FilledButton(
-                  onPressed: onClaim,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  child: Text(
-                    '${AppLocalizations.of(context).claimReward} ${quest.reward}',
-                  ),
-                )
-              else
-                Text(
-                  '${quest.progress.clamp(0, quest.target)}/${quest.target}',
-                  textDirection: TextDirection.ltr,
-                  style: const TextStyle(
-                    color: Color(0xFF4A6E63),
-                    fontWeight: FontWeight.w900,
-                  ),
+                  ],
                 ),
-            ],
+                if (_open) ...[
+                  const SizedBox(height: 10),
+                  PoGauge(
+                    value: ratio,
+                    face: face,
+                    height: 11,
+                    segments: quest.target.clamp(2, 12),
+                    onChrome: true,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.card_giftcard_rounded,
+                        size: 15,
+                        color: PoColor.goldFace,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '+${quest.reward} ${AppLocalizations.of(context).coinsShort}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PoText.caption.copyWith(
+                            color: PoColor.onChromeMuted,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (ready) ...[
+                    const SizedBox(height: 10),
+                    PoBtn(
+                      key: const ValueKey('mission-claim-action'),
+                      onPressed: widget.onClaim,
+                      expand: true,
+                      dense: true,
+                      face: PoColor.goldFace,
+                      icon: Icons.card_giftcard_rounded,
+                      label: AppLocalizations.of(context).claimReward,
+                    ),
+                  ],
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1324,37 +1365,76 @@ class _QuestCard extends StatelessWidget {
   }
 }
 
-class _CompactQuestDetails extends StatelessWidget {
-  const _CompactQuestDetails({required this.quest, required this.title});
+/// Progress ring plus count, used as the mission pod's collapsed state.
+class _MissionRing extends StatelessWidget {
+  const _MissionRing({
+    required this.ratio,
+    required this.face,
+    required this.ready,
+  });
 
-  final Quest quest;
-  final String title;
+  final double ratio;
+  final Color face;
+  final bool ready;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+  Widget build(BuildContext context) => SizedBox(
+    width: 34,
+    height: 34,
+    child: CustomPaint(
+      painter: _MissionRingPainter(ratio: ratio, face: face),
+      child: Center(
+        child: Icon(
+          ready ? Icons.card_giftcard_rounded : Icons.flag_rounded,
+          size: 15,
+          color: ready ? PoColor.goldFace : PoColor.onChrome,
         ),
-        const SizedBox(height: 3),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: quest.fraction,
-            minHeight: 4,
-            color: const Color(0xFFFFCB45),
-            backgroundColor: const Color(0xFFDCE6E0),
-          ),
-        ),
-      ],
+      ),
+    ),
+  );
+}
+
+class _MissionRingPainter extends CustomPainter {
+  const _MissionRingPainter({required this.ratio, required this.face});
+
+  final double ratio;
+  final Color face;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centre = size.center(Offset.zero);
+    final stroke = size.shortestSide * 0.14;
+    final radius = (size.shortestSide - stroke) / 2;
+    canvas.drawCircle(
+      centre,
+      radius,
+      Paint()..color = Colors.white.withValues(alpha: 0.08),
+    );
+    canvas.drawCircle(
+      centre,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = Colors.black.withValues(alpha: 0.35),
+    );
+    if (ratio <= 0) return;
+    canvas.drawArc(
+      Rect.fromCircle(center: centre, radius: radius),
+      -math.pi / 2,
+      math.pi * 2 * ratio,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round
+        ..color = face,
     );
   }
+
+  @override
+  bool shouldRepaint(covariant _MissionRingPainter old) =>
+      old.ratio != ratio || old.face != face;
 }
 
 class _WorldContextActions extends StatelessWidget {
@@ -1573,6 +1653,14 @@ void _showContextHint(BuildContext context, String message) {
   );
 }
 
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
 // ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
@@ -2605,26 +2693,34 @@ class _OfflineEarningsSheet extends StatelessWidget {
         children: [
           const _SheetHandle(),
           const SizedBox(height: 8),
-          Container(
-            width: 92,
-            height: 92,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFFD874), Color(0xFFD98505)],
-              ),
-              shape: BoxShape.circle,
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x44FFCB45),
-                  blurRadius: 22,
-                  offset: Offset(0, 10),
+          SizedBox(
+            width: 150,
+            height: 150,
+            child: PoRayBurst(
+              color: PoColor.goldFace,
+              rays: 14,
+              child: Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFFFFE39B), Color(0xFFD98505)],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    width: 3,
+                  ),
+                  boxShadow: PoElevate.glow(PoColor.goldFace, strength: 1.4),
                 ),
-              ],
-            ),
-            child: const Icon(
-              Icons.nightlight_round,
-              size: 53,
-              color: Colors.white,
+                child: const Icon(
+                  Icons.nightlight_round,
+                  size: 50,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 15),
@@ -2657,29 +2753,22 @@ class _OfflineEarningsSheet extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: PoBtn(
                   onPressed: () => onCollect(false),
-                  icon: const Icon(Icons.check_rounded, size: 18),
-                  label: Text(AppLocalizations.of(context).collect),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    foregroundColor: const Color(0xFF1C3A32),
-                    side: const BorderSide(color: Color(0xFF1C3A32)),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
+                  expand: true,
+                  kind: PoBtnKind.secondary,
+                  icon: Icons.check_rounded,
+                  label: AppLocalizations.of(context).collect,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
+                child: PoBtn(
                   onPressed: () => onCollect(true),
-                  icon: const Icon(Icons.flash_on_rounded, size: 18),
-                  label: Text(AppLocalizations.of(context).double),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    backgroundColor: const Color(0xFFFFCB45),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
+                  expand: true,
+                  face: PoColor.goldFace,
+                  icon: Icons.flash_on_rounded,
+                  label: AppLocalizations.of(context).double,
                 ),
               ),
             ],
@@ -2803,26 +2892,42 @@ class _BonusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A reward figure is the emotional payload of the whole sheet, so it is
+    // rendered as a minted value on an extruded medallion rather than as tinted
+    // body text in a bordered box.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsetsDirectional.fromSTEB(6, 6, 16, 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [PoColor.lighten(color, 0.22), PoColor.deepen(color, 0.24)],
+        ),
+        borderRadius: BorderRadius.circular(PoRadius.pill),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.5),
+          width: 1.6,
+        ),
+        boxShadow: PoElevate.glow(color, strength: 0.9),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: 12,
+          Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white, Color(0xFFE7EEEA)],
+              ),
             ),
+            child: Icon(icon, size: 18, color: PoColor.deepen(color, 0.3)),
           ),
+          const SizedBox(width: 9),
+          PoValue(value, size: 21, rim: PoColor.deepen(color, 0.6)),
         ],
       ),
     );
@@ -2871,12 +2976,12 @@ class _SheetHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        margin: const EdgeInsets.fromLTRB(0, 10, 0, 4),
-        width: 40,
+        margin: const EdgeInsets.fromLTRB(0, 9, 0, 5),
+        width: 44,
         height: 5,
         decoration: BoxDecoration(
-          color: const Color(0xFFD3DFD8),
-          borderRadius: BorderRadius.circular(3),
+          color: PoColor.ink.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(PoRadius.pill),
         ),
       ),
     );

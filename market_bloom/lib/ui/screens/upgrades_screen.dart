@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
@@ -249,32 +250,15 @@ class _UpgradeCard extends StatelessWidget {
             const SizedBox(height: 14),
             PressableScale(
               enabled: affordable,
-              child: FilledButton.icon(
+              child: PoBtn(
                 key: ValueKey('upgrade-buy-${offer.type.name}'),
                 onPressed: affordable ? onBuy : null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  backgroundColor: color,
-                  disabledBackgroundColor: maxed
-                      ? PoMarketPalette.mint.withValues(alpha: 0.12)
-                      : color.withValues(alpha: 0.08),
-                  disabledForegroundColor: maxed
-                      ? PoMarketPalette.forestLight
-                      : PoMarketPalette.muted,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(PoMarketRadii.control),
-                  ),
-                ),
-                icon: Icon(
-                  maxed ? Icons.verified_rounded : Icons.upgrade_rounded,
-                  size: 19,
-                ),
-                label: Text(
-                  maxed ? loc.maxLevel : '${offer.cost} ${loc.coinsShort}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
+                expand: true,
+                face: color,
+                icon: maxed ? Icons.verified_rounded : Icons.upgrade_rounded,
+                label: maxed
+                    ? loc.maxLevel
+                    : '${offer.cost} ${loc.coinsShort}',
               ),
             ),
           ],

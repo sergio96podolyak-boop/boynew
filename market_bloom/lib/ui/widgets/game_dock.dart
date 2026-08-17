@@ -81,57 +81,82 @@ class GameDock extends StatelessWidget {
             // Five slots stretched across a 1440px window left enormous gaps
             // between icons; capping the measure keeps the dock a dock at every
             // width rather than a full-bleed bar.
-            child: _Measure(
-              child: DecoratedBox(
-                // Carries the key of the MobileGameNavigation bar it replaces, so
-                // callers and tests that look for "the bottom navigation" still
-                // find it after the swap.
-                key: const ValueKey('mobile-game-navigation'),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFFFFFFFF), Color(0xFFF4F9F5)],
-                  ),
-                  borderRadius: BorderRadius.circular(PoRadius.lg),
-                  border: Border.all(color: Colors.white, width: 1.5),
-                  boxShadow: PoElevate.e3,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 7,
-                  ),
-                  child: Row(
-                    children: [
-                      for (final destination in primary)
-                        Expanded(
-                          child: _DockSlot(
-                            key: ValueKey('mobile-nav-${destination.name}'),
-                            icon: iconFor(destination),
-                            label: labelFor(destination),
-                            active: destination == selected,
-                            badge: hasBadge(destination),
-                            onTap: () => onSelect(destination),
-                          ),
-                        ),
-                      Expanded(
-                        child: _DockSlot(
-                          key: const ValueKey('mobile-nav-more'),
-                          icon: expanded
-                              ? Icons.close_rounded
-                              : Icons.grid_view_rounded,
-                          label: moreLabel,
-                          active: _overflowSelected || expanded,
-                          badge: overflow.any(hasBadge),
-                          onTap: onToggleMore,
-                          semanticExpanded: expanded,
-                        ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Slots size to content so the dock reads as a floating pill,
+                // but never wider than the space available — five fixed 60px
+                // slots overflowed a 320pt phone by exactly the dock padding.
+                final slots = primary.length + 1;
+                final slot = ((constraints.maxWidth - 10) / slots).clamp(
+                  46.0,
+                  64.0,
+                );
+                return _Measure(
+                  shrink: true,
+                  child: DecoratedBox(
+                    // Carries the key of the MobileGameNavigation bar it replaces, so
+                    // callers and tests that look for "the bottom navigation" still
+                    // find it after the swap.
+                    key: const ValueKey('mobile-game-navigation'),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [PoColor.chromeLift, PoColor.chrome],
                       ),
-                    ],
+                      borderRadius: BorderRadius.circular(PoRadius.xl),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        width: 1.4,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: PoColor.chromeDeep.withValues(alpha: 0.55),
+                          blurRadius: 26,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 7,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final destination in primary)
+                            SizedBox(
+                              width: slot,
+                              child: _DockSlot(
+                                key: ValueKey('mobile-nav-${destination.name}'),
+                                icon: iconFor(destination),
+                                label: labelFor(destination),
+                                active: destination == selected,
+                                badge: hasBadge(destination),
+                                onTap: () => onSelect(destination),
+                              ),
+                            ),
+                          SizedBox(
+                            width: slot,
+                            child: _DockSlot(
+                              key: const ValueKey('mobile-nav-more'),
+                              icon: expanded
+                                  ? Icons.close_rounded
+                                  : Icons.grid_view_rounded,
+                              label: moreLabel,
+                              active: _overflowSelected || expanded,
+                              badge: overflow.any(hasBadge),
+                              onTap: onToggleMore,
+                              semanticExpanded: expanded,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ),
@@ -142,18 +167,25 @@ class GameDock extends StatelessWidget {
 
 /// Caps and centres the dock (and its tray) on tablet and desktop widths.
 class _Measure extends StatelessWidget {
-  const _Measure({required this.child});
+  const _Measure({required this.child, this.shrink = false});
 
   static const maxWidth = 620.0;
 
   final Widget child;
 
+  /// Sizes to content instead of filling the available width. The dock bar
+  /// uses it so navigation reads as a floating control, not as a full-width
+  /// browser chrome bar pinned to the bottom of the page.
+  final bool shrink;
+
   @override
   Widget build(BuildContext context) => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: maxWidth),
-      child: child,
-    ),
+    child: shrink
+        ? IntrinsicWidth(child: child)
+        : ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: maxWidth),
+            child: child,
+          ),
   );
 }
 
@@ -192,7 +224,7 @@ class _DockSlotState extends State<_DockSlot> {
   Widget build(BuildContext context) {
     final duration = PoMotion.respect(context, PoMotion.fast);
     final active = widget.active;
-    final ink = active ? Colors.white : PoColor.textSecondary;
+    final ink = active ? Colors.white : PoColor.onChromeMuted;
 
     return Semantics(
       button: true,
@@ -228,17 +260,17 @@ class _DockSlotState extends State<_DockSlot> {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  PoColor.lighten(PoColor.primaryFace, 0.16),
-                                  PoColor.deepen(PoColor.primaryFace, 0.20),
+                                  PoColor.lighten(PoColor.primaryFace, 0.30),
+                                  PoColor.deepen(PoColor.primaryFace, 0.12),
                                 ],
                               )
                             : null,
-                        color: active ? null : Colors.transparent,
+                        color: active ? null : PoColor.chromeGlass,
                         borderRadius: BorderRadius.circular(PoRadius.sm),
                         border: Border.all(
                           color: active
-                              ? Colors.white.withValues(alpha: 0.5)
-                              : Colors.transparent,
+                              ? Colors.white.withValues(alpha: 0.55)
+                              : Colors.white.withValues(alpha: 0.10),
                         ),
                         boxShadow: active
                             ? PoElevate.glow(
@@ -259,7 +291,7 @@ class _DockSlotState extends State<_DockSlot> {
                           decoration: BoxDecoration(
                             color: PoColor.danger,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
+                            border: Border.all(color: PoColor.chrome, width: 2),
                             boxShadow: PoElevate.glow(
                               PoColor.danger,
                               strength: 0.6,
@@ -279,8 +311,8 @@ class _DockSlotState extends State<_DockSlot> {
                     fontSize: 9.5,
                     fontWeight: active ? FontWeight.w900 : FontWeight.w700,
                     color: active
-                        ? PoColor.deepen(PoColor.primaryFace, 0.36)
-                        : PoColor.textSecondary,
+                        ? PoColor.lighten(PoColor.primaryFace, 0.30)
+                        : PoColor.onChromeMuted,
                   ),
                 ),
               ],
@@ -321,11 +353,20 @@ class _OverflowTray extends StatelessWidget {
       gradient: const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Color(0xFFFFFFFF), Color(0xFFF2F8F4)],
+        colors: [PoColor.chromeLift, PoColor.chrome],
       ),
-      borderRadius: BorderRadius.circular(PoRadius.lg),
-      border: Border.all(color: Colors.white, width: 1.5),
-      boxShadow: PoElevate.e4,
+      borderRadius: BorderRadius.circular(PoRadius.xl),
+      border: Border.all(
+        color: Colors.white.withValues(alpha: 0.14),
+        width: 1.4,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: PoColor.chromeDeep.withValues(alpha: 0.55),
+          blurRadius: 30,
+          offset: const Offset(0, 14),
+        ),
+      ],
     ),
     child: Row(
       children: [
@@ -377,10 +418,9 @@ class _TrayTile extends StatelessWidget {
               PoIconBadge(
                 icon: icon,
                 face: active ? PoColor.goldFace : PoColor.primaryFace,
-                size: 38,
-                iconSize: 19,
+                size: 40,
+                iconSize: 20,
                 radius: PoRadius.xs,
-                tinted: !active,
               ),
               if (badge)
                 PositionedDirectional(
@@ -407,7 +447,7 @@ class _TrayTile extends StatelessWidget {
             style: PoText.caption.copyWith(
               fontSize: 9.5,
               fontWeight: FontWeight.w800,
-              color: active ? PoColor.ink : PoColor.textSecondary,
+              color: active ? PoColor.goldFace : PoColor.onChromeMuted,
             ),
           ),
         ],

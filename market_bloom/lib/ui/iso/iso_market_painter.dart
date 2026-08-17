@@ -1523,14 +1523,27 @@ class IsoMarketPainter extends CustomPainter {
 
   void _paintAmbience(Canvas canvas, Size size, IsoProjection p) {
     final rect = Offset.zero & size;
+    // Vignette tinted with the shell colour, and strong enough at the frame
+    // edges that the board sinks into the dark chrome above and below it
+    // instead of ending on a hard bright line.
     canvas.drawRect(
       rect,
       Paint()
         ..shader = ui.Gradient.radial(
           rect.center,
-          rect.longestSide * 0.62,
-          [const Color(0x0016241F), const Color(0x2216241F)],
-          [0.55, 1],
+          rect.longestSide * 0.60,
+          [const Color(0x000D2A21), const Color(0x330D2A21), const Color(0x990D2A21)],
+          [0.42, 0.78, 1],
+        ),
+    );
+    // Contact shadow along the top edge, where the HUD overhangs the world.
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height * 0.10),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          rect.topCenter,
+          Offset(rect.center.dx, size.height * 0.10),
+          [const Color(0x7307190F), const Color(0x0007190F)],
         ),
     );
   }
