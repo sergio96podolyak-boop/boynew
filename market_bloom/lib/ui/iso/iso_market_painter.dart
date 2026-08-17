@@ -55,6 +55,26 @@ class IsoMarketPainter extends CustomPainter {
   static const _crateBody = Color(0xFFB07C43);
   static const _bakeryBody = Color(0xFFE0A542);
   static const _accentGold = Color(0xFFFFC33D);
+
+  // --------------------------------------------------------------- dimensions
+  //
+  // Everything in the scene is sized in metres against a twelve-metre-wide
+  // sales floor. The previous fixtures were authored by eye, which is why a
+  // gondola ended up 0.33 world units tall against a 0.14-unit shopper — the
+  // shelves were literally taller than the people and each run swallowed most
+  // of the floor. One scale constant makes proportion checkable instead of a
+  // matter of taste.
+  static const _floorMetres = 12.0;
+  static const double _m = 1 / _floorMetres;
+
+  static const _personHeight = 1.70 * _m;
+  static const _gondolaHeight = 1.45 * _m;
+  static const _gondolaDepth = 0.90 * _m;
+  static const _gondolaLength = 4.20 * _m;
+  static const _aisleWidth = 2.30 * _m;
+  static const _counterHeight = 0.95 * _m;
+  static const _chillerHeight = 2.00 * _m;
+  static const _chillerDepth = 0.80 * _m;
   static const _promoRed = Color(0xFFE8503F);
 
   @override
@@ -158,16 +178,16 @@ class IsoMarketPainter extends CustomPainter {
       );
     }
 
-    tag(GameController.stockZone, 0.56, storageLabel, const Color(0xFF4A6B76));
-    tag(GameController.shelfZone, 0.62, shelfLabel, const Color(0xFF2F7B58));
+    tag(GameController.stockZone, 2.5 * _m, storageLabel, const Color(0xFF4A6B76));
+    tag(GameController.shelfZone, 2.6 * _m, shelfLabel, const Color(0xFF2F7B58));
     tag(
       GameController.checkoutZone,
-      0.54,
+      2.7 * _m,
       checkoutLabel,
       const Color(0xFF3C4F58),
     );
     if (game.bakeryUnlocked) {
-      tag(GameController.bakeryZone, 0.58, bakeryLabel, _bakeryBody);
+      tag(GameController.bakeryZone, 2.5 * _m, bakeryLabel, _bakeryBody);
     }
   }
 
@@ -197,7 +217,7 @@ class IsoMarketPainter extends CustomPainter {
   /// a back is what turns a diagram into an interior.
   void _paintWalls(Canvas canvas, IsoBrush brush, IsoProjection p) {
     const h = IsoProjection.wallHeight;
-    const wainscot = 0.42;
+    const wainscot = 1.15 * _m;
     const m = IsoProjection.roomMargin;
     const lo = -m;
     const hi = 1 + m;
@@ -252,15 +272,15 @@ class IsoMarketPainter extends CustomPainter {
       // Brand fascia running the length of the wall at head height.
       paint.color = IsoLight.shade(_accentGold, run.shade);
       canvas.drawPath(
-        band(run.a, run.b, wainscot, wainscot + 0.055),
+        band(run.a, run.b, wainscot, wainscot + 0.14 * _m),
         paint,
       );
       paint.color = IsoLight.shade(_wallCap, run.shade);
-      canvas.drawPath(band(run.a, run.b, h - 0.06, h), paint);
+      canvas.drawPath(band(run.a, run.b, h - 0.18 * _m, h), paint);
 
       // Skirting where the wall meets the floor.
       paint.color = IsoLight.shade(_wallSkirt, run.shade);
-      canvas.drawPath(band(run.a, run.b, 0, 0.045), paint);
+      canvas.drawPath(band(run.a, run.b, 0, 0.14 * _m), paint);
 
       // Ambient occlusion up from the floor line, then a light wash down from
       // the ceiling: the pair is what stops a large flat wall looking like a
@@ -297,34 +317,34 @@ class IsoMarketPainter extends CustomPainter {
       ..shader = null
       ..color = const Color(0xFF14312A);
     canvas.drawPath(
-      band(const Offset(lo, 0.30), const Offset(lo, 0.62), 0, 0.86),
+      band(const Offset(lo, 0.30), const Offset(lo, 0.48), 0, 2.20 * _m),
       paint,
     );
     paint.color = const Color(0xFF0A1F19);
     canvas.drawPath(
-      band(const Offset(lo, 0.34), const Offset(lo, 0.58), 0, 0.80),
+      band(const Offset(lo, 0.315), const Offset(lo, 0.465), 0, 2.05 * _m),
       paint,
     );
     paint.color = _accentGold.withValues(alpha: 0.85);
     canvas.drawPath(
-      band(const Offset(lo, 0.30), const Offset(lo, 0.62), 0.86, 0.90),
+      band(const Offset(lo, 0.30), const Offset(lo, 0.48), 2.20 * _m, 2.32 * _m),
       paint,
     );
 
     // Window band on the right wall, letting daylight into the room.
     paint.color = const Color(0xFFBFE7F2);
     canvas.drawPath(
-      band(const Offset(0.18, lo), const Offset(0.86, lo), 0.72, 1.16),
+      band(const Offset(0.18, lo), const Offset(0.86, lo), 1.55 * _m, 2.85 * _m),
       paint,
     );
     canvas.save();
     canvas.clipPath(
-      band(const Offset(0.18, lo), const Offset(0.86, lo), 0.72, 1.16),
+      band(const Offset(0.18, lo), const Offset(0.86, lo), 1.55 * _m, 2.85 * _m),
     );
-    final winA = p.project(0.18, lo, 1.16);
-    final winB = p.project(0.18, lo, 0.72);
+    final winA = p.project(0.18, lo, 2.85 * _m);
+    final winB = p.project(0.18, lo, 1.55 * _m);
     canvas.drawPath(
-      band(const Offset(0.18, lo), const Offset(0.86, lo), 0.72, 1.16),
+      band(const Offset(0.18, lo), const Offset(0.86, lo), 1.55 * _m, 2.85 * _m),
       Paint()
         ..shader = ui.Gradient.linear(
           Offset(winA.dx, winA.dy),
@@ -340,21 +360,21 @@ class IsoMarketPainter extends CustomPainter {
     for (var i = 0; i <= 4; i++) {
       final x = 0.18 + (0.86 - 0.18) * i / 4;
       canvas.drawLine(
-        p.project(x, lo, 0.72),
-        p.project(x, lo, 1.16),
+        p.project(x, lo, 1.55 * _m),
+        p.project(x, lo, 2.85 * _m),
         mullion,
       );
     }
     canvas.drawLine(
-      p.project(0.18, lo, 1.16),
-      p.project(0.86, lo, 1.16),
+      p.project(0.18, lo, 2.85 * _m),
+      p.project(0.86, lo, 2.85 * _m),
       mullion,
     );
 
     // Corner post where the two walls meet, so the join reads as built.
     paint.color = _wallCap;
     canvas.drawPath(
-      band(const Offset(lo, lo), const Offset(lo + 0.03, lo), 0, h),
+      band(const Offset(lo, lo), const Offset(lo + 0.012, lo), 0, h),
       paint,
     );
   }
@@ -776,14 +796,19 @@ class IsoMarketPainter extends CustomPainter {
     // identical green blocks.
     // Two tidy aisles with a clear walking lane between and gaps between the
     // runs, so the floor reads as open rather than packed wall to wall.
-    // Three long parallel runs spanning the sales floor, with walking aisles
-    // between them. The old layout was four short stubs clustered in one
-    // quadrant, which is why the shop read as objects dropped on a plane rather
-    // than as a floor plan somebody had laid out.
+    // Two 4.2 m gondola runs with a 2.3 m aisle between them, set in the
+    // middle-left of the floor. Three seven-metre runs filled the shop wall to
+    // wall and left no circulation — the store read as a maze of furniture.
+    // Fewer, correctly-sized fixtures leave the open floor that makes a shop
+    // navigable and lets the eye rest.
     const runs = <({double x, double y, double length, int category})>[
-      (x: 0.20, y: 0.13, length: 0.58, category: 0),
-      (x: 0.42, y: 0.13, length: 0.58, category: 1),
-      (x: 0.64, y: 0.13, length: 0.58, category: 2),
+      (x: 0.30, y: 0.20, length: _gondolaLength, category: 0),
+      (
+        x: 0.30 + _gondolaDepth + _aisleWidth,
+        y: 0.20,
+        length: _gondolaLength,
+        category: 1,
+      ),
     ];
     final fillRatio = (game.shelfStock / 12).clamp(0.0, 1.0);
     for (final run in runs) {
@@ -802,12 +827,12 @@ class IsoMarketPainter extends CustomPainter {
       );
     }
 
-    // Chillers along the back-left wall.
+    // Chiller run along the far-left wall, clear of the aisles.
     for (var i = 0; i < 3; i++) {
-      final y = 0.10 + i * 0.24;
+      final y = 0.12 + i * 0.20;
       add(
-        IsoProjection.depthOf(0.09, y + 0.18),
-        (canvas) => _fridge(canvas, brush, p, 0.02, y, y + 0.18),
+        IsoProjection.depthOf(0.06 + _chillerDepth, y + 0.17),
+        (canvas) => _fridge(canvas, brush, p, 0.06, y, y + 0.17),
       );
     }
 
@@ -851,13 +876,13 @@ class IsoMarketPainter extends CustomPainter {
     // Promo island near the entrance — the seasonal dump bin every shop puts
     // in the first thing you walk past.
     add(
-      IsoProjection.depthOf(0.86, 0.60),
-      (canvas) => _promoIsland(canvas, brush, 0.78, 0.52),
+      IsoProjection.depthOf(0.42, 0.76),
+      (canvas) => _promoIsland(canvas, brush, 0.34, 0.68),
     );
     // Trolley bay just inside the doors.
     add(
-      IsoProjection.depthOf(0.94, 0.86),
-      (canvas) => _trolleyBay(canvas, brush, 0.88, 0.80),
+      IsoProjection.depthOf(0.68, 0.94),
+      (canvas) => _trolleyBay(canvas, brush, 0.62, 0.88),
     );
 
     const planters = <Offset>[Offset(0.05, 0.92), Offset(0.92, 0.06)];
@@ -884,7 +909,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y,
       x1: x + w,
       y1: y + d,
-      height: 0.12,
+      height: 0.90 * _m,
     );
     brush.box(
       canvas,
@@ -892,7 +917,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y,
       x1: x + w,
       y1: y + d,
-      height: 0.10,
+      height: 0.75 * _m,
       color: const Color(0xFFE2E6E0),
       topColor: const Color(0xFFF6F8F4),
     );
@@ -902,7 +927,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y,
       x1: x + w,
       y1: y + d,
-      height: 0.022,
+      height: 0.14 * _m,
       color: _accentGold,
       outline: false,
     );
@@ -919,8 +944,8 @@ class IsoMarketPainter extends CustomPainter {
         canvas,
         x: x + dx,
         y: y + dy,
-        z: 0.118,
-        radius: 0.020,
+        z: 0.86 * _m,
+        radius: 0.11 * _m,
         color: colour,
       );
     }
@@ -931,8 +956,8 @@ class IsoMarketPainter extends CustomPainter {
       y0: y + d / 2 - 0.004,
       x1: x + w / 2 + 0.004,
       y1: y + d / 2 + 0.004,
-      base: 0.12,
-      height: 0.16,
+      base: 0.90 * _m,
+      height: 0.70 * _m,
       color: const Color(0xFFB9C4BD),
       outline: false,
     );
@@ -942,8 +967,8 @@ class IsoMarketPainter extends CustomPainter {
       y0: y + d / 2 - 0.030,
       x1: x + w / 2 + 0.004,
       y1: y + d / 2 + 0.030,
-      base: 0.24,
-      height: 0.055,
+      base: 1.55 * _m,
+      height: 0.34 * _m,
       color: _promoRed,
       topColor: const Color(0xFFFF8A7A),
       outline: false,
@@ -958,7 +983,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y,
       x1: x + 0.07,
       y1: y + 0.16,
-      height: 0.08,
+      height: 1.00 * _m,
     );
     for (var i = 0; i < 4; i++) {
       final oy = y + i * 0.026;
@@ -968,8 +993,8 @@ class IsoMarketPainter extends CustomPainter {
         y0: oy,
         x1: x + 0.062,
         y1: oy + 0.030,
-        base: 0.030,
-        height: 0.055,
+        base: 0.22 * _m,
+        height: 0.55 * _m,
         color: const Color(0xFFCFD8D2),
         topColor: const Color(0xFFEAF0EC),
         outline: false,
@@ -983,7 +1008,7 @@ class IsoMarketPainter extends CustomPainter {
       x1: x - 0.006,
       y1: y + 0.17,
       base: 0,
-      height: 0.10,
+      height: 0.95 * _m,
       color: const Color(0xFF9FB0A8),
       outline: false,
     );
@@ -1130,9 +1155,9 @@ class IsoMarketPainter extends CustomPainter {
     double fill,
     int category,
   ) {
-    const width = 0.075;
-    const kick = 0.03;
-    const height = 0.30;
+    const width = _gondolaDepth;
+    const kick = 0.15 * _m;
+    const height = _gondolaHeight - kick;
     const tiers = 3;
     final theme = _category(category);
     final top = kick + height;
@@ -1175,18 +1200,19 @@ class IsoMarketPainter extends CustomPainter {
     // Product bands on the aisle-facing side. Each band is a shallow box
     // standing proud of the cabinet face, segmented along the run so individual
     // packs read at this scale.
-    final segments = (length / 0.05).floor().clamp(3, 24);
+    // One facing every 0.30 m along the run.
+    final segments = (length / (0.30 * _m)).floor().clamp(3, 20);
     for (var t = 0; t < tiers; t++) {
-      final base = kick + 0.035 + t * (height - 0.075) / (tiers - 1);
+      final base = kick + 0.10 * _m + t * (height - 0.30 * _m) / (tiers - 1);
       // Shelf lip the products stand on.
       brush.box(
         canvas,
-        x0: x + width - 0.004,
-        y0: y + 0.008,
-        x1: x + width + 0.012,
-        y1: y + length - 0.008,
-        base: base - 0.012,
-        height: 0.012,
+        x0: x + width - 0.02 * _m,
+        y0: y + 0.05 * _m,
+        x1: x + width + 0.10 * _m,
+        y1: y + length - 0.05 * _m,
+        base: base - 0.04 * _m,
+        height: 0.04 * _m,
         color: const Color(0xFFDFE3DC),
         topColor: const Color(0xFFF4F6F1),
         outline: false,
@@ -1196,14 +1222,14 @@ class IsoMarketPainter extends CustomPainter {
       final tierFill = (fill * tiers - (tiers - 1 - t)).clamp(0.0, 1.0);
       final stocked = (segments * tierFill).round();
       for (var i = 0; i < stocked; i++) {
-        final sy = y + 0.010 + i * (length - 0.020) / segments;
+        final sy = y + 0.06 * _m + i * (length - 0.12 * _m) / segments;
         final seed = i + (x * 71).round() + category * 5 + t * 3;
         _product(
           canvas,
           brush,
-          x + width - 0.002,
+          x + width,
           sy,
-          (length - 0.020) / segments - 0.008,
+          (length - 0.12 * _m) / segments - 0.05 * _m,
           base,
           theme.products[seed % theme.products.length],
           category,
@@ -1215,24 +1241,24 @@ class IsoMarketPainter extends CustomPainter {
     // Header sign board above the cabinet.
     brush.box(
       canvas,
-      x0: x + 0.012,
-      y0: y + length * 0.22,
-      x1: x + 0.030,
-      y1: y + length * 0.78,
-      base: top + 0.012,
-      height: 0.075,
+      x0: x + 0.20 * _m,
+      y0: y + length * 0.20,
+      x1: x + 0.28 * _m,
+      y1: y + length * 0.80,
+      base: top + 0.10 * _m,
+      height: 0.34 * _m,
       color: theme.trim,
       topColor: IsoLight.lift(theme.trim, 0.34),
       outline: false,
     );
     brush.box(
       canvas,
-      x0: x + 0.030,
-      y0: y + length * 0.26,
-      x1: x + 0.034,
-      y1: y + length * 0.74,
-      base: top + 0.028,
-      height: 0.042,
+      x0: x + 0.28 * _m,
+      y0: y + length * 0.24,
+      x1: x + 0.31 * _m,
+      y1: y + length * 0.76,
+      base: top + 0.16 * _m,
+      height: 0.20 * _m,
       color: Colors.white.withValues(alpha: 0.9),
       outline: false,
     );
@@ -1254,29 +1280,29 @@ class IsoMarketPainter extends CustomPainter {
     int category,
     int seed,
   ) {
-    final jitter = (seed % 5) * 0.004;
+    final jitter = (seed % 5) * 0.02 * _m;
     switch (category % 4) {
       case 2:
         // Drinks: a slim bottle with a lighter cap.
         brush.box(
           canvas,
-          x0: cx - 0.020,
+          x0: cx - 0.10 * _m,
           y0: cy,
-          x1: cx - 0.004,
+          x1: cx - 0.02 * _m,
           y1: cy + w,
           base: base,
-          height: 0.060 + jitter,
+          height: 0.26 * _m + jitter,
           color: color,
           outline: false,
         );
         brush.box(
           canvas,
-          x0: cx - 0.016,
+          x0: cx - 0.08 * _m,
           y0: cy + w * 0.28,
-          x1: cx - 0.008,
+          x1: cx - 0.04 * _m,
           y1: cy + w * 0.72,
-          base: base + 0.060 + jitter,
-          height: 0.018,
+          base: base + 0.26 * _m + jitter,
+          height: 0.07 * _m,
           color: IsoLight.lift(color, 0.4),
           outline: false,
         );
@@ -1284,44 +1310,44 @@ class IsoMarketPainter extends CustomPainter {
         // Produce: a low mound in an open tray.
         brush.box(
           canvas,
-          x0: cx - 0.024,
+          x0: cx - 0.12 * _m,
           y0: cy,
-          x1: cx - 0.002,
+          x1: cx - 0.01 * _m,
           y1: cy + w,
           base: base,
-          height: 0.018,
+          height: 0.08 * _m,
           color: _crateBody,
           outline: false,
         );
         brush.sphere(
           canvas,
-          x: cx - 0.013,
+          x: cx - 0.065 * _m,
           y: cy + w / 2,
-          z: base + 0.026,
-          radius: 0.016,
+          z: base + 0.12 * _m,
+          radius: 0.07 * _m,
           color: color,
         );
       default:
         // Cartons with a label band.
         brush.box(
           canvas,
-          x0: cx - 0.022,
+          x0: cx - 0.11 * _m,
           y0: cy,
-          x1: cx - 0.003,
+          x1: cx - 0.015 * _m,
           y1: cy + w,
           base: base,
-          height: 0.052 + jitter,
+          height: 0.23 * _m + jitter,
           color: color,
           outline: false,
         );
         brush.box(
           canvas,
-          x0: cx - 0.023,
+          x0: cx - 0.115 * _m,
           y0: cy,
-          x1: cx - 0.019,
+          x1: cx - 0.095 * _m,
           y1: cy + w,
-          base: base + 0.016,
-          height: 0.016,
+          base: base + 0.07 * _m,
+          height: 0.07 * _m,
           color: Colors.white.withValues(alpha: 0.82),
           outline: false,
         );
@@ -1336,21 +1362,22 @@ class IsoMarketPainter extends CustomPainter {
     double y0,
     double y1,
   ) {
-    brush.groundShadow(
+    brush.castShadow(
       canvas,
-      x: x + 0.045,
-      y: (y0 + y1) / 2,
-      radiusX: 0.14,
-      radiusY: (y1 - y0) * 1.3,
-      opacity: 0.24,
+      x0: x,
+      y0: y0,
+      x1: x + _chillerDepth,
+      y1: y1,
+      height: _chillerHeight,
+      opacity: 0.26,
     );
     brush.box(
       canvas,
       x0: x,
       y0: y0,
-      x1: x + 0.09,
+      x1: x + _chillerDepth,
       y1: y1,
-      height: 0.20,
+      height: _chillerHeight,
       color: _fridgeBody,
       topColor: const Color(0xFF6FB8DE),
     );
@@ -1362,17 +1389,17 @@ class IsoMarketPainter extends CustomPainter {
       Color(0xFF4FA3E8),
       Color(0xFFD98BC0),
     ];
-    final slots = ((y1 - y0 - 0.03) / 0.03).floor();
+    final slots = ((y1 - y0 - 0.20 * _m) / (0.25 * _m)).floor();
     for (var i = 0; i < slots; i++) {
-      final sy = y0 + 0.03 + i * 0.03;
+      final sy = y0 + 0.16 * _m + i * 0.25 * _m;
       brush.box(
         canvas,
-        x0: x + 0.03,
+        x0: x + 0.20 * _m,
         y0: sy,
-        x1: x + 0.078,
-        y1: sy + 0.02,
-        base: 0.04,
-        height: 0.12,
+        x1: x + _chillerDepth - 0.10 * _m,
+        y1: sy + 0.18 * _m,
+        base: 0.35 * _m,
+        height: 0.50 * _m,
         color: drinks[(i + (y0 * 40).round()) % drinks.length],
         outline: false,
       );
@@ -1380,12 +1407,12 @@ class IsoMarketPainter extends CustomPainter {
     // Glass door on the face turned toward the shop floor.
     brush.panel(
       canvas,
-      x0: x + 0.09,
-      y0: y0 + 0.02,
-      x1: x + 0.09,
-      y1: y1 - 0.02,
-      base: 0.035,
-      top: 0.185,
+      x0: x + _chillerDepth,
+      y0: y0 + 0.12 * _m,
+      x1: x + _chillerDepth,
+      y1: y1 - 0.12 * _m,
+      base: 0.25 * _m,
+      top: _chillerHeight - 0.15 * _m,
       color: const Color(0x66CDECF7),
     );
     // Bright frame highlight along the top of the unit.
@@ -1395,7 +1422,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y0,
       x1: x + 0.09,
       y1: y0 + 0.012,
-      base: 0.20,
+      base: _chillerHeight,
       height: 0.016,
       color: const Color(0xFF8FD0EC),
       outline: false,
@@ -1410,23 +1437,26 @@ class IsoMarketPainter extends CustomPainter {
     bool unlocked,
   ) {
     final body = unlocked ? _counterBody : const Color(0xFF6B7671);
-    final x = zone.dx - 0.07;
-    final y = zone.dy - 0.10;
-    brush.groundShadow(
+    const length = 2.0 * _m;
+    const depth = 0.75 * _m;
+    final x = zone.dx - length / 2;
+    final y = zone.dy - depth / 2;
+    brush.castShadow(
       canvas,
-      x: zone.dx,
-      y: zone.dy - 0.05,
-      radiusX: 0.20,
-      radiusY: 0.18,
+      x0: x,
+      y0: y,
+      x1: x + length,
+      y1: y + depth,
+      height: _counterHeight,
       opacity: 0.26,
     );
     brush.box(
       canvas,
       x0: x,
       y0: y,
-      x1: x + 0.15,
-      y1: y + 0.11,
-      height: 0.072,
+      x1: x + length,
+      y1: y + depth,
+      height: _counterHeight,
       color: body,
       topColor: unlocked ? const Color(0xFF6E8A93) : const Color(0xFF8A948F),
     );
@@ -1435,60 +1465,87 @@ class IsoMarketPainter extends CustomPainter {
       canvas,
       x0: x,
       y0: y,
-      x1: x + 0.15,
-      y1: y + 0.11,
-      base: 0.072,
-      height: 0.008,
+      x1: x + length,
+      y1: y + depth,
+      base: _counterHeight,
+      height: 0.04 * _m,
       color: const Color(0xFF37C88E),
       outline: false,
     );
     if (!unlocked) return;
-    // Register block and its screen.
+
+    // Register block and its customer-facing screen.
     brush.box(
       canvas,
-      x0: x + 0.015,
-      y0: y + 0.02,
-      x1: x + 0.062,
-      y1: y + 0.07,
-      base: 0.08,
-      height: 0.055,
+      x0: x + 0.20 * _m,
+      y0: y + 0.14 * _m,
+      x1: x + 0.62 * _m,
+      y1: y + depth - 0.14 * _m,
+      base: _counterHeight + 0.04 * _m,
+      height: 0.30 * _m,
       color: const Color(0xFF2C3B44),
       outline: false,
     );
     brush.panel(
       canvas,
-      x0: x + 0.062,
-      y0: y + 0.025,
-      x1: x + 0.062,
-      y1: y + 0.065,
-      base: 0.098,
-      top: 0.133,
+      x0: x + 0.62 * _m,
+      y0: y + 0.18 * _m,
+      x1: x + 0.62 * _m,
+      y1: y + depth - 0.18 * _m,
+      base: _counterHeight + 0.34 * _m,
+      top: _counterHeight + 0.60 * _m,
       color: const Color(0xFF6FE3B4),
     );
-    // Belt with a few grocery items riding along it.
+
+    // Belt running the length of the counter, with a few items on it.
     brush.groundQuad(
       canvas,
-      x0: x + 0.075,
-      y0: y + 0.018,
-      x1: x + 0.142,
-      y1: y + 0.092,
+      x0: x + 0.80 * _m,
+      y0: y + 0.12 * _m,
+      x1: x + length - 0.18 * _m,
+      y1: y + depth - 0.12 * _m,
       color: const Color(0xFF25333A),
-      z: 0.081,
+      z: _counterHeight + 0.045 * _m,
     );
     const items = [Color(0xFFE0453B), Color(0xFFF2B134), Color(0xFF66C24E)];
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < items.length; i++) {
       brush.box(
         canvas,
-        x0: x + 0.088 + i * 0.018,
-        y0: y + 0.04,
-        x1: x + 0.10 + i * 0.018,
-        y1: y + 0.066,
-        base: 0.081,
-        height: 0.028,
+        x0: x + 0.95 * _m + i * 0.24 * _m,
+        y0: y + 0.26 * _m,
+        x1: x + 1.10 * _m + i * 0.24 * _m,
+        y1: y + depth - 0.26 * _m,
+        base: _counterHeight + 0.05 * _m,
+        height: 0.16 * _m,
         color: items[i],
         outline: false,
       );
     }
+
+    // Hanging lane number, the landmark that makes a till findable.
+    brush.box(
+      canvas,
+      x0: x + length * 0.42,
+      y0: y + depth * 0.5 - 0.02 * _m,
+      x1: x + length * 0.42 + 0.05 * _m,
+      y1: y + depth * 0.5 + 0.02 * _m,
+      base: _counterHeight + 0.60 * _m,
+      height: 0.85 * _m,
+      color: const Color(0xFF9FB0A8),
+      outline: false,
+    );
+    brush.box(
+      canvas,
+      x0: x + length * 0.36,
+      y0: y + depth * 0.5 - 0.03 * _m,
+      x1: x + length * 0.52,
+      y1: y + depth * 0.5 + 0.03 * _m,
+      base: _counterHeight + 1.45 * _m,
+      height: 0.34 * _m,
+      color: const Color(0xFF2A7A5C),
+      topColor: _accentGold,
+      outline: false,
+    );
   }
 
   void _stockroom(Canvas canvas, IsoBrush brush, IsoProjection p) {
@@ -1509,7 +1566,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y,
       x1: x + 0.15,
       y1: y + 0.11,
-      height: 0.055,
+      height: 0.55 * _m,
       color: const Color(0xFF4A5B63),
     );
     // Crate stack — height tracks how much stock is waiting to be carried out.
@@ -1547,7 +1604,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y,
       x1: x + 0.15,
       y1: y + 0.12,
-      height: 0.075,
+      height: _counterHeight,
       color: unlocked ? _bakeryBody : const Color(0xFF8C8478),
     );
     if (!unlocked) return;
@@ -1558,7 +1615,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: y + 0.02,
       x1: x + 0.15,
       y1: y + 0.10,
-      base: 0.075,
+      base: _counterHeight,
       top: 0.15,
       color: const Color(0x99D9F0F7),
     );
@@ -1569,8 +1626,8 @@ class IsoMarketPainter extends CustomPainter {
         y0: y + 0.04,
         x1: x + 0.058 + i * 0.036,
         y1: y + 0.082,
-        base: 0.075,
-        height: 0.024,
+        base: _counterHeight,
+        height: 0.16 * _m,
         color: const Color(0xFFE8B98A),
         outline: false,
       );
@@ -1580,67 +1637,70 @@ class IsoMarketPainter extends CustomPainter {
   /// Glazed shopfront at the near edge: two piers, a glass door between them,
   /// a fascia and an entrance mat on the floor.
   ///
-  /// The old version was a bare arch standing in open floor with nothing
-  /// attached, which read as a goalpost rather than a door.
+  /// Sized like a real shop door — a 2.4 m opening, not the four-metre arch it
+  /// used to be, which towered over the shoppers walking through it.
   void _entrance(Canvas canvas, IsoBrush brush, IsoProjection p) {
     const y0 = 0.985;
-    const y1 = 1.02;
-    const h = 0.34;
+    const y1 = 1.015;
+    const h = 2.40 * _m;
+    const pier = 0.55 * _m;
 
-    // Mat, so the threshold reads from above too.
     brush.groundQuad(
       canvas,
-      x0: 0.62,
-      y0: 0.86,
-      x1: 1.0,
+      x0: 0.70,
+      y0: 0.90,
+      x1: 1.02,
       y1: 0.985,
-      color: const Color(0x99244A3C),
+      color: const Color(0x66244A3C),
     );
 
     brush.castShadow(
       canvas,
-      x0: 0.60,
+      x0: 0.70,
       y0: y0,
       x1: 1.02,
       y1: y1,
       height: h,
-      opacity: 0.24,
+      opacity: 0.16,
     );
 
     // Glazing between the piers.
     brush.box(
       canvas,
-      x0: 0.70,
-      y0: y0 + 0.008,
-      x1: 0.94,
-      y1: y1 - 0.008,
-      height: h - 0.03,
+      x0: 0.70 + pier,
+      y0: y0 + 0.004,
+      x1: 1.02 - pier,
+      y1: y1 - 0.004,
+      height: h - 0.10 * _m,
       color: const Color(0xFFBFE0E6),
       topColor: const Color(0xFFDDF0F4),
       outline: false,
     );
-    // Door frame split.
+    // Door split.
+    final mid = (0.70 + 1.02) / 2;
     brush.box(
       canvas,
-      x0: 0.818,
+      x0: mid - 0.004,
       y0: y0,
-      x1: 0.826,
+      x1: mid + 0.004,
       y1: y1,
-      height: h - 0.03,
+      height: h - 0.10 * _m,
       color: const Color(0xFF2A7A5C),
       outline: false,
     );
 
-    for (final x in const [0.60, 0.94]) {
+    for (final x in const [0.70, 1.02 - 0.55 / 12]) {
       brush.box(
         canvas,
         x0: x,
         y0: y0,
-        x1: x + 0.08,
+        x1: x + pier,
         y1: y1,
         height: h,
-        color: const Color(0xFF1F5C46),
-        topColor: const Color(0xFF2A7A5C),
+        // Lighter than the fixtures behind it: the nearest object should frame
+        // the shop, not out-contrast the till it is standing in front of.
+        color: const Color(0xFF7FA394),
+        topColor: const Color(0xFF9DBDAF),
         outline: false,
       );
     }
@@ -1648,23 +1708,23 @@ class IsoMarketPainter extends CustomPainter {
     // Fascia across the top, carrying the shop's accent.
     brush.box(
       canvas,
-      x0: 0.60,
+      x0: 0.70,
       y0: y0,
       x1: 1.02,
       y1: y1,
       base: h,
-      height: 0.075,
-      color: const Color(0xFF2A7A5C),
+      height: 0.42 * _m,
+      color: const Color(0xFF4E7F6C),
       topColor: _accentGold,
     );
     brush.box(
       canvas,
-      x0: 0.66,
+      x0: 0.76,
       y0: y0 - 0.004,
-      x1: 0.96,
+      x1: 0.98,
       y1: y0,
-      base: h + 0.014,
-      height: 0.045,
+      base: h + 0.06 * _m,
+      height: 0.26 * _m,
       color: _accentGold,
       outline: false,
     );
@@ -1798,10 +1858,11 @@ class IsoMarketPainter extends CustomPainter {
     final p = brush.projection;
     final ground = p.project(x, y);
 
-    // Shoulder width drives every other measurement so the figure scales as a
-    // unit with the board. Kept small so shoppers read as tidy figures rather
-    // than looming over the shelves.
-    final u = p.tileWidth * 0.034;
+    // Derived from the same metric scale as the fixtures: a 1.7 m person is
+    // about 3.4 shoulder-widths tall, so one unit here is that shoulder width.
+    // Sizing figures and furniture off one constant is what keeps a 1.45 m
+    // gondola reading as chest height rather than towering over the shopper.
+    final u = _personHeight * p.unitHeight / 3.4;
     final stride = math.sin(walkPhase) * u * 0.34;
     final bob = (math.sin(walkPhase * 2).abs()) * u * 0.10;
     final baseY = ground.dy - bob;

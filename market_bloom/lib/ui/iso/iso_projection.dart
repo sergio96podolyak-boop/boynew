@@ -31,17 +31,22 @@ class IsoProjection {
     //
     // Nothing becomes unreachable: movement is tap-to-move and taps can only
     // land inside the frame, so the player cannot be sent off-camera.
-    final tileWidth = size.width * 1.26;
+    final tileWidth = size.width * 1.40;
     return IsoProjection(
       origin: Offset(
         size.width / 2,
         // The room sits low so the back wall, its fascia and the hanging light
         // rig occupy the upper third, which used to be empty sky.
-        size.height * 0.30,
+        size.height * 0.28,
       ),
       tileWidth: tileWidth,
       tileHeight: tileWidth * 0.76,
-      unitHeight: tileWidth * 0.33,
+      // One world unit along x projects to a screen segment of length
+      // sqrt((tw/2)^2 + (th/2)^2) ≈ 0.63·tw at this pitch, so the vertical axis
+      // has to match that for a cube to read as a cube. The previous value was
+      // roughly double it, which stretched every fixture upward — the reason
+      // shelves and chillers loomed over the shoppers.
+      unitHeight: tileWidth * 0.63,
       scale: math.min(size.width, size.height) / 380,
     );
   }
@@ -119,8 +124,12 @@ class IsoProjection {
   static const roomMargin = farMargin;
 
   /// Height of the shop's walls, in world units.
-  static const wallHeight = 1.45;
+  ///
+  /// The sales floor is twelve metres across, so a world unit is twelve metres
+  /// and a 3.4 m wall is 0.283 of one. The old value of 1.45 was a seventeen
+  /// metre wall, which is why nothing in the room related to anything else.
+  static const wallHeight = 3.4 / 12;
 
-  /// Height at which the ceiling rig hangs.
-  static const ceilingHeight = 1.30;
+  /// Height the ceiling rig hangs at.
+  static const ceilingHeight = 2.9 / 12;
 }
