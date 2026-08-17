@@ -24,8 +24,7 @@ class StaffScreen extends StatelessWidget {
           final hired = controller.totalHiredWorkers;
           final productivity = controller.staffMembers.fold<int>(
             0,
-            (total, member) =>
-                total + (member.hired ? member.productivity : 0),
+            (total, member) => total + (member.hired ? member.productivity : 0),
           );
           final availableSlots = StaffRole.values.fold<int>(
             0,
@@ -43,7 +42,7 @@ class StaffScreen extends StatelessWidget {
                 icon: Icons.badge_rounded,
                 title: loc.teamOverview,
                 subtitle: loc.teamMembers.replaceFirst('{count}', '$hired'),
-                colors: const [Color(0xFF173F34), Color(0xFF16805C)],
+                colors: const [Color(0xFF0B1F1A), Color(0xFF2FD98F)],
                 metrics: [
                   ManagementHeroMetric(
                     icon: Icons.people_alt_rounded,
@@ -125,7 +124,8 @@ class _StaffCard extends StatelessWidget {
     final upgradeable = hired && member.level < 10;
     final canHire = unlocked && controller.coins >= member.hireCost;
     final canUpgrade = upgradeable && controller.coins >= member.upgradeCost;
-    final canAddWorker = hired &&
+    final canAddWorker =
+        hired &&
         workerCount < GameBalance.maxWorkersPerRole &&
         nextWorkerLevel == null &&
         controller.coins >= member.additionalHireCost;
@@ -447,7 +447,11 @@ class _WorkerCapacity extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (var index = 0; index < GameBalance.maxWorkersPerRole; index++) ...[
+          for (
+            var index = 0;
+            index < GameBalance.maxWorkersPerRole;
+            index++
+          ) ...[
             _WorkerSlot(
               filled: index < workerCount,
               available: index < availableSlots,
@@ -727,13 +731,13 @@ IconData _roleIcon(StaffRole role) => switch (role) {
 };
 
 Color _roleColor(StaffRole role) => switch (role) {
-  StaffRole.cashier => const Color(0xFF315F8F),
+  StaffRole.cashier => const Color(0xFF1D6FD4),
   StaffRole.stocker => PoMarketPalette.blue,
-  StaffRole.cleaner => const Color(0xFF1FA8A8),
+  StaffRole.cleaner => const Color(0xFF0C837E),
   StaffRole.baker => PoMarketPalette.gold,
   StaffRole.manager => PoMarketPalette.violet,
   StaffRole.courier => PoMarketPalette.coral,
-  StaffRole.promoter => const Color(0xFF38B879),
+  StaffRole.promoter => const Color(0xFF2FD98F),
 };
 
 String _term(

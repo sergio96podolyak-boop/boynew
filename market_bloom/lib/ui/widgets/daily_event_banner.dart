@@ -32,7 +32,8 @@ class DailyEventBannerLayer extends StatelessWidget {
   static ({DailyEventGameController game, AppSettings settings})? maybeOf(
     BuildContext context,
   ) {
-    final scope = context.dependOnInheritedWidgetOfExactType<_DailyEventScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_DailyEventScope>();
     return scope == null ? null : (game: scope.game, settings: scope.settings);
   }
 }
@@ -129,18 +130,18 @@ class _DailyEventCard extends StatelessWidget {
                   begin: AlignmentDirectional.centerStart,
                   end: AlignmentDirectional.centerEnd,
                   colors: [
-                    Color.lerp(const Color(0xFFFFFBF2), color, .08)!,
-                    const Color(0xFFFFFCF6),
+                    Color.lerp(const Color(0xFFFFFFFF), color, .08)!,
+                    const Color(0xFFFFFFFF),
                   ],
                 ),
-          color: compact ? const Color(0xFFF8F4E9) : null,
+          color: compact ? const Color(0xFFF4F8F5) : null,
           borderRadius: BorderRadius.circular(compact ? 12 : 17),
           border: Border.all(color: color.withValues(alpha: .25)),
           boxShadow: compact
               ? null
               : const [
                   BoxShadow(
-                    color: Color(0x17063D2C),
+                    color: Color(0x170B3B2C),
                     blurRadius: 10,
                     offset: Offset(0, 4),
                   ),

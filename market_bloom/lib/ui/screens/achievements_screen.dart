@@ -60,7 +60,7 @@ class AchievementsScreen extends StatelessWidget {
                     he: 'בנו אוסף יוקרתי באמצעות השגת אבני דרך עסקיות משמעותיות',
                     ar: 'ابنِ مجموعة مميزة عبر تحقيق مراحل عمل مهمة',
                   ),
-                  colors: const [Color(0xFF3D2B59), Color(0xFF7653A8)],
+                  colors: const [Color(0xFF2C1470), Color(0xFF6234E0)],
                   metrics: [
                     ManagementHeroMetric(
                       icon: Icons.emoji_events_rounded,
@@ -336,9 +336,7 @@ class _AchievementTierSection extends StatelessWidget {
                   AchievementTier.values.indexOf(tier) * 100 + index + 1,
                 ),
                 child: _AchievementCard(
-                  key: ValueKey(
-                    'achievement-card-${definitions[index].id}',
-                  ),
+                  key: ValueKey('achievement-card-${definitions[index].id}'),
                   definition: definitions[index],
                   progress: controller.progressFor(definitions[index]),
                   loc: loc,
@@ -454,9 +452,7 @@ class _AchievementCardState extends State<_AchievementCard> {
                     const PositionedDirectional(
                       top: 12,
                       end: 14,
-                      child: ExcludeSemantics(
-                        child: _AchievementSparkles(),
-                      ),
+                      child: ExcludeSemantics(child: _AchievementSparkles()),
                     ),
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -522,9 +518,7 @@ class _AchievementCardState extends State<_AchievementCard> {
                               child: LinearProgressIndicator(
                                 value: fraction,
                                 minHeight: 9,
-                                color: completed
-                                    ? PoMarketPalette.mint
-                                    : color,
+                                color: completed ? PoMarketPalette.mint : color,
                                 backgroundColor: color.withValues(alpha: 0.11),
                               ),
                             ),
@@ -704,7 +698,7 @@ class _AchievementBadge extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: locked
-                  ? const [Color(0xFFF0F1ED), Color(0xFFE1E4DE)]
+                  ? const [Color(0xFFEFF2EF), Color(0xFFDCE6E0)]
                   : [
                       color.withValues(alpha: completed ? 0.92 : 0.24),
                       color.withValues(alpha: completed ? 0.62 : 0.08),
@@ -854,7 +848,11 @@ class _AchievementSparkles extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(Icons.auto_awesome_rounded, color: PoMarketPalette.gold, size: 15),
+          Icon(
+            Icons.auto_awesome_rounded,
+            color: PoMarketPalette.gold,
+            size: 15,
+          ),
           SizedBox(width: 3),
           Icon(Icons.star_rounded, color: PoMarketPalette.mint, size: 11),
         ],
@@ -923,9 +921,9 @@ String _nextAction(BuildContext context, AchievementMetric metric) =>
 
 Color _tierColor(AchievementTier tier) => switch (tier) {
   AchievementTier.bronze => const Color(0xFFB87333),
-  AchievementTier.silver => const Color(0xFF7A8790),
-  AchievementTier.gold => const Color(0xFFE5A91B),
-  AchievementTier.platinum => const Color(0xFF6C88A4),
+  AchievementTier.silver => const Color(0xFF7A9EBD),
+  AchievementTier.gold => const Color(0xFFD98505),
+  AchievementTier.platinum => const Color(0xFF4E7FA8),
 };
 
 String _tierDescription(BuildContext context, AchievementTier tier) =>
@@ -963,18 +961,8 @@ String _tierLabel(BuildContext context, AchievementTier tier) => switch (tier) {
     he: 'ארד',
     ar: 'برونزي',
   ),
-  AchievementTier.silver => _term(
-    context,
-    en: 'Silver',
-    he: 'כסף',
-    ar: 'فضי',
-  ),
-  AchievementTier.gold => _term(
-    context,
-    en: 'Gold',
-    he: 'זהב',
-    ar: 'ذهبي',
-  ),
+  AchievementTier.silver => _term(context, en: 'Silver', he: 'כסף', ar: 'فضי'),
+  AchievementTier.gold => _term(context, en: 'Gold', he: 'זהב', ar: 'ذهبي'),
   AchievementTier.platinum => _term(
     context,
     en: 'Platinum',

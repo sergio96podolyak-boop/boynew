@@ -14,6 +14,7 @@ import '../services/sfx/sfx_manager.dart';
 import 'iso/iso_market_painter.dart';
 import 'iso/iso_projection.dart';
 import 'market_painter.dart';
+import 'theme/po_system.dart';
 import 'theme/pomarket_design.dart';
 import 'widgets/celebration_overlay.dart';
 import 'widgets/onboarding_dialog.dart';
@@ -70,7 +71,6 @@ class _GameScreenState extends State<GameScreen>
   AppSettings get settings => widget.settings;
   ShiftPhase? _lastAmbientPhase;
 
-
   @override
   void initState() {
     super.initState();
@@ -106,7 +106,6 @@ class _GameScreenState extends State<GameScreen>
     };
     unawaited(SfxManager.instance.playAmbient(musicPhase));
   }
-
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -235,7 +234,6 @@ class _GameScreenState extends State<GameScreen>
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     return CelebrationOverlay(
@@ -249,8 +247,8 @@ class _GameScreenState extends State<GameScreen>
             end: Alignment.bottomCenter,
             colors: [
               PoDepthColors.forest,
+              PoDepthColors.canopy,
               PoDepthColors.deepSea,
-              PoDepthColors.abyss,
             ],
             stops: [0, 0.5, 1],
           ),
@@ -302,8 +300,10 @@ class _GameScreenState extends State<GameScreen>
                               // small square with dead margins above and below.
                               final availableRatio =
                                   constraints.maxWidth / constraints.maxHeight;
-                              final boardAspectRatio =
-                                  availableRatio.clamp(0.50, 1.08);
+                              final boardAspectRatio = availableRatio.clamp(
+                                0.50,
+                                1.08,
+                              );
                               return Center(
                                 child: AspectRatio(
                                   aspectRatio: boardAspectRatio,
@@ -314,158 +314,163 @@ class _GameScreenState extends State<GameScreen>
                                     ),
                                     child: Stack(
                                       children: [
-                                          Positioned.fill(
-                                            child: RepaintBoundary(
-                                              child: CustomPaint(
-                                                painter: IsoMarketPainter(
-                                                  game: game,
-                                                  storageLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).storage.toUpperCase(),
-                                                  bakeryLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).departmentBakery.toUpperCase(),
-                                                  checkoutLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).assignmentCheckout.toUpperCase(),
-                                                  shelfLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).shelfStock.toUpperCase(),
-                                                  textDirection:
-                                                      Directionality.of(context),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          // The isometric painter does its own
-                                          // lighting and vignette, so the old
-                                          // flat-board grade overlay is dropped
-                                          // here to avoid double-darkening.
-                                          Positioned.fill(
-                                            child: TouchMovement(
-                                              game: game,
-                                              onTap: () {},
-                                              controlMode: settings.controlMode,
-                                              // Map taps through the same iso
-                                              // projection the board is drawn
-                                              // with so the player walks to
-                                              // where the finger lands.
-                                              screenToWorld: (local, size) =>
-                                                  IsoProjection.fit(
-                                                    size,
-                                                  ).unproject(local),
-                                              worldToScreen: (world, size) =>
-                                                  IsoProjection.fit(
-                                                    size,
-                                                  ).projectOffset(world),
-                                            ),
-                                          ),
-                                          PositionedDirectional(
-                                            start: 10,
-                                            end: 10,
-                                            bottom: 8,
-                                            child: _WorldContextActions(
-                                              game: game,
-                                              onOpenStaff: widget.onOpenStaff,
-                                              onOpenInventory:
-                                                  widget.onOpenInventory,
-                                              onOpenDepartments:
-                                                  widget.onOpenDepartments,
-                                            ),
-                                          ),
-                                          if (game.pendingShiftSummary != null)
-                                            Positioned.fill(
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(8),
-                                                child: ShiftPnlSummary(
-                                                  summary: game.pendingShiftSummary!,
-                                                  cashBalance: game.coins,
-                                                  onContinue: game.startNextShift,
-                                                ),
-                                              ),
-                                            ),
-                                          if (game.fastCheckoutActive)
-                                            Positioned(
-                                              top: 70,
-                                              left: 22,
-                                              right: 22,
-                                              child: _FastCheckoutBanner(
-                                                claimed: game.fastCheckoutClaimed,
-                                                onClaim: () {
-                                                  if (game.claimFastCheckoutBonus()) {
-                                                    ScaffoldMessenger.of(
+                                        Positioned.fill(
+                                          child: RepaintBoundary(
+                                            child: CustomPaint(
+                                              painter: IsoMarketPainter(
+                                                game: game,
+                                                storageLabel:
+                                                    AppLocalizations.of(
                                                       context,
-                                                    ).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).fastCheckoutBonus,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }
-                                                },
+                                                    ).storage.toUpperCase(),
+                                                bakeryLabel:
+                                                    AppLocalizations.of(context)
+                                                        .departmentBakery
+                                                        .toUpperCase(),
+                                                checkoutLabel:
+                                                    AppLocalizations.of(context)
+                                                        .assignmentCheckout
+                                                        .toUpperCase(),
+                                                shelfLabel: AppLocalizations.of(
+                                                  context,
+                                                ).shelfStock.toUpperCase(),
+                                                textDirection:
+                                                    Directionality.of(context),
                                               ),
                                             ),
-                                          if (game.comboCount > 1)
-                                            Positioned(
-                                              top: 14,
-                                              right: 14,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 6,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  gradient: const LinearGradient(
-                                                    colors: [
-                                                      Color(0xFFFF9F1C),
-                                                      Color(0xFFFF4040),
-                                                    ],
+                                          ),
+                                        ),
+                                        // The isometric painter does its own
+                                        // lighting and vignette, so the old
+                                        // flat-board grade overlay is dropped
+                                        // here to avoid double-darkening.
+                                        Positioned.fill(
+                                          child: TouchMovement(
+                                            game: game,
+                                            onTap: () {},
+                                            controlMode: settings.controlMode,
+                                            // Map taps through the same iso
+                                            // projection the board is drawn
+                                            // with so the player walks to
+                                            // where the finger lands.
+                                            screenToWorld: (local, size) =>
+                                                IsoProjection.fit(
+                                                  size,
+                                                ).unproject(local),
+                                            worldToScreen: (world, size) =>
+                                                IsoProjection.fit(
+                                                  size,
+                                                ).projectOffset(world),
+                                          ),
+                                        ),
+                                        PositionedDirectional(
+                                          start: 10,
+                                          end: 10,
+                                          bottom: 8,
+                                          child: _WorldContextActions(
+                                            game: game,
+                                            onOpenStaff: widget.onOpenStaff,
+                                            onOpenInventory:
+                                                widget.onOpenInventory,
+                                            onOpenDepartments:
+                                                widget.onOpenDepartments,
+                                          ),
+                                        ),
+                                        if (game.pendingShiftSummary != null)
+                                          Positioned.fill(
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(8),
+                                              child: ShiftPnlSummary(
+                                                summary:
+                                                    game.pendingShiftSummary!,
+                                                cashBalance: game.coins,
+                                                onContinue: game.startNextShift,
+                                              ),
+                                            ),
+                                          ),
+                                        if (game.fastCheckoutActive)
+                                          Positioned(
+                                            top: 70,
+                                            left: 22,
+                                            right: 22,
+                                            child: _FastCheckoutBanner(
+                                              claimed: game.fastCheckoutClaimed,
+                                              onClaim: () {
+                                                if (game
+                                                    .claimFastCheckoutBonus()) {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        AppLocalizations.of(
+                                                          context,
+                                                        ).fastCheckoutBonus,
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                        if (game.comboCount > 1)
+                                          Positioned(
+                                            top: 14,
+                                            right: 14,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 6,
                                                   ),
-                                                  borderRadius: BorderRadius.circular(20),
-                                                  boxShadow: const [
-                                                    BoxShadow(
-                                                      color: Color(0x66FF4040),
-                                                      blurRadius: 8,
-                                                      offset: Offset(0, 3),
-                                                    ),
+                                              decoration: BoxDecoration(
+                                                gradient: const LinearGradient(
+                                                  colors: [
+                                                    Color(0xFFFFA726),
+                                                    Color(0xFFEE4664),
                                                   ],
                                                 ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    const Icon(
-                                                      Icons.local_fire_department_rounded,
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x66EE4664),
+                                                    blurRadius: 8,
+                                                    offset: Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons
+                                                        .local_fire_department_rounded,
+                                                    color: Colors.white,
+                                                    size: 20,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    '${game.comboCount}x COMBO!',
+                                                    style: const TextStyle(
                                                       color: Colors.white,
-                                                      size: 20,
+                                                      fontWeight:
+                                                          FontWeight.w900,
+                                                      fontSize: 14,
                                                     ),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      '${game.comboCount}x COMBO!',
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontWeight: FontWeight.w900,
-                                                        fontSize: 14,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                        ],
-                                      ),
+                                          ),
+                                      ],
                                     ),
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              );
+                            },
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -554,6 +559,16 @@ class _GameScreenState extends State<GameScreen>
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showRewardCenter() {
     return showModalBottomSheet<void>(
       context: context,
@@ -566,6 +581,16 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -599,6 +624,16 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -688,11 +723,11 @@ class _GameScreenState extends State<GameScreen>
           child: Container(
             padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFCF6),
+              color: const Color(0xFFFFFFFF),
               borderRadius: BorderRadius.circular(28),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x44315F4A),
+                  color: Color(0x440B3B2C),
                   blurRadius: 28,
                   offset: Offset(0, 13),
                 ),
@@ -706,12 +741,12 @@ class _GameScreenState extends State<GameScreen>
                   height: 92,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
+                      colors: [Color(0xFFFFD874), Color(0xFFD98505)],
                     ),
                     shape: BoxShape.circle,
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0x44F6A623),
+                        color: Color(0x44FFCB45),
                         blurRadius: 22,
                         offset: Offset(0, 10),
                       ),
@@ -727,7 +762,7 @@ class _GameScreenState extends State<GameScreen>
                 Text(
                   loc.dailyBonus,
                   style: const TextStyle(
-                    color: Color(0xFFE08D19),
+                    color: Color(0xFFD98505),
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.2,
@@ -736,7 +771,7 @@ class _GameScreenState extends State<GameScreen>
                 Text(
                   loc.dayStreak.replaceFirst('{streak}', '${bonus.streak}'),
                   style: const TextStyle(
-                    color: Color(0xFF315F4A),
+                    color: Color(0xFF1C3A32),
                     fontSize: 27,
                     fontWeight: FontWeight.w900,
                   ),
@@ -745,7 +780,7 @@ class _GameScreenState extends State<GameScreen>
                 Text(
                   loc.comeBackTomorrow,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF6F766F)),
+                  style: const TextStyle(color: Color(0xFF4A6E63)),
                 ),
                 const SizedBox(height: 17),
                 Row(
@@ -754,14 +789,14 @@ class _GameScreenState extends State<GameScreen>
                     _BonusPill(
                       icon: Icons.monetization_on_rounded,
                       value: '+${bonus.coinsAwarded}',
-                      color: const Color(0xFFF6A623),
+                      color: const Color(0xFFFFCB45),
                     ),
                     if (bonus.gemsAwarded > 0) ...[
                       const SizedBox(width: 9),
                       _BonusPill(
                         icon: Icons.diamond_rounded,
                         value: '+${bonus.gemsAwarded}',
-                        color: const Color(0xFF8B66D8),
+                        color: const Color(0xFF6234E0),
                       ),
                     ],
                   ],
@@ -771,7 +806,7 @@ class _GameScreenState extends State<GameScreen>
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
-                    backgroundColor: const Color(0xFF38B879),
+                    backgroundColor: const Color(0xFF2FD98F),
                   ),
                   icon: const Icon(Icons.card_giftcard_rounded),
                   label: Text(loc.collectReward),
@@ -796,7 +831,7 @@ class _RewardCenter extends StatelessWidget {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
     return Material(
-      color: const Color(0xFFFFFCF6),
+      color: const Color(0xFFFFFFFF),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       child: AnimatedBuilder(
         animation: game,
@@ -805,7 +840,7 @@ class _RewardCenter extends StatelessWidget {
             _RewardChoice(
               placement: RewardPlacement.instantCoins,
               icon: Icons.monetization_on_rounded,
-              color: const Color(0xFFF6A623),
+              color: const Color(0xFFFFCB45),
               title: loc.rewardCoinsTitle,
               benefit: loc.rewardCoinsBenefit.replaceFirst(
                 '{value}',
@@ -816,7 +851,7 @@ class _RewardCenter extends StatelessWidget {
               _RewardChoice(
                 placement: RewardPlacement.doubleOfflineEarnings,
                 icon: Icons.bolt_rounded,
-                color: const Color(0xFF38B879),
+                color: const Color(0xFF2FD98F),
                 title: loc.rewardOfflineTitle,
                 benefit: loc.rewardOfflineBenefit
                     .replaceFirst('{value}', '${game.offlineEarnings * 2}')
@@ -832,7 +867,7 @@ class _RewardCenter extends StatelessWidget {
                   children: [
                     const Icon(
                       Icons.ondemand_video_rounded,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                       size: 25,
                     ),
                     const SizedBox(width: 9),
@@ -840,7 +875,7 @@ class _RewardCenter extends StatelessWidget {
                       child: Text(
                         loc.rewardCenterTitle,
                         style: const TextStyle(
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
                         ),
@@ -863,13 +898,13 @@ class _RewardCenter extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(13),
                       decoration: BoxDecoration(
-                        color: const Color(0x14315F4A),
+                        color: const Color(0x140B3B2C),
                         borderRadius: BorderRadius.circular(15),
                       ),
                       child: Text(
                         loc.optionalAdDescription,
                         style: const TextStyle(
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                           fontSize: 12,
                           height: 1.35,
                           fontWeight: FontWeight.w700,
@@ -883,7 +918,7 @@ class _RewardCenter extends StatelessWidget {
                     Text(
                       '${loc.rewardClaimsToday}: ${game.rewardClaimsToday}/${game.rewardDailyLimit}',
                       style: const TextStyle(
-                        color: Color(0xFF6B746E),
+                        color: Color(0xFF4A6E63),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -984,7 +1019,7 @@ class _RewardChoiceCard extends StatelessWidget {
                     Text(
                       choice.title,
                       style: const TextStyle(
-                        color: Color(0xFF315F4A),
+                        color: Color(0xFF1C3A32),
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -992,7 +1027,7 @@ class _RewardChoiceCard extends StatelessWidget {
                     Text(
                       choice.benefit,
                       style: const TextStyle(
-                        color: Color(0xFF6B746E),
+                        color: Color(0xFF4A6E63),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1004,8 +1039,8 @@ class _RewardChoiceCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: available
-                            ? const Color(0xFF38A66E)
-                            : const Color(0xFF8A7D6C),
+                            ? const Color(0xFF0A8B59)
+                            : const Color(0xFF7D998F),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1023,7 +1058,7 @@ class _RewardChoiceCard extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(0, 42),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
-                  backgroundColor: const Color(0xFF315F4A),
+                  backgroundColor: const Color(0xFF1C3A32),
                 ),
                 child: Text(
                   available ? loc.watchAndReceive : loc.rewardUnavailable,
@@ -1051,19 +1086,19 @@ class _RewardPreviewNotice extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
+        color: const Color(0xFFFFF6E3),
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: const Color(0x33E09A20)),
+        border: Border.all(color: const Color(0x33D98505)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.phone_android_rounded, color: Color(0xFFE09A20)),
+          const Icon(Icons.phone_android_rounded, color: Color(0xFFD98505)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               '${loc.mobileFeaturePreview}: ${loc.rewardPreviewUnavailable}',
               style: const TextStyle(
-                color: Color(0xFF8A5B19),
+                color: Color(0xFF7A4E06),
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
@@ -1093,12 +1128,12 @@ class _FastCheckoutBanner extends StatelessWidget {
     final loc = AppLocalizations.of(context);
     return Card(
       margin: EdgeInsets.zero,
-      color: const Color(0xFFFFF3D7),
+      color: const Color(0xFFFFF6E3),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
-            const Icon(Icons.bolt_rounded, color: Color(0xFFE08D19)),
+            const Icon(Icons.bolt_rounded, color: Color(0xFFD98505)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -1183,8 +1218,8 @@ class _QuestCard extends StatelessWidget {
           Transform.scale(scale: scale, child: child),
       child: Material(
         elevation: compact ? 3 : 5,
-        color: const Color(0xFCFFF9F0),
-        shadowColor: const Color(0x33315F4A),
+        color: const Color(0xFCFFFFFF),
+        shadowColor: const Color(0x330B3B2C),
         borderRadius: BorderRadius.circular(compact ? 15 : 18),
         clipBehavior: Clip.antiAlias,
         child: Padding(
@@ -1199,8 +1234,8 @@ class _QuestCard extends StatelessWidget {
                 height: compact ? 30 : 39,
                 decoration: BoxDecoration(
                   color: quest.completed
-                      ? const Color(0xFF38B879)
-                      : const Color(0xFFFFE5AF),
+                      ? const Color(0xFF2FD98F)
+                      : const Color(0xFFFFE9B4),
                   borderRadius: BorderRadius.circular(compact ? 10 : 13),
                 ),
                 child: Icon(
@@ -1208,7 +1243,7 @@ class _QuestCard extends StatelessWidget {
                   size: compact ? 18 : 24,
                   color: quest.completed
                       ? Colors.white
-                      : const Color(0xFFA66B00),
+                      : const Color(0xFFB06A04),
                 ),
               ),
               SizedBox(width: compact ? 7 : 10),
@@ -1234,8 +1269,8 @@ class _QuestCard extends StatelessWidget {
                             child: LinearProgressIndicator(
                               value: quest.fraction,
                               minHeight: 6,
-                              color: const Color(0xFFF6A623),
-                              backgroundColor: const Color(0xFFE8E5DC),
+                              color: const Color(0xFFFFCB45),
+                              backgroundColor: const Color(0xFFDCE6E0),
                             ),
                           ),
                         ],
@@ -1258,7 +1293,7 @@ class _QuestCard extends StatelessWidget {
                     icon: const Icon(
                       Icons.card_giftcard_rounded,
                       size: 19,
-                      color: Color(0xFF38B879),
+                      color: Color(0xFF2FD98F),
                     ),
                   ),
                 )
@@ -1277,7 +1312,7 @@ class _QuestCard extends StatelessWidget {
                   '${quest.progress.clamp(0, quest.target)}/${quest.target}',
                   textDirection: TextDirection.ltr,
                   style: const TextStyle(
-                    color: Color(0xFF6B746E),
+                    color: Color(0xFF4A6E63),
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1313,8 +1348,8 @@ class _CompactQuestDetails extends StatelessWidget {
           child: LinearProgressIndicator(
             value: quest.fraction,
             minHeight: 4,
-            color: const Color(0xFFF6A623),
-            backgroundColor: const Color(0xFFE8E5DC),
+            color: const Color(0xFFFFCB45),
+            backgroundColor: const Color(0xFFDCE6E0),
           ),
         ),
       ],
@@ -1491,7 +1526,8 @@ class _WorldContextButton extends StatelessWidget {
   String storage,
   String restock,
   String restockOrdered,
-}) _contextLabels(BuildContext context) {
+})
+_contextLabels(BuildContext context) {
   return switch (Localizations.localeOf(context).languageCode) {
     'he' => (
       stock: 'מלאי',
@@ -1549,6 +1585,16 @@ void _showContextHint(BuildContext context, String message) {
 // ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
 // ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
 class _ControlDeck extends StatelessWidget {
   const _ControlDeck({
     required this.game,
@@ -1573,12 +1619,12 @@ class _ControlDeck extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 6),
       padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFFDF8EB),
+        color: const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x30315F4A)),
+        border: Border.all(color: const Color(0x300B3B2C)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x17315F4A),
+            color: Color(0x170B3B2C),
             blurRadius: 10,
             offset: Offset(0, 2),
           ),
@@ -1625,7 +1671,7 @@ class _ControlDeck extends StatelessWidget {
                         child: _RoundAction(
                           label: loc.upgrades,
                           icon: Icons.upgrade_rounded,
-                          color: const Color(0xFF315F4A),
+                          color: const Color(0xFF1C3A32),
                           onTap: onUpgrades,
                         ),
                       ),
@@ -1640,7 +1686,7 @@ class _ControlDeck extends StatelessWidget {
                               ? loc.loading
                               : loc.freeBonus,
                           icon: Icons.ondemand_video_rounded,
-                          color: const Color(0xFFB45C55),
+                          color: const Color(0xFFD32A47),
                           onTap: game.rewardInProgress ? null : onReward,
                         ),
                       ),
@@ -1653,7 +1699,7 @@ class _ControlDeck extends StatelessWidget {
                         child: _RoundAction(
                           label: loc.shop,
                           icon: Icons.shopping_bag_rounded,
-                          color: const Color(0xFFC48124),
+                          color: const Color(0xFFB06A04),
                           onTap: onShop,
                         ),
                       ),
@@ -1723,8 +1769,10 @@ class _QuickStockAction extends StatelessWidget {
         : emergency
         ? '${loc.emergencyStock} +${GameBalance.emergencyStockQuantity}'
         : loc.quickRestock;
-    final actionKey = pending ? const ValueKey('quick-restock-action-pending') : const ValueKey('quick-restock-action');
-    final color = emergency ? const Color(0xFF38B879) : const Color(0xFFF6A623);
+    final actionKey = pending
+        ? const ValueKey('quick-restock-action-pending')
+        : const ValueKey('quick-restock-action');
+    final color = emergency ? const Color(0xFF2FD98F) : const Color(0xFFFFCB45);
 
     void activate() {
       final succeeded = emergency
@@ -1781,7 +1829,7 @@ class _CarriedStatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: const Color(0x14315F4A),
+        color: const Color(0x140B3B2C),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -1790,14 +1838,14 @@ class _CarriedStatusChip extends StatelessWidget {
           const Icon(
             Icons.inventory_2_rounded,
             size: 13,
-            color: Color(0xFFE09A20),
+            color: Color(0xFFD98505),
           ),
           const SizedBox(width: 3),
           Text(
             '$carried/$capacity',
             textDirection: TextDirection.ltr,
             style: const TextStyle(
-              color: Color(0xFF315F4A),
+              color: Color(0xFF1C3A32),
               fontSize: 10,
               fontWeight: FontWeight.w900,
             ),
@@ -1838,7 +1886,7 @@ class _ControlInstruction extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.start,
           style: const TextStyle(
-            color: Color(0xFF315F4A),
+            color: Color(0xFF1C3A32),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -1946,14 +1994,14 @@ class _UpgradeSheet extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                     ),
                   ),
                 ),
                 _CurrencyPill(
                   icon: Icons.monetization_on_rounded,
                   value: game.coins,
-                  color: const Color(0xFFF6A623),
+                  color: const Color(0xFFFFCB45),
                 ),
                 const SizedBox(width: 16),
               ],
@@ -2068,7 +2116,7 @@ class _UpgradeTile extends StatelessWidget {
       enabled: onTap != null,
       child: Material(
         color: onTap == null
-            ? const Color(0xFFF5F0E8).withValues(alpha: 0.6)
+            ? const Color(0xFFEFF2EF).withValues(alpha: 0.6)
             : Colors.white,
         borderRadius: BorderRadius.circular(16),
         elevation: onTap == null ? 0 : 2,
@@ -2082,8 +2130,8 @@ class _UpgradeTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: onTap == null
-                    ? const Color(0x33315F4A)
-                    : const Color(0x1A315F4A),
+                    ? const Color(0x330B3B2C)
+                    : const Color(0x1A0B3B2C),
               ),
             ),
             child: Row(
@@ -2094,10 +2142,10 @@ class _UpgradeTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isMaxed
-                          ? [const Color(0xFF38B879), const Color(0xFF2E9B5F)]
+                          ? [const Color(0xFF2FD98F), const Color(0xFF0A8B59)]
                           : canAfford
-                          ? [const Color(0xFF5B8DEF), const Color(0xFF4A7BD5)]
-                          : [const Color(0xFFE8E0D8), const Color(0xFFD8D0C8)],
+                          ? [const Color(0xFF62B4FF), const Color(0xFF1D6FD4)]
+                          : [const Color(0xFFDCE6E0), const Color(0xFFD3DFD8)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -2107,8 +2155,8 @@ class _UpgradeTile extends StatelessWidget {
                             BoxShadow(
                               color:
                                   (isMaxed
-                                          ? const Color(0xFF38B879)
-                                          : const Color(0xFF5B8DEF))
+                                          ? const Color(0xFF2FD98F)
+                                          : const Color(0xFF62B4FF))
                                       .withValues(alpha: 0.35),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
@@ -2120,7 +2168,7 @@ class _UpgradeTile extends StatelessWidget {
                     upgrade.icon,
                     color: isMaxed || canAfford
                         ? Colors.white
-                        : const Color(0xFF8B8078),
+                        : const Color(0xFF7D998F),
                     size: 24,
                   ),
                 ),
@@ -2135,7 +2183,7 @@ class _UpgradeTile extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -2146,8 +2194,8 @@ class _UpgradeTile extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           color: isMaxed
-                              ? const Color(0xFF38B879)
-                              : const Color(0xFF6B746E),
+                              ? const Color(0xFF2FD98F)
+                              : const Color(0xFF4A6E63),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -2159,7 +2207,7 @@ class _UpgradeTile extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF6B746E),
+                          color: Color(0xFF4A6E63),
                           fontSize: 10,
                         ),
                       ),
@@ -2174,13 +2222,13 @@ class _UpgradeTile extends StatelessWidget {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF38B879).withValues(alpha: 0.12),
+                      color: const Color(0xFF2FD98F).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       loc.maxLevel,
                       style: const TextStyle(
-                        color: Color(0xFF38B879),
+                        color: Color(0xFF2FD98F),
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2195,10 +2243,10 @@ class _UpgradeTile extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: canAfford
                           ? const LinearGradient(
-                              colors: [Color(0xFF5B8DEF), Color(0xFF4A7BD5)],
+                              colors: [Color(0xFF62B4FF), Color(0xFF1D6FD4)],
                             )
                           : null,
-                      color: canAfford ? null : const Color(0xFFE8E0D8),
+                      color: canAfford ? null : const Color(0xFFDCE6E0),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -2209,7 +2257,7 @@ class _UpgradeTile extends StatelessWidget {
                           size: 13,
                           color: canAfford
                               ? Colors.white
-                              : const Color(0xFF8B8078),
+                              : const Color(0xFF7D998F),
                         ),
                         const SizedBox(width: 3),
                         Text(
@@ -2217,7 +2265,7 @@ class _UpgradeTile extends StatelessWidget {
                           style: TextStyle(
                             color: canAfford
                                 ? Colors.white
-                                : const Color(0xFF8B8078),
+                                : const Color(0xFF7D998F),
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
@@ -2264,20 +2312,20 @@ class _MoneyShopSheet extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                     ),
                   ),
                 ),
                 _CurrencyPill(
                   icon: Icons.monetization_on_rounded,
                   value: game.coins,
-                  color: const Color(0xFFF6A623),
+                  color: const Color(0xFFFFCB45),
                 ),
                 const SizedBox(width: 8),
                 _CurrencyPill(
                   icon: Icons.diamond_rounded,
                   value: game.gems,
-                  color: const Color(0xFF8B66D8),
+                  color: const Color(0xFF6234E0),
                 ),
                 const SizedBox(width: 16),
               ],
@@ -2289,7 +2337,7 @@ class _MoneyShopSheet extends StatelessWidget {
                 subtitle:
                     '${AppLocalizations.of(context).freeBonusSubtitle} — ${AppLocalizations.of(context).rewardCoinsBenefit.replaceFirst('{value}', '${game.instantAdReward}')}',
                 icon: Icons.ondemand_video_rounded,
-                color: const Color(0xFFE85D75),
+                color: const Color(0xFFEE4664),
                 onTap: onReward,
               ),
             Flexible(
@@ -2349,7 +2397,7 @@ class _ShopRewardTile extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0x1A315F4A)),
+              border: Border.all(color: const Color(0x1A0B3B2C)),
             ),
             child: Row(
               children: [
@@ -2384,7 +2432,7 @@ class _ShopRewardTile extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -2392,7 +2440,7 @@ class _ShopRewardTile extends StatelessWidget {
                         subtitle,
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF6B746E),
+                          color: Color(0xFF4A6E63),
                         ),
                       ),
                     ],
@@ -2400,7 +2448,7 @@ class _ShopRewardTile extends StatelessWidget {
                 ),
                 const Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF8B8078),
+                  color: Color(0xFF7D998F),
                 ),
               ],
             ),
@@ -2463,7 +2511,7 @@ class _ShopProductTile extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0x1A315F4A)),
+              border: Border.all(color: const Color(0x1A0B3B2C)),
             ),
             child: Row(
               children: [
@@ -2473,8 +2521,8 @@ class _ShopProductTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        const Color(0xFFF6A623),
-                        const Color(0xFFE09A20),
+                        const Color(0xFFFFCB45),
+                        const Color(0xFFD98505),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -2482,7 +2530,7 @@ class _ShopProductTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFF6A623).withValues(alpha: 0.35),
+                        color: const Color(0xFFFFCB45).withValues(alpha: 0.35),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -2501,7 +2549,7 @@ class _ShopProductTile extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -2509,7 +2557,7 @@ class _ShopProductTile extends StatelessWidget {
                         description,
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF6B746E),
+                          color: Color(0xFF4A6E63),
                         ),
                       ),
                     ],
@@ -2525,14 +2573,14 @@ class _ShopProductTile extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 12,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 const Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF8B8078),
+                  color: Color(0xFF7D998F),
                 ),
               ],
             ),
@@ -2562,12 +2610,12 @@ class _OfflineEarningsSheet extends StatelessWidget {
             height: 92,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
+                colors: [Color(0xFFFFD874), Color(0xFFD98505)],
               ),
               shape: BoxShape.circle,
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x44F6A623),
+                  color: Color(0x44FFCB45),
                   blurRadius: 22,
                   offset: Offset(0, 10),
                 ),
@@ -2583,7 +2631,7 @@ class _OfflineEarningsSheet extends StatelessWidget {
           Text(
             AppLocalizations.of(context).welcomeBack.toUpperCase(),
             style: const TextStyle(
-              color: Color(0xFFE08D19),
+              color: Color(0xFFD98505),
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.2,
@@ -2592,7 +2640,7 @@ class _OfflineEarningsSheet extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             AppLocalizations.of(context).businessKeptEarning,
-            style: const TextStyle(color: Color(0xFF6F766F), fontSize: 14),
+            style: const TextStyle(color: Color(0xFF4A6E63), fontSize: 14),
           ),
           const SizedBox(height: 17),
           Row(
@@ -2601,7 +2649,7 @@ class _OfflineEarningsSheet extends StatelessWidget {
               _BonusPill(
                 icon: Icons.monetization_on_rounded,
                 value: '+${game.offlineEarnings}',
-                color: const Color(0xFFF6A623),
+                color: const Color(0xFFFFCB45),
               ),
             ],
           ),
@@ -2615,8 +2663,8 @@ class _OfflineEarningsSheet extends StatelessWidget {
                   label: Text(AppLocalizations.of(context).collect),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
-                    foregroundColor: const Color(0xFF315F4A),
-                    side: const BorderSide(color: Color(0xFF315F4A)),
+                    foregroundColor: const Color(0xFF1C3A32),
+                    side: const BorderSide(color: Color(0xFF1C3A32)),
                     textStyle: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -2629,7 +2677,7 @@ class _OfflineEarningsSheet extends StatelessWidget {
                   label: Text(AppLocalizations.of(context).double),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
-                    backgroundColor: const Color(0xFFF6A623),
+                    backgroundColor: const Color(0xFFFFCB45),
                     textStyle: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -2663,15 +2711,15 @@ class _AchievementToast extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFFFFFCF6), Color(0xFFFFF8F0)],
+            colors: [Color(0xFFFFFFFF), Color(0xFFFCFEFC)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE8DCC8)),
+          border: Border.all(color: const Color(0xFFFFE9B4)),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x33315F4A),
+              color: Color(0x330B3B2C),
               blurRadius: 20,
               offset: Offset(0, 8),
             ),
@@ -2684,12 +2732,12 @@ class _AchievementToast extends StatelessWidget {
               height: 48,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
+                  colors: [Color(0xFFFFD874), Color(0xFFD98505)],
                 ),
                 shape: BoxShape.circle,
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0x44F6A623),
+                    color: Color(0x44FFCB45),
                     blurRadius: 14,
                     offset: Offset(0, 6),
                   ),
@@ -2709,7 +2757,7 @@ class _AchievementToast extends StatelessWidget {
                   Text(
                     AppLocalizations.of(context).achievementUnlocked,
                     style: const TextStyle(
-                      color: Color(0xFFE08D19),
+                      color: Color(0xFFD98505),
                       fontSize: 10,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1,
@@ -2719,7 +2767,7 @@ class _AchievementToast extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
@@ -2728,7 +2776,7 @@ class _AchievementToast extends StatelessWidget {
                   Text(
                     description,
                     style: const TextStyle(
-                      color: Color(0xFF6B746E),
+                      color: Color(0xFF4A6E63),
                       fontSize: 11,
                     ),
                   ),
@@ -2795,18 +2843,19 @@ class _Panel extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: const Color(0xFFFFFCF6),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x44315F4A),
-                blurRadius: 28,
-                offset: Offset(0, 13),
-              ),
-            ],
+            // Same layered treatment as a modal panel elsewhere in the app, so
+            // every sheet, dialog and card reads as one product.
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [PoColor.surfaceLift, PoColor.surface],
+            ),
+            borderRadius: BorderRadius.circular(PoRadius.xl),
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: PoElevate.e4,
           ),
           child: child,
         ),
@@ -2826,7 +2875,7 @@ class _SheetHandle extends StatelessWidget {
         width: 40,
         height: 5,
         decoration: BoxDecoration(
-          color: const Color(0xFFD8D0C8),
+          color: const Color(0xFFD3DFD8),
           borderRadius: BorderRadius.circular(3),
         ),
       ),

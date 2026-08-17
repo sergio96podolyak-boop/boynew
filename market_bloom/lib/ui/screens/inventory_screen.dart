@@ -31,7 +31,7 @@ class InventoryScreen extends StatelessWidget {
                 title: loc.warehouseStock,
                 subtitle:
                     '${controller.activeDepartmentCount} ${loc.activeDepartments}',
-                colors: const [Color(0xFF183650), Color(0xFF276F78)],
+                colors: const [Color(0xFF123E6B), Color(0xFF0C837E)],
                 metrics: [
                   ManagementHeroMetric(
                     icon: Icons.inventory_rounded,
@@ -67,9 +67,7 @@ class InventoryScreen extends StatelessWidget {
                   for (final definition in DepartmentCatalog.all)
                     if (controller.isDepartmentUnlocked(definition.type))
                       _ProductCard(
-                        key: ValueKey(
-                          'inventory-card-${definition.type.name}',
-                        ),
+                        key: ValueKey('inventory-card-${definition.type.name}'),
                         definition: definition,
                         controller: controller,
                         loc: loc,
@@ -176,7 +174,12 @@ class _ProductCard extends StatelessWidget {
         ? loc.deliveryInTransit
         : lowStock
         ? loc.lowStock
-        : _term(context, en: 'Stock healthy', he: 'מלאי תקין', ar: 'المخزون جيد');
+        : _term(
+            context,
+            en: 'Stock healthy',
+            he: 'מלאי תקין',
+            ar: 'المخزون جيد',
+          );
 
     return ManagementCard(
       accent: definition.color,
@@ -327,12 +330,7 @@ class _ProductCard extends StatelessWidget {
               ),
               ManagementInfoTile(
                 icon: Icons.percent_rounded,
-                label: _term(
-                  context,
-                  en: 'Margin',
-                  he: 'מרווח',
-                  ar: 'الهامش',
-                ),
+                label: _term(context, en: 'Margin', he: 'מרווח', ar: 'الهامش'),
                 value: '${(margin * 100).round()}%',
                 color: PoMarketPalette.violet,
                 negative: margin < 0,
@@ -352,9 +350,8 @@ class _ProductCard extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: selected
                       ? null
-                      : () => controller.selectRestockDepartment(
-                          definition.type,
-                        ),
+                      : () =>
+                            controller.selectRestockDepartment(definition.type),
                   icon: Icon(
                     selected
                         ? Icons.check_circle_rounded

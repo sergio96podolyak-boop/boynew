@@ -18,7 +18,7 @@ import 'widgets/game_dock.dart';
 import 'widgets/game_navigation.dart';
 import 'widgets/global_hud.dart';
 import 'widgets/main_game_phase_two.dart';
-import 'theme/pomarket_design.dart';
+import 'theme/po_system.dart';
 import 'widgets/privacy_consent_layer.dart';
 
 class AppShell extends StatefulWidget {
@@ -99,22 +99,11 @@ class _AppShellState extends State<AppShell> {
     final dailyEvent = DailyEventBannerLayer.maybeOf(context);
     final marketSelected = _selectedDestination == AppDestination.market;
     return Scaffold(
-      backgroundColor: PoDepthColors.deepSea,
-      body: DecoratedBox(
-        // Deep field behind the board. Bright surfaces read as premium when
-        // they float on a rich backdrop rather than another pale grey.
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              PoDepthColors.forest,
-              PoDepthColors.deepSea,
-              PoDepthColors.abyss,
-            ],
-            stops: [0, 0.45, 1],
-          ),
-        ),
+      backgroundColor: PoColor.canvas,
+      body: PoPageGround(
+        // Softer on the board screen: the market art supplies its own colour,
+        // so a strong page wash behind it would compete with the shelves.
+        aurora: marketSelected ? 0.5 : 1,
         child: Column(
           children: [
             GlobalHud(
@@ -223,7 +212,6 @@ class _AppShellState extends State<AppShell> {
         AppDestination.settings => loc.settings,
       };
 }
-
 
 class _CommandBadges {
   const _CommandBadges({

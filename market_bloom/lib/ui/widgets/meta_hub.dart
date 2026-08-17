@@ -53,7 +53,7 @@ class MetaHub extends StatelessWidget {
                         Text(
                           'Your progress, records, and rewards',
                           style: TextStyle(
-                            color: Color(0xFF707872),
+                            color: Color(0xFF7D998F),
                             fontSize: 12,
                           ),
                         ),
@@ -67,7 +67,7 @@ class MetaHub extends StatelessWidget {
               const TabBar(
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
-                dividerColor: Color(0xFFE8E4DA),
+                dividerColor: Color(0xFFDCE6E0),
                 tabs: [
                   Tab(text: 'ACHIEVEMENTS'),
                   Tab(text: 'STATS'),
@@ -108,7 +108,7 @@ class _ScorePill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF315F4A), Color(0xFF38B879)],
+          colors: [Color(0xFF1C3A32), Color(0xFF2FD98F)],
         ),
         borderRadius: BorderRadius.circular(18),
       ),
@@ -117,7 +117,7 @@ class _ScorePill extends StatelessWidget {
           const Text(
             'SCORE',
             style: TextStyle(
-              color: Color(0xFFCFF5E2),
+              color: Color(0xFFD8F6E7),
               fontSize: 9,
               fontWeight: FontWeight.w900,
             ),
@@ -180,12 +180,12 @@ class _AchievementCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: unlocked
             ? color.withValues(alpha: 0.12)
-            : const Color(0xFFF2F0EA),
+            : const Color(0xFFEFF2EF),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: unlocked
               ? color.withValues(alpha: 0.45)
-              : const Color(0xFFDCD9D1),
+              : const Color(0xFFD3DFD8),
         ),
       ),
       child: Row(
@@ -195,7 +195,7 @@ class _AchievementCard extends StatelessWidget {
             height: 52,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: unlocked ? color : const Color(0xFFD7D4CD),
+              color: unlocked ? color : const Color(0xFFD3DFD8),
               borderRadius: BorderRadius.circular(16),
               boxShadow: unlocked
                   ? [
@@ -209,7 +209,7 @@ class _AchievementCard extends StatelessWidget {
             ),
             child: unlocked
                 ? Text(definition.badge, style: const TextStyle(fontSize: 25))
-                : const Icon(Icons.lock_rounded, color: Color(0xFF7E827E)),
+                : const Icon(Icons.lock_rounded, color: Color(0xFF7D998F)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -229,7 +229,7 @@ class _AchievementCard extends StatelessWidget {
                           ? 'UNLOCKED'
                           : '${min(progress.currentValue, definition.target)}/${definition.target}',
                       style: TextStyle(
-                        color: unlocked ? color : const Color(0xFF777C77),
+                        color: unlocked ? color : const Color(0xFF7D998F),
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                       ),
@@ -240,7 +240,7 @@ class _AchievementCard extends StatelessWidget {
                 Text(
                   definition.description,
                   style: const TextStyle(
-                    color: Color(0xFF707570),
+                    color: Color(0xFF7D998F),
                     fontSize: 11,
                   ),
                 ),
@@ -251,7 +251,7 @@ class _AchievementCard extends StatelessWidget {
                     value: progress.fractionFor(definition),
                     minHeight: 6,
                     color: color,
-                    backgroundColor: const Color(0xFFDCDAD3),
+                    backgroundColor: const Color(0xFFD3DFD8),
                   ),
                 ),
               ],
@@ -279,12 +279,12 @@ class _ProgressBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: const Color(0xFF315F4A),
+        color: const Color(0xFF1C3A32),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFFFFD95A), size: 30),
+          Icon(icon, color: const Color(0xFFFFCB45), size: 30),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
@@ -303,8 +303,8 @@ class _ProgressBanner extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: value,
                     minHeight: 7,
-                    color: const Color(0xFFFFD95A),
-                    backgroundColor: const Color(0xFF527965),
+                    color: const Color(0xFFFFCB45),
+                    backgroundColor: const Color(0xFF4A6E63),
                   ),
                 ),
               ],
@@ -329,25 +329,25 @@ class _StatsTab extends StatelessWidget {
         icon: Icons.timer_rounded,
         label: loc.playTime,
         value: _formatDuration(game.totalPlayTime),
-        color: const Color(0xFF5B8DEF),
+        color: const Color(0xFF62B4FF),
       ),
       (
         icon: Icons.touch_app_rounded,
         label: loc.actions,
         value: _formatNumber(game.totalActions),
-        color: const Color(0xFF8B66D8),
+        color: const Color(0xFF6234E0),
       ),
       (
         icon: Icons.monetization_on_rounded,
         label: loc.bestBalance,
         value: _formatNumber(game.highestBalance),
-        color: const Color(0xFFF6A623),
+        color: const Color(0xFFFFCB45),
       ),
       (
         icon: Icons.workspace_premium_rounded,
         label: loc.highScore,
         value: _formatNumber(game.highestScore),
-        color: const Color(0xFFE85D75),
+        color: const Color(0xFFEE4664),
       ),
     ];
 
@@ -372,7 +372,7 @@ class _StatsTab extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE5E1D8)),
+            border: Border.all(color: const Color(0xFFDCE6E0)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -380,7 +380,7 @@ class _StatsTab extends StatelessWidget {
               Text(
                 loc.performanceHistory,
                 style: TextStyle(
-                  color: Color(0xFF315F4A),
+                  color: Color(0xFF1C3A32),
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.6,
@@ -389,7 +389,7 @@ class _StatsTab extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 '${game.performanceHistory.length} ${loc.savedSnapshots} · ${loc.scoreOverTime}',
-                style: const TextStyle(color: Color(0xFF7A7F7B), fontSize: 11),
+                style: const TextStyle(color: Color(0xFF7D998F), fontSize: 11),
               ),
               const SizedBox(height: 10),
               SizedBox(
@@ -402,7 +402,7 @@ class _StatsTab extends StatelessWidget {
                             loc.keepPlayingChart,
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Color(0xFF7A7F7B),
+                              color: Color(0xFF7D998F),
                               fontSize: 12,
                             ),
                           ),
@@ -505,7 +505,7 @@ class _MiniMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0EEE7),
+        color: const Color(0xFFE8EFEA),
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
@@ -518,7 +518,7 @@ class _MiniMetric extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: Color(0xFF767B77),
+              color: Color(0xFF7D998F),
               fontSize: 8,
               fontWeight: FontWeight.w800,
             ),
@@ -622,7 +622,7 @@ class _LeaderboardTab extends StatelessWidget {
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF244D3A), Color(0xFF3A8663)],
+              colors: [Color(0xFF1C3A32), Color(0xFF0C837E)],
             ),
             borderRadius: BorderRadius.circular(21),
           ),
@@ -631,7 +631,7 @@ class _LeaderboardTab extends StatelessWidget {
               Text(
                 AppLocalizations.of(context).yourCurrentBusinessScore,
                 style: TextStyle(
-                  color: Color(0xFFCDEDDD),
+                  color: Color(0xFFD8F6E7),
                   fontSize: 10,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.8,
@@ -655,8 +655,8 @@ class _LeaderboardTab extends StatelessWidget {
                         onPressed: () => unawaited(_submit(context)),
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(50),
-                          backgroundColor: const Color(0xFFFFD95A),
-                          foregroundColor: const Color(0xFF294B3A),
+                          backgroundColor: const Color(0xFFFFCB45),
+                          foregroundColor: const Color(0xFF1C3A32),
                         ),
                         icon: const Icon(Icons.leaderboard_rounded),
                         label: Text(AppLocalizations.of(context).postScore),
@@ -671,7 +671,7 @@ class _LeaderboardTab extends StatelessWidget {
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(50),
                           foregroundColor: Colors.white,
-                          side: const BorderSide(color: Color(0xFFAEE0C5)),
+                          side: const BorderSide(color: Color(0xFF9BE9C4)),
                         ),
                         icon: const Icon(Icons.ios_share_rounded),
                         label: Text(AppLocalizations.of(context).challenge),
@@ -696,7 +696,7 @@ class _LeaderboardTab extends StatelessWidget {
               AppLocalizations.of(context).savedOnThisDevice,
               style: Theme.of(
                 context,
-              ).textTheme.labelSmall?.copyWith(color: const Color(0xFF7A7E7A)),
+              ).textTheme.labelSmall?.copyWith(color: const Color(0xFF7D998F)),
             ),
           ],
         ),
@@ -723,12 +723,12 @@ class _EmptyLeaderboard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0EEE7),
+        color: const Color(0xFFE8EFEA),
         borderRadius: BorderRadius.circular(18),
       ),
       child: const Column(
         children: [
-          Icon(Icons.emoji_events_outlined, size: 42, color: Color(0xFF839087)),
+          Icon(Icons.emoji_events_outlined, size: 42, color: Color(0xFF7D998F)),
           SizedBox(height: 8),
           Text(
             'The podium is waiting for you.',
@@ -737,7 +737,7 @@ class _EmptyLeaderboard extends StatelessWidget {
           Text(
             'Post your current score to claim the first spot.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFF777D79), fontSize: 12),
+            style: TextStyle(color: Color(0xFF7D998F), fontSize: 12),
           ),
         ],
       ),
@@ -754,10 +754,10 @@ class _LeaderboardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final medal = switch (rank) {
-      1 => ('🥇', const Color(0xFFFFE372)),
-      2 => ('🥈', const Color(0xFFE1E5E8)),
+      1 => ('🥇', const Color(0xFFFFD874)),
+      2 => ('🥈', const Color(0xFFDCE6E0)),
       3 => ('🥉', const Color(0xFFE6B887)),
-      _ => ('$rank', const Color(0xFFE9E7E0)),
+      _ => ('$rank', const Color(0xFFE8EFEA)),
     };
     return Container(
       constraints: const BoxConstraints(minHeight: 58),
@@ -765,7 +765,7 @@ class _LeaderboardRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: const Color(0xFFE6E2D9)),
+        border: Border.all(color: const Color(0xFFDCE6E0)),
       ),
       child: Row(
         children: [
@@ -799,7 +799,7 @@ class _LeaderboardRow extends StatelessWidget {
                 Text(
                   'Level ${entry.storeLevel} · ${entry.totalSales} sales',
                   style: const TextStyle(
-                    color: Color(0xFF737974),
+                    color: Color(0xFF7D998F),
                     fontSize: 11,
                   ),
                 ),
@@ -809,7 +809,7 @@ class _LeaderboardRow extends StatelessWidget {
           Text(
             _formatNumber(entry.score),
             style: const TextStyle(
-              color: Color(0xFF315F4A),
+              color: Color(0xFF1C3A32),
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -846,7 +846,7 @@ class _SettingsTab extends StatelessWidget {
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFC94355),
+              backgroundColor: const Color(0xFFD32A47),
             ),
             child: Text(loc.reset),
           ),
@@ -873,13 +873,13 @@ class _SettingsTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0xFFE8F5EE),
+            color: const Color(0xFFE7F6EE),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.cloud_done_rounded, color: Color(0xFF2C8D60)),
+              Icon(Icons.cloud_done_rounded, color: Color(0xFF0A8B59)),
               SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -888,13 +888,13 @@ class _SettingsTab extends StatelessWidget {
                     Text(
                       loc.autoSaveOn,
                       style: TextStyle(
-                        color: Color(0xFF256A4B),
+                        color: Color(0xFF0A8B59),
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     Text(
                       loc.autoSaveDesc,
-                      style: TextStyle(color: Color(0xFF5B7466), fontSize: 12),
+                      style: TextStyle(color: Color(0xFF4A6E63), fontSize: 12),
                     ),
                   ],
                 ),
@@ -942,8 +942,8 @@ class _SettingsTab extends StatelessWidget {
           onPressed: () => unawaited(_reset(context)),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(52),
-            foregroundColor: const Color(0xFFC94355),
-            side: const BorderSide(color: Color(0xFFE5A9B1)),
+            foregroundColor: const Color(0xFFD32A47),
+            side: const BorderSide(color: Color(0xFFF7AFBC)),
           ),
           icon: const Icon(Icons.restart_alt_rounded),
           label: Text(loc.reset),
@@ -974,7 +974,7 @@ class _SettingsTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE6E2D9)),
+        border: Border.all(color: const Color(0xFFDCE6E0)),
       ),
       child: Row(
         children: [
@@ -982,10 +982,10 @@ class _SettingsTile extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFFE7F2EC),
+              color: const Color(0xFFE7F6EE),
               borderRadius: BorderRadius.circular(15),
             ),
-            child: Icon(icon, color: const Color(0xFF315F4A)),
+            child: Icon(icon, color: const Color(0xFF1C3A32)),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -999,7 +999,7 @@ class _SettingsTile extends StatelessWidget {
                 Text(
                   subtitle,
                   style: const TextStyle(
-                    color: Color(0xFF747A75),
+                    color: Color(0xFF7D998F),
                     fontSize: 11,
                   ),
                 ),
@@ -1055,19 +1055,19 @@ class _HistoryChartPainter extends CustomPainter {
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0x5538B879), Color(0x0038B879)],
+          colors: [Color(0x552FD98F), Color(0x002FD98F)],
         ).createShader(Offset.zero & size),
     );
     canvas.drawPath(
       path,
       Paint()
-        ..color = const Color(0xFF38B879)
+        ..color = const Color(0xFF2FD98F)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
-    final dotPaint = Paint()..color = const Color(0xFF315F4A);
+    final dotPaint = Paint()..color = const Color(0xFF1C3A32);
     for (final point in points) {
       canvas.drawCircle(point, 3.2, dotPaint);
     }
@@ -1081,9 +1081,9 @@ class _HistoryChartPainter extends CustomPainter {
 Color _tierColor(AchievementTier tier) {
   return switch (tier) {
     AchievementTier.bronze => const Color(0xFFC27A46),
-    AchievementTier.silver => const Color(0xFF7D91A5),
-    AchievementTier.gold => const Color(0xFFE2A91F),
-    AchievementTier.platinum => const Color(0xFF8B66D8),
+    AchievementTier.silver => const Color(0xFF7A9EBD),
+    AchievementTier.gold => const Color(0xFFD98505),
+    AchievementTier.platinum => const Color(0xFF6234E0),
   };
 }
 

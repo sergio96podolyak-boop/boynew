@@ -45,8 +45,8 @@ class IsoMarketPainter extends CustomPainter {
   // Light walls that recede as backdrop. Dark walls dominated the frame and
   // made the shop feel like a basement; commercial tycoon boards use bright,
   // near-white interiors.
-  static const _wallBack = Color(0xFFE6EAE2);
-  static const _wallSide = Color(0xFFD2DAD1);
+  static const _wallBack = Color(0xFFCFE9DA);
+  static const _wallSide = Color(0xFFA8D2C1);
   static const _fridgeBody = Color(0xFF3D8FC4);
   static const _counterBody = Color(0xFF3C4F58);
   static const _crateBody = Color(0xFFB07C43);
@@ -147,7 +147,12 @@ class IsoMarketPainter extends CustomPainter {
 
     tag(GameController.stockZone, 0.24, storageLabel, const Color(0xFF4A6B76));
     tag(GameController.shelfZone, 0.30, shelfLabel, const Color(0xFF2F7B58));
-    tag(GameController.checkoutZone, 0.26, checkoutLabel, const Color(0xFF3C4F58));
+    tag(
+      GameController.checkoutZone,
+      0.26,
+      checkoutLabel,
+      const Color(0xFF3C4F58),
+    );
     if (game.bakeryUnlocked) {
       tag(GameController.bakeryZone, 0.28, bakeryLabel, _bakeryBody);
     }
@@ -163,7 +168,10 @@ class IsoMarketPainter extends CustomPainter {
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF10493A), Color(0xFF06251D)],
+          // Brand-tinted ramp. A neutral grey surround left roughly a third of
+          // the board screen visually dead, which is the main reason the market
+          // read as flat next to the colourful fixtures.
+          colors: [Color(0xFFDFF1E7), Color(0xFFB4D9C7)],
         ).createShader(rect),
     );
   }
@@ -243,8 +251,21 @@ class IsoMarketPainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           Offset(roomBounds.center.dx, roomBounds.top),
           Offset(roomBounds.center.dx, roomBounds.bottom),
-          const [Color(0xFFCFC6B4), Color(0xFFDED6C6)],
+          // Back-of-house apron. Previously a warm beige that filled roughly a
+          // third of the board with a dull, undesigned band; a cool slate-green
+          // reads as the shop's surround and lets the lit sales floor pop.
+          const [Color(0xFF97B7A8), Color(0xFFB6CFC2)],
         ),
+    );
+
+    // Rim light where the apron meets the sales floor, so the lit field looks
+    // raised rather than pasted onto the apron.
+    canvas.drawPath(
+      p.groundPath(),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1.6, 2.4 * p.scale)
+        ..color = Colors.white.withValues(alpha: 0.55),
     );
 
     final ground = p.groundPath();
@@ -466,10 +487,7 @@ class IsoMarketPainter extends CustomPainter {
     // made the shop feel cramped; the aisles need clear walking space to read
     // as roomy, so the produce bins are gone and only corner greenery and a
     // single tucked-away trolley remain.
-    const planters = <Offset>[
-      Offset(0.05, 0.92),
-      Offset(0.92, 0.06),
-    ];
+    const planters = <Offset>[Offset(0.05, 0.92), Offset(0.92, 0.06)];
     for (final spot in planters) {
       add(
         IsoProjection.depthOf(spot.dx, spot.dy),
@@ -502,7 +520,14 @@ class IsoMarketPainter extends CustomPainter {
       color: const Color(0xFFA9603C),
     );
     // Foliage as overlapping spheres so it reads organic against the boxes.
-    brush.sphere(canvas, x: at.dx, y: at.dy, z: 0.10, radius: 0.062, color: const Color(0xFF3E8F4F));
+    brush.sphere(
+      canvas,
+      x: at.dx,
+      y: at.dy,
+      z: 0.10,
+      radius: 0.062,
+      color: const Color(0xFF3E8F4F),
+    );
     brush.sphere(
       canvas,
       x: at.dx - 0.018,
@@ -662,7 +687,17 @@ class IsoMarketPainter extends CustomPainter {
         final cx = x + gap + c * (colW + gap);
         final seed = r * cols + c + (x * 53).round() + category * 7;
         final colour = theme.products[seed % theme.products.length];
-        _product(canvas, brush, cx, cy, colW, deckHeight, colour, category, seed);
+        _product(
+          canvas,
+          brush,
+          cx,
+          cy,
+          colW,
+          deckHeight,
+          colour,
+          category,
+          seed,
+        );
       }
     }
 
@@ -1122,7 +1157,6 @@ class IsoMarketPainter extends CustomPainter {
         );
       }
     }
-
   }
 
   void _paintPlayer(Canvas canvas, IsoBrush brush) {
@@ -1270,11 +1304,21 @@ class IsoMarketPainter extends CustomPainter {
     // Arms.
     paint.color = IsoLight.shade(body, 0.86);
     canvas.drawRRect(
-      pill(ground.dx - u * 0.92, baseY - u * 1.30 + stride * 0.5, u * 0.40, u * 1.02),
+      pill(
+        ground.dx - u * 0.92,
+        baseY - u * 1.30 + stride * 0.5,
+        u * 0.40,
+        u * 1.02,
+      ),
       paint,
     );
     canvas.drawRRect(
-      pill(ground.dx + u * 0.92, baseY - u * 1.30 - stride * 0.5, u * 0.40, u * 1.02),
+      pill(
+        ground.dx + u * 0.92,
+        baseY - u * 1.30 - stride * 0.5,
+        u * 0.40,
+        u * 1.02,
+      ),
       paint,
     );
 
@@ -1392,7 +1436,11 @@ class IsoMarketPainter extends CustomPainter {
         paint.color = const Color(0xFFE0483C);
         canvas.drawRRect(
           RRect.fromRectAndRadius(
-            Rect.fromCenter(center: at.translate(0, -u * 0.1), width: u * 0.26, height: u * 0.66),
+            Rect.fromCenter(
+              center: at.translate(0, -u * 0.1),
+              width: u * 0.26,
+              height: u * 0.66,
+            ),
             Radius.circular(u * 0.13),
           ),
           paint,
@@ -1407,10 +1455,17 @@ class IsoMarketPainter extends CustomPainter {
       final radius = i.isEven ? r : r * 0.46;
       final a = -math.pi / 2 + i * math.pi / 5;
       final point = c + Offset(math.cos(a) * radius, math.sin(a) * radius);
-      i == 0 ? path.moveTo(point.dx, point.dy) : path.lineTo(point.dx, point.dy);
+      i == 0
+          ? path.moveTo(point.dx, point.dy)
+          : path.lineTo(point.dx, point.dy);
     }
     path.close();
-    canvas.drawPath(path, Paint()..color = color..isAntiAlias = true);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..isAntiAlias = true,
+    );
   }
 
   // ---------------------------------------------------------------- ambience
@@ -1430,9 +1485,7 @@ class IsoMarketPainter extends CustomPainter {
       // Ease out on the way up, fade only over the last third.
       final rise = (1 - math.pow(1 - progress, 3)) * p.tileHeight * 0.16;
       final opacity = progress < 0.66 ? 1.0 : (1 - progress) / 0.34;
-      final pop = progress < 0.16
-          ? 0.72 + 0.28 * (progress / 0.16)
-          : 1.0;
+      final pop = progress < 0.16 ? 0.72 + 0.28 * (progress / 0.16) : 1.0;
       final size = effect.fontSize * p.scale * pop;
 
       final painter = TextPainter(
@@ -1447,9 +1500,9 @@ class IsoMarketPainter extends CustomPainter {
             height: 1,
             shadows: [
               Shadow(
-                color: const Color(0xFF04211A).withValues(
-                  alpha: 0.65 * opacity.clamp(0.0, 1.0),
-                ),
+                color: const Color(
+                  0xFF04211A,
+                ).withValues(alpha: 0.65 * opacity.clamp(0.0, 1.0)),
                 blurRadius: 3,
                 offset: const Offset(0, 1.5),
               ),
@@ -1460,11 +1513,13 @@ class IsoMarketPainter extends CustomPainter {
       )..layout();
       painter.paint(
         canvas,
-        Offset(anchor.dx - painter.width / 2, anchor.dy - rise - painter.height),
+        Offset(
+          anchor.dx - painter.width / 2,
+          anchor.dy - rise - painter.height,
+        ),
       );
     }
   }
-
 
   void _paintAmbience(Canvas canvas, Size size, IsoProjection p) {
     final rect = Offset.zero & size;
@@ -1474,7 +1529,7 @@ class IsoMarketPainter extends CustomPainter {
         ..shader = ui.Gradient.radial(
           rect.center,
           rect.longestSide * 0.62,
-          [const Color(0x0004211A), const Color(0x7A04211A)],
+          [const Color(0x0016241F), const Color(0x2216241F)],
           [0.55, 1],
         ),
     );

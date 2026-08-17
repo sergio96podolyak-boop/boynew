@@ -97,7 +97,8 @@ class _ShopScreenState extends State<ShopScreen> {
                   _ShopGrid(items: visibleItems),
                   const SizedBox(height: 14),
                   _RestorePurchasesCard(
-                    enabled: game.storePurchasesAvailable &&
+                    enabled:
+                        game.storePurchasesAvailable &&
                         !game.storePurchaseInProgress,
                     label: loc.restorePurchases,
                     onPressed: () => _restore(context),
@@ -112,9 +113,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   child: SafeArea(
                     top: false,
                     child: _ShopFeedbackOverlay(
-                      key: ValueKey(
-                        'shop-feedback-${feedback.tone.name}',
-                      ),
+                      key: ValueKey('shop-feedback-${feedback.tone.name}'),
                       feedback: feedback,
                       onDismiss: () => setState(() => _feedback = null),
                     ),
@@ -139,18 +138,9 @@ class _ShopScreenState extends State<ShopScreen> {
     }) {
       final failed = _failedProductId == product.name;
       final storeAvailable = game.storePurchasesAvailable;
-      final enabled = storeAvailable &&
-          !game.storePurchaseInProgress &&
-          !owned;
-      final unavailable = _t(
-        context,
-        'Unavailable',
-        'לא זמין',
-        'غير متاح',
-      );
-      final price = owned
-          ? loc.owned
-          : game.storePrice(product) ?? unavailable;
+      final enabled = storeAvailable && !game.storePurchaseInProgress && !owned;
+      final unavailable = _t(context, 'Unavailable', 'לא זמין', 'غير متاح');
+      final price = owned ? loc.owned : game.storePrice(product) ?? unavailable;
       final state = owned
           ? _ShopItemState.owned
           : failed
@@ -183,7 +173,8 @@ class _ShopScreenState extends State<ShopScreen> {
       );
     }
 
-    final rewardAvailable = !game.rewardInProgress &&
+    final rewardAvailable =
+        !game.rewardInProgress &&
         game.canClaimReward(RewardPlacement.instantCoins);
     return [
       product(
@@ -241,7 +232,7 @@ class _ShopScreenState extends State<ShopScreen> {
         product: StoreProduct.emergencySupply,
         category: _ShopCategory.supplies,
         icon: Icons.inventory_2_rounded,
-        color: const Color(0xFF1FA8A8),
+        color: const Color(0xFF0C837E),
         title: loc.emergencySupplyPack,
         description: loc.emergencySupplyPackDesc,
       ),
@@ -307,15 +298,10 @@ class _ShopScreenState extends State<ShopScreen> {
     final loc = AppLocalizations.of(context);
     setState(() {
       _feedback = _ShopFeedback(
-        tone: completed
-            ? _ShopFeedbackTone.success
-            : _ShopFeedbackTone.warning,
+        tone: completed ? _ShopFeedbackTone.success : _ShopFeedbackTone.warning,
         title: completed ? loc.purchaseComplete : loc.rewardUnavailable,
         message: completed
-            ? loc.coinsEarned.replaceFirst(
-                '{value}',
-                '${game.instantAdReward}',
-              )
+            ? loc.coinsEarned.replaceFirst('{value}', '${game.instantAdReward}')
             : loc.rewardUnavailable,
       );
     });
@@ -327,9 +313,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final loc = AppLocalizations.of(context);
     setState(() {
       _feedback = _ShopFeedback(
-        tone: restored
-            ? _ShopFeedbackTone.success
-            : _ShopFeedbackTone.warning,
+        tone: restored ? _ShopFeedbackTone.success : _ShopFeedbackTone.warning,
         title: loc.restorePurchases,
         message: restored
             ? loc.restorePurchasesSuccess
@@ -358,12 +342,12 @@ class _ShopHero extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF173B50), Color(0xFF255F72)],
+          colors: [Color(0xFF123E6B), Color(0xFF0C837E)],
         ),
         borderRadius: BorderRadius.circular(22),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x33173B50),
+            color: Color(0x33123E6B),
             blurRadius: 16,
             offset: Offset(0, 7),
           ),
@@ -415,7 +399,7 @@ class _ShopHero extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFFC7DCE3),
+                            color: Color(0xFFCFE4F5),
                             fontSize: 10,
                             height: 1.2,
                             fontWeight: FontWeight.w700,
@@ -551,8 +535,7 @@ class _CategoryBar extends StatelessWidget {
                 ),
               ),
             ),
-            if (category != _ShopCategory.values.last)
-              const SizedBox(width: 7),
+            if (category != _ShopCategory.values.last) const SizedBox(width: 7),
           ],
         ],
       ),
@@ -575,8 +558,7 @@ class _ShopGrid extends StatelessWidget {
             ? 2
             : 1;
         const gap = 12.0;
-        final width =
-            (constraints.maxWidth - gap * (columns - 1)) / columns;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -741,14 +723,8 @@ class _ShopFeedbackOverlay extends StatelessWidget {
         PoMarketPalette.mint,
         Icons.check_circle_rounded,
       ),
-      _ShopFeedbackTone.warning => (
-        PoMarketPalette.gold,
-        Icons.info_rounded,
-      ),
-      _ShopFeedbackTone.error => (
-        PoMarketPalette.coral,
-        Icons.error_rounded,
-      ),
+      _ShopFeedbackTone.warning => (PoMarketPalette.gold, Icons.info_rounded),
+      _ShopFeedbackTone.error => (PoMarketPalette.coral, Icons.error_rounded),
     };
     return Material(
       elevation: 12,
@@ -905,8 +881,7 @@ String _categoryLabel(
   _ShopCategory.rewards => loc.rewardedBonus,
   _ShopCategory.benefits => loc.permanentBenefits,
   _ShopCategory.offers => loc.starterOffers,
-  _ShopCategory.currency =>
-    _t(context, 'Currency', 'מטבעות', 'العملات'),
+  _ShopCategory.currency => _t(context, 'Currency', 'מטבעות', 'العملات'),
   _ShopCategory.supplies => loc.emergencySupplies,
 };
 

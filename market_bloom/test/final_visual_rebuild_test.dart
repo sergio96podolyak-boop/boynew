@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pomarket/game/daily_event_game_controller.dart';
@@ -27,14 +28,24 @@ void main(){
     expect(find.byIcon(Icons.close_rounded),findsOneWidget);expect(tester.takeException(),isNull);
   });
 
-  testWidgets('the dock spans the full width at every size',(tester)async{
+  testWidgets('the dock spans the bottom symmetrically at every size',(tester)async{
     // The trailing side rail was removed so one dock serves every breakpoint;
     // it should sit across the bottom rather than hugging one edge.
-    await _pumpApp(tester,const Size(900,700));
-    final dock=tester.getRect(find.byKey(const ValueKey('mobile-game-navigation')));final viewport=tester.getRect(find.byKey(const ValueKey('pomarket-app-shell')));
-    expect(dock.width,closeTo(viewport.width,1));
-    expect(dock.bottom,closeTo(viewport.bottom,1));
-    expect(tester.takeException(),isNull);
+    //
+    // The dock is now a floating capsule: inset from the screen edges, and
+    // capped to a comfortable measure so five slots do not spread across a
+    // desktop window. So this asserts the properties that actually matter — it
+    // is centred, symmetric, bottom-anchored, and fills the width up to the cap
+    // — instead of pinning it to the exact viewport rect.
+    for(final size in const[Size(320,568),Size(900,700),Size(1440,900)]){
+      await _pumpApp(tester,size);
+      final dock=tester.getRect(find.byKey(const ValueKey('mobile-game-navigation')));final viewport=tester.getRect(find.byKey(const ValueKey('pomarket-app-shell')));
+      final inset=size.width<420?8.0:12.0;
+      expect(dock.width,closeTo(math.min(viewport.width-inset*2,620),1),reason:'at $size');
+      expect(dock.left-viewport.left,closeTo(viewport.right-dock.right,1),reason:'at $size');
+      expect(viewport.bottom-dock.bottom,lessThanOrEqualTo(20),reason:'at $size');
+      expect(tester.takeException(),isNull,reason:'at $size');
+    }
   });
 
   testWidgets('HUD event and management title occupy separate vertical regions',(tester)async{

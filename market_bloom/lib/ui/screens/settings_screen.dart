@@ -57,8 +57,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     _feedback(
       value
-          ? _t(context, 'Audio feedback enabled', 'משוב השמע הופעל', 'تم تفعيل الصوت')
-          : _t(context, 'Audio feedback muted', 'משוב השמע הושתק', 'تم كتم الصوت'),
+          ? _t(
+              context,
+              'Audio feedback enabled',
+              'משוב השמע הופעל',
+              'تم تفعيل الصوت',
+            )
+          : _t(
+              context,
+              'Audio feedback muted',
+              'משוב השמע הושתק',
+              'تم كتم الصوت',
+            ),
     );
   }
 
@@ -66,18 +76,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setControlMode(value);
     if (mounted) {
       _feedback(
-        _t(context, 'Control mode updated', 'מצב השליטה עודכן', 'تم تحديث وضع التحكم'),
+        _t(
+          context,
+          'Control mode updated',
+          'מצב השליטה עודכן',
+          'تم تحديث وضع التحكم',
+        ),
       );
     }
   }
 
   Future<void> _setLanguage(String value) async {
-    await widget.settings.setLanguage(
-      value == 'system' ? null : Locale(value),
-    );
+    await widget.settings.setLanguage(value == 'system' ? null : Locale(value));
     if (mounted) {
       _feedback(
-        _t(context, 'Language preference updated', 'העדפת השפה עודכנה', 'تم تحديث تفضيل اللغة'),
+        _t(
+          context,
+          'Language preference updated',
+          'העדפת השפה עודכנה',
+          'تم تحديث تفضيل اللغة',
+        ),
       );
     }
   }
@@ -87,8 +105,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     _feedback(
       value
-          ? _t(context, 'Reduced motion enabled', 'תנועה מצומצמת הופעלה', 'تم تفعيل تقليل الحركة')
-          : _t(context, 'Standard motion restored', 'התנועה הרגילה הוחזרה', 'تمت استعادة الحركة العادية'),
+          ? _t(
+              context,
+              'Reduced motion enabled',
+              'תנועה מצומצמת הופעלה',
+              'تم تفعيل تقليل الحركة',
+            )
+          : _t(
+              context,
+              'Standard motion restored',
+              'התנועה הרגילה הוחזרה',
+              'تمت استعادة الحركة العادية',
+            ),
     );
   }
 
@@ -101,7 +129,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => _restoringPurchases = false);
     final loc = AppLocalizations.of(context);
-    _feedback(restored ? loc.restorePurchasesSuccess : loc.restorePurchasesNone);
+    _feedback(
+      restored ? loc.restorePurchasesSuccess : loc.restorePurchasesNone,
+    );
   }
 
   @override
@@ -170,9 +200,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   currentLabel: controlLabel,
                   value: settings.controlMode,
                   options: [
-                    _ChoiceOption(ControlMode.directTouch, loc.directTouch, Icons.touch_app_rounded),
-                    _ChoiceOption(ControlMode.joystick, loc.floatingJoystick, Icons.gamepad_rounded),
-                    _ChoiceOption(ControlMode.leftJoystick, loc.leftHandedJoystick, Icons.swipe_left_alt_rounded),
+                    _ChoiceOption(
+                      ControlMode.directTouch,
+                      loc.directTouch,
+                      Icons.touch_app_rounded,
+                    ),
+                    _ChoiceOption(
+                      ControlMode.joystick,
+                      loc.floatingJoystick,
+                      Icons.gamepad_rounded,
+                    ),
+                    _ChoiceOption(
+                      ControlMode.leftJoystick,
+                      loc.leftHandedJoystick,
+                      Icons.swipe_left_alt_rounded,
+                    ),
                   ],
                   onChanged: _setControlMode,
                 ),
@@ -226,10 +268,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ? 'system'
                       : settings.language?.languageCode ?? 'en',
                   options: [
-                    _ChoiceOption('system', loc.systemDefault, Icons.settings_suggest_rounded),
+                    _ChoiceOption(
+                      'system',
+                      loc.systemDefault,
+                      Icons.settings_suggest_rounded,
+                    ),
                     _ChoiceOption('en', loc.english, Icons.translate_rounded),
-                    _ChoiceOption('he', loc.hebrew, Icons.format_textdirection_r_to_l_rounded),
-                    _ChoiceOption('ar', loc.arabic, Icons.format_textdirection_r_to_l_rounded),
+                    _ChoiceOption(
+                      'he',
+                      loc.hebrew,
+                      Icons.format_textdirection_r_to_l_rounded,
+                    ),
+                    _ChoiceOption(
+                      'ar',
+                      loc.arabic,
+                      Icons.format_textdirection_r_to_l_rounded,
+                    ),
                   ],
                   onChanged: _setLanguage,
                 ),
@@ -250,7 +304,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               key: const ValueKey('settings-section-data'),
               icon: Icons.storage_rounded,
               color: PoMarketPalette.gold,
-              title: _t(context, 'Saves and data', 'שמירות ונתונים', 'الحفظ والبيانات'),
+              title: _t(
+                context,
+                'Saves and data',
+                'שמירות ונתונים',
+                'الحفظ والبيانات',
+              ),
               subtitle: _t(
                 context,
                 'Status and actions already available in the game',
@@ -262,7 +321,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   key: const ValueKey('settings-local-save'),
                   icon: Icons.save_rounded,
                   color: PoMarketPalette.gold,
-                  title: _t(context, 'Game progress', 'התקדמות במשחק', 'تقدم اللعبة'),
+                  title: _t(
+                    context,
+                    'Game progress',
+                    'התקדמות במשחק',
+                    'تقدم اللعبة',
+                  ),
                   description: _t(
                     context,
                     'Progress is stored by the existing local save system.',
@@ -285,7 +349,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   actionLabel: _restoringPurchases
                       ? _t(context, 'Restoring…', 'משחזר…', 'جارٍ الاستعادة…')
                       : loc.restorePurchases,
-                  onPressed: widget.controller.storePurchasesAvailable &&
+                  onPressed:
+                      widget.controller.storePurchasesAvailable &&
                           !_restoringPurchases
                       ? _restorePurchases
                       : null,
@@ -297,7 +362,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.info_outline_rounded,
               color: PoMarketPalette.blue,
               title: loc.about,
-              subtitle: _t(context, 'Application information', 'מידע על האפליקציה', 'معلومات التطبيق'),
+              subtitle: _t(
+                context,
+                'Application information',
+                'מידע על האפליקציה',
+                'معلومات التطبيق',
+              ),
               children: [
                 _InformationSettingTile(
                   key: const ValueKey('settings-app-version'),
@@ -310,7 +380,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'בנו, מלאו ופתחו את המרקט הקטן שלכם.',
                     'ابنِ وجهّز وطوّر متجرك الصغير.',
                   ),
-                  status: _version.isEmpty ? loc.version : '${loc.version} $_version',
+                  status: _version.isEmpty
+                      ? loc.version
+                      : '${loc.version} $_version',
                 ),
               ],
             ),
@@ -335,7 +407,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           'העדפות PoMarket הנוכחיות שלכם במבט מהיר',
                           'تفضيلات PoMarket الحالية بنظرة سريعة',
                         ),
-                        colors: const [Color(0xFF173D35), Color(0xFF2D7863)],
+                        colors: const [Color(0xFF1C3A32), Color(0xFF0C837E)],
                         metrics: [
                           ManagementHeroMetric(
                             icon: settings.soundEnabled
@@ -366,7 +438,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       constraints: const BoxConstraints(maxWidth: 880),
                       child: Column(
                         children: [
-                          for (var index = 0; index < sections.length; index++) ...[
+                          for (
+                            var index = 0;
+                            index < sections.length;
+                            index++
+                          ) ...[
                             sections[index],
                             if (index != sections.length - 1)
                               const SizedBox(height: 22),
@@ -499,11 +575,7 @@ class _SettingIdentity extends StatelessWidget {
 }
 
 class _SettingTileLayout extends StatelessWidget {
-  const _SettingTileLayout({
-    required this.identity,
-    this.status,
-    this.control,
-  });
+  const _SettingTileLayout({required this.identity, this.status, this.control});
 
   final Widget identity;
   final Widget? status;
@@ -674,7 +746,9 @@ class _ActionSettingTile extends StatelessWidget {
         status: ManagementStatusPill(
           label: status,
           color: statusColor,
-          icon: onPressed == null ? Icons.block_rounded : Icons.check_circle_rounded,
+          icon: onPressed == null
+              ? Icons.block_rounded
+              : Icons.check_circle_rounded,
         ),
         control: PressableScale(
           enabled: onPressed != null,
@@ -684,12 +758,18 @@ class _ActionSettingTile extends StatelessWidget {
               minimumSize: const Size(112, 48),
               backgroundColor: color,
               foregroundColor: Colors.white,
-              disabledBackgroundColor: PoMarketPalette.muted.withValues(alpha: 0.28),
+              disabledBackgroundColor: PoMarketPalette.muted.withValues(
+                alpha: 0.28,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
               ),
             ),
-            child: Text(actionLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: Text(
+              actionLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
       ),
@@ -766,7 +846,9 @@ class _ChoiceSettingTile<T> extends StatelessWidget {
                             : PoMarketPalette.line,
                       ),
                       labelStyle: TextStyle(
-                        color: value == option.value ? color : PoMarketPalette.ink,
+                        color: value == option.value
+                            ? color
+                            : PoMarketPalette.ink,
                         fontWeight: value == option.value
                             ? FontWeight.w900
                             : FontWeight.w700,
@@ -799,11 +881,12 @@ String _languageLabel(AppSettings settings, AppLocalizations loc) {
   };
 }
 
-String _controlLabel(AppLocalizations loc, ControlMode value) => switch (value) {
-  ControlMode.directTouch => loc.directTouch,
-  ControlMode.joystick => loc.floatingJoystick,
-  ControlMode.leftJoystick => loc.leftHandedJoystick,
-};
+String _controlLabel(AppLocalizations loc, ControlMode value) =>
+    switch (value) {
+      ControlMode.directTouch => loc.directTouch,
+      ControlMode.joystick => loc.floatingJoystick,
+      ControlMode.leftJoystick => loc.leftHandedJoystick,
+    };
 
 String _t(BuildContext context, String en, String he, String ar) =>
     switch (Localizations.localeOf(context).languageCode) {

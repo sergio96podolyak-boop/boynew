@@ -87,12 +87,12 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
   List<_ConfettiParticle> _makeParticles(int seed) {
     final random = Random(731 + seed);
     const colors = [
-      Color(0xFFF6A623),
-      Color(0xFF38B879),
-      Color(0xFF5B8DEF),
-      Color(0xFFE85D75),
-      Color(0xFF8B66D8),
-      Color(0xFFFFD95A),
+      Color(0xFFFFCB45),
+      Color(0xFF2FD98F),
+      Color(0xFF62B4FF),
+      Color(0xFFEE4664),
+      Color(0xFF6234E0),
+      Color(0xFFFFCB45),
     ];
     return List.generate(56, (index) {
       return _ConfettiParticle(

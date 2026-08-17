@@ -27,10 +27,8 @@ class QuestsScreen extends StatelessWidget {
             quest.completed,
           ].where((completed) => completed).length;
           final readyToClaimCount = <bool>[
-            controller.shiftMissionCompleted &&
-                !controller.shiftMissionClaimed,
-            controller.dailyMissionCompleted &&
-                !controller.dailyMissionClaimed,
+            controller.shiftMissionCompleted && !controller.shiftMissionClaimed,
+            controller.dailyMissionCompleted && !controller.dailyMissionClaimed,
             quest.completed,
           ].where((ready) => ready).length;
           final unclaimedReward =
@@ -52,7 +50,7 @@ class QuestsScreen extends StatelessWidget {
                     he: 'יעדים ברורים, התקדמות גלויה ופרסים שימושיים',
                     ar: 'أهداف واضحة وتقدم ظاهر ومكافآت مفيدة',
                   ),
-                  colors: const [Color(0xFF4A3514), Color(0xFFB77718)],
+                  colors: const [Color(0xFF7A4E06), Color(0xFFB06A04)],
                   metrics: [
                     ManagementHeroMetric(
                       icon: Icons.task_alt_rounded,
@@ -234,11 +232,7 @@ class QuestsScreen extends StatelessWidget {
     );
   }
 
-  void _claimMission(
-    BuildContext context,
-    bool Function() claim,
-    int reward,
-  ) {
+  void _claimMission(BuildContext context, bool Function() claim, int reward) {
     if (!claim()) return;
     _showReward(context, AppLocalizations.of(context), reward);
   }
@@ -331,12 +325,7 @@ class _QuestSummary extends StatelessWidget {
               runSpacing: 8,
               children: [
                 ManagementInfoTile(
-                  label: _term(
-                    context,
-                    en: 'Active',
-                    he: 'פעילות',
-                    ar: 'نشطة',
-                  ),
+                  label: _term(context, en: 'Active', he: 'פעילות', ar: 'نشطة'),
                   value: '$activeCount',
                   icon: Icons.flag_rounded,
                   color: PoMarketPalette.blue,
@@ -536,7 +525,8 @@ class _QuestProgressCardState extends State<_QuestProgressCard> {
                             color: statusColor,
                           ),
                           ManagementStatusPill(
-                            label: '${widget.loc.missionReward} ${widget.reward}',
+                            label:
+                                '${widget.loc.missionReward} ${widget.reward}',
                             color: PoMarketPalette.gold,
                             icon: Icons.card_giftcard_rounded,
                           ),
@@ -873,7 +863,11 @@ class _CompletionSparkles extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(Icons.auto_awesome_rounded, color: PoMarketPalette.gold, size: 15),
+          Icon(
+            Icons.auto_awesome_rounded,
+            color: PoMarketPalette.gold,
+            size: 15,
+          ),
           SizedBox(width: 3),
           Icon(Icons.star_rounded, color: PoMarketPalette.mint, size: 11),
         ],

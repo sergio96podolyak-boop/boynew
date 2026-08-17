@@ -41,7 +41,7 @@ class UpgradesScreen extends StatelessWidget {
                     'طوّر متجرك',
                   ),
                   subtitle: loc.investToServe,
-                  colors: const [Color(0xFF173D35), Color(0xFF2D7863)],
+                  colors: const [Color(0xFF1C3A32), Color(0xFF0C837E)],
                   metrics: [
                     ManagementHeroMetric(
                       icon: Icons.monetization_on_rounded,
@@ -262,9 +262,7 @@ class _UpgradeCard extends StatelessWidget {
                       ? PoMarketPalette.forestLight
                       : PoMarketPalette.muted,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      PoMarketRadii.control,
-                    ),
+                    borderRadius: BorderRadius.circular(PoMarketRadii.control),
                   ),
                 ),
                 icon: Icon(

@@ -57,9 +57,7 @@ class DepartmentsScreen extends StatelessWidget {
               children: [
                 for (final definition in DepartmentCatalog.all)
                   _DepartmentCard(
-                    key: ValueKey(
-                      'department-card-${definition.type.name}',
-                    ),
+                    key: ValueKey('department-card-${definition.type.name}'),
                     definition: definition,
                     controller: controller,
                     loc: loc,
@@ -149,7 +147,7 @@ class _DepartmentCard extends StatelessWidget {
                           ],
                         )
                       : const LinearGradient(
-                          colors: [Color(0xFFE8EAE5), Color(0xFFDADFD8)],
+                          colors: [Color(0xFFE8EFEA), Color(0xFFD3DFD8)],
                         ),
                 ),
                 child: Row(
@@ -215,9 +213,7 @@ class _DepartmentCard extends StatelessWidget {
                       label: unlocked
                           ? '${loc.unlocked} · ${loc.level} ${state.level}'
                           : loc.locked,
-                      color: unlocked
-                          ? Colors.white
-                          : PoMarketPalette.muted,
+                      color: unlocked ? Colors.white : PoMarketPalette.muted,
                       icon: unlocked
                           ? Icons.check_circle_rounded
                           : Icons.lock_rounded,
