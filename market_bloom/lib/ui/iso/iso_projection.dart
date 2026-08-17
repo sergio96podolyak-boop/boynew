@@ -22,14 +22,17 @@ class IsoProjection {
     // The diamond is as wide as the board and a little over half as tall, which
     // leaves the upper band free for wall height without cropping the front
     // corner.
-    final tileWidth = size.width * 1.02;
-    final tileHeight = size.height * 0.62;
-    final wallRoom = size.height * 0.22;
+    // Fill the board: a wide diamond that uses nearly the whole width and most
+    // of the height, so the shop reads as big and immersive rather than a small
+    // model sitting in empty space.
+    final tileWidth = size.width * 1.16;
+    final tileHeight = size.height * 0.74;
+    final wallRoom = size.height * 0.16;
     return IsoProjection(
       origin: Offset(size.width / 2, wallRoom),
       tileWidth: tileWidth,
       tileHeight: tileHeight,
-      unitHeight: size.height * 0.22,
+      unitHeight: size.height * 0.24,
       scale: math.min(size.width, size.height) / 380,
     );
   }

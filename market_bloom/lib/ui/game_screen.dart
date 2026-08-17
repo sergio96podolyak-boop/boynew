@@ -297,10 +297,13 @@ class _GameScreenState extends State<GameScreen>
                         Expanded(
                           child: LayoutBuilder(
                             builder: (context, constraints) {
+                              // Let the board grow tall on phones so it fills
+                              // the space under the HUD instead of floating as a
+                              // small square with dead margins above and below.
                               final availableRatio =
                                   constraints.maxWidth / constraints.maxHeight;
                               final boardAspectRatio =
-                                  availableRatio.clamp(0.60, 1.08);
+                                  availableRatio.clamp(0.50, 1.08);
                               return Center(
                                 child: AspectRatio(
                                   aspectRatio: boardAspectRatio,

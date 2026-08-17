@@ -647,8 +647,10 @@ class IsoMarketPainter extends CustomPainter {
       outline: false,
     );
 
-    // Products in two dense columns, brightly coloured with a lighter cap so
-    // each item catches the light.
+    // Recognisable products in two dense columns. The item shape follows the
+    // aisle category — bottles in drinks, boxes with a label in snacks and
+    // household, fruit in crates in produce — so the shelves read as a real
+    // shop, not rows of coloured cubes.
     const cols = 2;
     final gap = 0.011;
     final colW = (width - gap * (cols + 1)) / cols;
@@ -660,19 +662,7 @@ class IsoMarketPainter extends CustomPainter {
         final cx = x + gap + c * (colW + gap);
         final seed = r * cols + c + (x * 53).round() + category * 7;
         final colour = theme.products[seed % theme.products.length];
-        final h = 0.052 + (seed % 3) * 0.007;
-        brush.box(
-          canvas,
-          x0: cx,
-          y0: cy,
-          x1: cx + colW,
-          y1: cy + 0.022,
-          base: deckHeight,
-          height: h,
-          color: colour,
-          topColor: IsoLight.lift(colour, 0.30),
-          outline: false,
-        );
+        _product(canvas, brush, cx, cy, colW, deckHeight, colour, category, seed);
       }
     }
 
@@ -690,6 +680,110 @@ class IsoMarketPainter extends CustomPainter {
       topColor: IsoLight.lift(theme.trim, 0.25),
       outline: false,
     );
+  }
+
+  /// One recognisable grocery item on a shelf slot [cx],[cy] of width [w],
+  /// standing on the deck at height [base]. Shape depends on the aisle
+  /// [category]; [seed] adds small per-item variation.
+  void _product(
+    Canvas canvas,
+    IsoBrush brush,
+    double cx,
+    double cy,
+    double w,
+    double base,
+    Color color,
+    int category,
+    int seed,
+  ) {
+    const d = 0.022; // slot depth
+    switch (category) {
+      case 2: // Drinks — a bottle: slim body, white label band, dark cap.
+        final bx0 = cx + w * 0.30;
+        final bx1 = cx + w * 0.70;
+        brush.box(
+          canvas,
+          x0: bx0,
+          y0: cy + d * 0.16,
+          x1: bx1,
+          y1: cy + d * 0.84,
+          base: base,
+          height: 0.052,
+          color: color,
+          topColor: IsoLight.lift(color, 0.28),
+          outline: false,
+        );
+        brush.box(
+          canvas,
+          x0: bx0,
+          y0: cy + d * 0.16,
+          x1: bx1,
+          y1: cy + d * 0.84,
+          base: base + 0.02,
+          height: 0.012,
+          color: Colors.white.withValues(alpha: 0.9),
+          outline: false,
+        );
+        brush.box(
+          canvas,
+          x0: cx + w * 0.40,
+          y0: cy + d * 0.34,
+          x1: cx + w * 0.60,
+          y1: cy + d * 0.66,
+          base: base + 0.052,
+          height: 0.014,
+          color: IsoLight.shade(color, 0.55),
+          outline: false,
+        );
+      case 0: // Produce — a shallow crate heaped with round fruit.
+        brush.box(
+          canvas,
+          x0: cx,
+          y0: cy,
+          x1: cx + w,
+          y1: cy + d,
+          base: base,
+          height: 0.018,
+          color: const Color(0xFF9C6B3C),
+          outline: false,
+        );
+        for (var i = 0; i < 2; i++) {
+          brush.sphere(
+            canvas,
+            x: cx + w * (0.32 + 0.36 * i),
+            y: cy + d * 0.5,
+            z: base + 0.03,
+            radius: w * 0.62,
+            color: i.isEven ? color : IsoLight.lift(color, 0.18),
+          );
+        }
+      default: // Snacks / household — a box with a bright label panel.
+        final h = 0.05 + (seed % 3) * 0.006;
+        brush.box(
+          canvas,
+          x0: cx,
+          y0: cy,
+          x1: cx + w,
+          y1: cy + d,
+          base: base,
+          height: h,
+          color: color,
+          topColor: IsoLight.lift(color, 0.30),
+          outline: false,
+        );
+        // Label band wrapped around the box just below the top.
+        brush.box(
+          canvas,
+          x0: cx,
+          y0: cy,
+          x1: cx + w,
+          y1: cy + d,
+          base: base + h * 0.42,
+          height: h * 0.30,
+          color: Colors.white.withValues(alpha: 0.82),
+          outline: false,
+        );
+    }
   }
 
   void _fridge(
