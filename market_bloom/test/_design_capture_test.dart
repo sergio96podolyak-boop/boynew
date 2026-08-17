@@ -44,6 +44,9 @@ Future<GameController> _game({int coins = 4200}) async {
   controller.acknowledgeDailyBonus();
   controller.coins = coins;
   controller.gems = 38;
+  // Stocked shelves and a few shoppers: judging the world art on an empty shop
+  // with no customers is judging the wrong thing.
+  controller.shelfStock = 10;
   return controller;
 }
 

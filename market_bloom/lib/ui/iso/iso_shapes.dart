@@ -77,6 +77,59 @@ class IsoBrush {
   ///
   /// [x0]/[y0] is the far corner and [x1]/[y1] the near one; [height] is in
   /// world-z units. Only the three camera-facing surfaces are emitted.
+  /// Directional cast shadow for a box footprint.
+  ///
+  /// A soft ellipse under a prop says "this floats"; a sheared quad thrown away
+  /// from a fixed key light says "this is lit". One consistent light direction
+  /// across every fixture is the cheapest way to make a procedural scene read
+  /// as a single physical space.
+  void castShadow(
+    Canvas canvas, {
+    required double x0,
+    required double y0,
+    required double x1,
+    required double y1,
+    required double height,
+    double opacity = 0.30,
+  }) {
+    // Key light comes from over the camera's left shoulder, so shadows fall
+    // down-right in world space, lengthening with the caster's height.
+    final throwX = height * 0.55;
+    final throwY = height * 0.28;
+    final corners = <Offset>[
+      Offset(x0, y0),
+      Offset(x1, y0),
+      Offset(x1, y1),
+      Offset(x0, y1),
+    ];
+    final path = Path();
+    for (var i = 0; i < corners.length; i++) {
+      final c = corners[i];
+      // The far edge of the footprint stays put; the near edge is pushed out,
+      // which is what shears the quad rather than just translating it.
+      final lean = (c.dx - x0) / math.max(0.0001, x1 - x0);
+      final at = projection.project(
+        c.dx + throwX * (0.35 + 0.65 * lean),
+        c.dy + throwY,
+      );
+      if (i == 0) {
+        path.moveTo(at.dx, at.dy);
+      } else {
+        path.lineTo(at.dx, at.dy);
+      }
+    }
+    path.close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFF0A2419).withValues(alpha: opacity)
+        ..maskFilter = MaskFilter.blur(
+          BlurStyle.normal,
+          math.max(1.5, 3 * projection.scale),
+        ),
+    );
+  }
+
   void box(
     Canvas canvas, {
     required double x0,

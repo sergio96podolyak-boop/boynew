@@ -45,13 +45,17 @@ class IsoMarketPainter extends CustomPainter {
   // Light walls that recede as backdrop. Dark walls dominated the frame and
   // made the shop feel like a basement; commercial tycoon boards use bright,
   // near-white interiors.
-  static const _wallBack = Color(0xFFCFE9DA);
-  static const _wallSide = Color(0xFFA8D2C1);
+  static const _wallUpper = Color(0xFFE8F2EC);
+  static const _wallLower = Color(0xFFBFD9CC);
+  static const _wallJoint = Color(0x33607A6E);
+  static const _wallSkirt = Color(0xFF5E7C70);
+  static const _wallCap = Color(0xFFF6FBF8);
   static const _fridgeBody = Color(0xFF3D8FC4);
   static const _counterBody = Color(0xFF3C4F58);
   static const _crateBody = Color(0xFFB07C43);
   static const _bakeryBody = Color(0xFFE0A542);
   static const _accentGold = Color(0xFFFFC33D);
+  static const _promoRed = Color(0xFFE8503F);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -69,6 +73,7 @@ class IsoMarketPainter extends CustomPainter {
     _paintFloor(canvas, brush, projection);
     _paintCeilingLights(canvas, projection);
     _paintFloorDecals(canvas, brush, projection);
+    _paintAffordances(canvas, brush, projection);
 
     // Everything that stands up is depth-sorted together so props and people
     // occlude each other correctly regardless of draw order in code.
@@ -84,6 +89,9 @@ class IsoMarketPainter extends CustomPainter {
     // whenever it stands behind a gondola, and losing track of your own
     // character mid-shift is worse than the small break in realism.
     _paintPlayer(canvas, brush);
+    if (game.shelfStock < 3) {
+      _alertMarker(canvas, projection, GameController.shelfZone, 0.74);
+    }
     _paintZoneLabels(canvas, projection);
     _paintFloatingEffects(canvas, projection);
 
@@ -103,17 +111,17 @@ class IsoMarketPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
         text: TextSpan(
           text: text,
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
-            fontSize: 10,
+            fontSize: math.max(7, 8.5 * p.scale),
             fontWeight: FontWeight.w900,
-            letterSpacing: 0.6,
+            letterSpacing: 0.5,
             height: 1,
           ),
         ),
       )..layout();
-      final w = painter.width + 16 * p.scale;
-      final h = painter.height + 8 * p.scale;
+      final w = painter.width + 20 * p.scale;
+      final h = painter.height + 6 * p.scale;
       final rect = Rect.fromCenter(
         center: Offset(anchor.dx, anchor.dy),
         width: w,
@@ -122,39 +130,44 @@ class IsoMarketPainter extends CustomPainter {
       final rrect = RRect.fromRectAndRadius(rect, Radius.circular(h / 2));
       canvas.drawRRect(
         rrect.shift(Offset(0, 1.5 * p.scale)),
-        Paint()..color = const Color(0x5504211A),
+        Paint()..color = const Color(0x4404211A),
       );
       canvas.drawRRect(
         rrect,
-        Paint()
-          ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, [
-            color,
-            IsoLight.shade(color, 0.7),
-          ]),
+        Paint()..color = const Color(0xE60D2A21),
       );
       canvas.drawRRect(
         rrect,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = math.max(0.8, 1 * p.scale)
-          ..color = Colors.white.withValues(alpha: 0.28),
+          ..color = color.withValues(alpha: 0.75),
+      );
+      // Zone colour reads from the dot, so the tag itself can stay quiet.
+      canvas.drawCircle(
+        Offset(rect.left + h * 0.42, rect.center.dy),
+        h * 0.16,
+        Paint()..color = color,
       );
       painter.paint(
         canvas,
-        Offset(anchor.dx - painter.width / 2, anchor.dy - painter.height / 2),
+        Offset(
+          rect.left + h * 0.72,
+          anchor.dy - painter.height / 2,
+        ),
       );
     }
 
-    tag(GameController.stockZone, 0.24, storageLabel, const Color(0xFF4A6B76));
-    tag(GameController.shelfZone, 0.30, shelfLabel, const Color(0xFF2F7B58));
+    tag(GameController.stockZone, 0.56, storageLabel, const Color(0xFF4A6B76));
+    tag(GameController.shelfZone, 0.62, shelfLabel, const Color(0xFF2F7B58));
     tag(
       GameController.checkoutZone,
-      0.26,
+      0.54,
       checkoutLabel,
       const Color(0xFF3C4F58),
     );
     if (game.bakeryUnlocked) {
-      tag(GameController.bakeryZone, 0.28, bakeryLabel, _bakeryBody);
+      tag(GameController.bakeryZone, 0.58, bakeryLabel, _bakeryBody);
     }
   }
 
@@ -168,82 +181,189 @@ class IsoMarketPainter extends CustomPainter {
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          // Brand-tinted ramp. A neutral grey surround left roughly a third of
-          // the board screen visually dead, which is the main reason the market
-          // read as flat next to the colourful fixtures.
-          colors: [Color(0xFFDFF1E7), Color(0xFFB4D9C7)],
+          // Matched to the apron so the room has no visible outer edge: a
+          // hard seam around the floor is what made the shop read as a model
+          // sitting on a table rather than a space you are standing in.
+          colors: [Color(0xFF9DBBAD), Color(0xFFAFC8BB)],
         ).createShader(rect),
     );
   }
 
+  /// The shop's architecture: two full-height walls, wainscot, brand fascia,
+  /// signage and a back-of-house doorway.
+  ///
+  /// The walls used to be 0.15 units — a kerb, not a room — so the shop read as
+  /// props scattered on an open plane. Real height gives the scene a back, and
+  /// a back is what turns a diagram into an interior.
   void _paintWalls(Canvas canvas, IsoBrush brush, IsoProjection p) {
-    // Low walls. Full-height ones met at the far corner and read as a tent
-    // pitched over the shop rather than as the back of a room.
-    const height = 0.15;
-    final paint = Paint()..isAntiAlias = true;
-
-    // Walls run along the back edges of the extended room, not the play field,
-    // so the room reads as fully enclosed rather than as a raised platform.
+    const h = IsoProjection.wallHeight;
+    const wainscot = 0.42;
     const m = IsoProjection.roomMargin;
     const lo = -m;
     const hi = 1 + m;
+    final paint = Paint()..isAntiAlias = true;
 
-    // Back-right wall lies along y = lo; back-left along x = lo.
-    Path wall(Offset a, Offset b) => Path()
-      ..moveTo(p.projectOffset(a).dx, p.projectOffset(a).dy)
-      ..lineTo(p.projectOffset(b).dx, p.projectOffset(b).dy)
-      ..lineTo(p.projectOffset(b, height).dx, p.projectOffset(b, height).dy)
-      ..lineTo(p.projectOffset(a, height).dx, p.projectOffset(a, height).dy)
+    Path band(Offset a, Offset b, double z0, double z1) => Path()
+      ..moveTo(p.projectOffset(a, z0).dx, p.projectOffset(a, z0).dy)
+      ..lineTo(p.projectOffset(b, z0).dx, p.projectOffset(b, z0).dy)
+      ..lineTo(p.projectOffset(b, z1).dx, p.projectOffset(b, z1).dy)
+      ..lineTo(p.projectOffset(a, z1).dx, p.projectOffset(a, z1).dy)
       ..close();
 
-    final right = wall(const Offset(lo, lo), const Offset(hi, lo));
-    final left = wall(const Offset(lo, lo), const Offset(lo, hi));
+    // Two runs: back-right along y = lo, back-left along x = lo. Each is shaded
+    // differently because they face different ways relative to the key light.
+    final runs = <({Offset a, Offset b, double shade})>[
+      (a: const Offset(lo, lo), b: const Offset(hi, lo), shade: 1.0),
+      (a: const Offset(lo, lo), b: const Offset(lo, hi), shade: 0.86),
+    ];
 
-    paint.color = _wallSide;
-    canvas.drawPath(right, paint);
-    paint.color = _wallBack;
-    canvas.drawPath(left, paint);
+    for (final run in runs) {
+      Color tone(Color c) => IsoLight.shade(c, run.shade);
 
-    // Skirting plus the gradient that anchors each wall to the floor.
-    for (final entry in [
-      (right, const Offset(lo, lo), const Offset(hi, lo)),
-      (left, const Offset(lo, lo), const Offset(lo, hi)),
-    ]) {
-      final a = p.projectOffset(entry.$2);
-      final b = p.projectOffset(entry.$3);
-      canvas.save();
-      canvas.clipPath(entry.$1);
+      // Upper painted wall.
+      paint
+        ..shader = null
+        ..color = tone(_wallUpper);
+      canvas.drawPath(band(run.a, run.b, wainscot, h), paint);
+
+      // Lower tiled wainscot, darker so the floor line reads.
+      paint.color = tone(_wallLower);
+      canvas.drawPath(band(run.a, run.b, 0, wainscot), paint);
+
+      // Vertical tile joints on the wainscot.
+      final joints = Paint()
+        ..color = tone(_wallLower).withValues(alpha: 0.0)
+        ..blendMode = BlendMode.srcOver;
+      joints.color = IsoLight.shade(_wallJoint, run.shade);
+      joints.strokeWidth = math.max(0.6, 0.8 * p.scale);
+      final horizontal = run.b.dx - run.a.dx != 0;
+      for (var i = 1; i < 26; i++) {
+        final t = i / 26;
+        final at = horizontal
+            ? Offset(run.a.dx + (run.b.dx - run.a.dx) * t, run.a.dy)
+            : Offset(run.a.dx, run.a.dy + (run.b.dy - run.a.dy) * t);
+        canvas.drawLine(
+          p.projectOffset(at, 0),
+          p.projectOffset(at, wainscot),
+          joints,
+        );
+      }
+
+      // Brand fascia running the length of the wall at head height.
+      paint.color = IsoLight.shade(_accentGold, run.shade);
       canvas.drawPath(
-        entry.$1,
+        band(run.a, run.b, wainscot, wainscot + 0.055),
+        paint,
+      );
+      paint.color = IsoLight.shade(_wallCap, run.shade);
+      canvas.drawPath(band(run.a, run.b, h - 0.06, h), paint);
+
+      // Skirting where the wall meets the floor.
+      paint.color = IsoLight.shade(_wallSkirt, run.shade);
+      canvas.drawPath(band(run.a, run.b, 0, 0.045), paint);
+
+      // Ambient occlusion up from the floor line, then a light wash down from
+      // the ceiling: the pair is what stops a large flat wall looking like a
+      // sheet of paper.
+      final foot = p.projectOffset(run.a);
+      final head = p.projectOffset(run.a, h);
+      canvas.save();
+      canvas.clipPath(band(run.a, run.b, 0, h));
+      canvas.drawPath(
+        band(run.a, run.b, 0, h),
         Paint()
           ..shader = ui.Gradient.linear(
-            Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2),
-            Offset(
-              (a.dx + b.dx) / 2,
-              (a.dy + b.dy) / 2 - height * p.unitHeight,
-            ),
-            [const Color(0x5507231B), const Color(0x0007231B)],
+            Offset(foot.dx, foot.dy),
+            Offset(foot.dx, head.dy),
+            [const Color(0x4A06231A), const Color(0x0006231A)],
+          ),
+      );
+      canvas.drawPath(
+        band(run.a, run.b, 0, h),
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..shader = ui.Gradient.linear(
+            Offset(head.dx, head.dy),
+            Offset(head.dx, foot.dy),
+            [const Color(0x22FFF4DA), const Color(0x00FFF4DA)],
           ),
       );
       canvas.restore();
+    }
+
+    // Back-of-house doorway on the left wall — a dark opening reading as depth
+    // beyond the room.
+    paint
+      ..shader = null
+      ..color = const Color(0xFF14312A);
+    canvas.drawPath(
+      band(const Offset(lo, 0.30), const Offset(lo, 0.62), 0, 0.86),
+      paint,
+    );
+    paint.color = const Color(0xFF0A1F19);
+    canvas.drawPath(
+      band(const Offset(lo, 0.34), const Offset(lo, 0.58), 0, 0.80),
+      paint,
+    );
+    paint.color = _accentGold.withValues(alpha: 0.85);
+    canvas.drawPath(
+      band(const Offset(lo, 0.30), const Offset(lo, 0.62), 0.86, 0.90),
+      paint,
+    );
+
+    // Window band on the right wall, letting daylight into the room.
+    paint.color = const Color(0xFFBFE7F2);
+    canvas.drawPath(
+      band(const Offset(0.18, lo), const Offset(0.86, lo), 0.72, 1.16),
+      paint,
+    );
+    canvas.save();
+    canvas.clipPath(
+      band(const Offset(0.18, lo), const Offset(0.86, lo), 0.72, 1.16),
+    );
+    final winA = p.project(0.18, lo, 1.16);
+    final winB = p.project(0.18, lo, 0.72);
+    canvas.drawPath(
+      band(const Offset(0.18, lo), const Offset(0.86, lo), 0.72, 1.16),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(winA.dx, winA.dy),
+          Offset(winA.dx, winB.dy),
+          [const Color(0xFFF4FCFF), const Color(0xFF8FCBDE)],
+        ),
+    );
+    canvas.restore();
+    // Mullions.
+    final mullion = Paint()
+      ..color = _wallCap
+      ..strokeWidth = math.max(1.4, 2.2 * p.scale);
+    for (var i = 0; i <= 4; i++) {
+      final x = 0.18 + (0.86 - 0.18) * i / 4;
       canvas.drawLine(
-        a,
-        b,
-        Paint()
-          ..color = const Color(0xFF7E8C85)
-          ..strokeWidth = math.max(1.4, 2.4 * p.scale),
+        p.project(x, lo, 0.72),
+        p.project(x, lo, 1.16),
+        mullion,
       );
     }
+    canvas.drawLine(
+      p.project(0.18, lo, 1.16),
+      p.project(0.86, lo, 1.16),
+      mullion,
+    );
+
+    // Corner post where the two walls meet, so the join reads as built.
+    paint.color = _wallCap;
+    canvas.drawPath(
+      band(const Offset(lo, lo), const Offset(lo + 0.03, lo), 0, h),
+      paint,
+    );
   }
 
   // ------------------------------------------------------------------- floor
 
   void _paintFloor(Canvas canvas, IsoBrush brush, IsoProjection p) {
-    // The room floor reaches past the play field so it meets the frame edges,
-    // then the 0..1 field is laid on top as the lit shopping area. A small
-    // floating diamond in a black void was the biggest reason the board read as
-    // a prototype rather than a shop.
-    final room = p.extendedGroundPath(IsoProjection.roomMargin);
+    // Back-of-house apron reaching past the play field to the frame edges.
+    final room = p.roomPath();
     final roomBounds = room.getBounds();
     canvas.drawPath(
       room,
@@ -251,26 +371,32 @@ class IsoMarketPainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           Offset(roomBounds.center.dx, roomBounds.top),
           Offset(roomBounds.center.dx, roomBounds.bottom),
-          // Back-of-house apron. Previously a warm beige that filled roughly a
-          // third of the board with a dull, undesigned band; a cool slate-green
-          // reads as the shop's surround and lets the lit sales floor pop.
-          const [Color(0xFF97B7A8), Color(0xFFB6CFC2)],
+          const [Color(0xFF8FB0A2), Color(0xFFB0C9BD)],
         ),
     );
 
-    // Rim light where the apron meets the sales floor, so the lit field looks
-    // raised rather than pasted onto the apron.
-    canvas.drawPath(
-      p.groundPath(),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.6, 2.4 * p.scale)
-        ..color = Colors.white.withValues(alpha: 0.55),
-    );
+    // Apron tiling, on a coarser grid than the sales floor so the two surfaces
+    // read as different materials rather than one continuous plane.
+    canvas.save();
+    canvas.clipPath(room);
+    final apronSeam = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(0.5, 0.7 * p.scale)
+      ..color = const Color(0x1A0A2A1E);
+    const lo = -IsoProjection.farMargin;
+    const hi = 1 + IsoProjection.nearMargin;
+    for (var i = -2; i <= 17; i++) {
+      final t = i / 8;
+      canvas.drawLine(p.project(t, lo), p.project(t, hi), apronSeam);
+      canvas.drawLine(p.project(lo, t), p.project(hi, t), apronSeam);
+    }
+    canvas.restore();
 
     final ground = p.groundPath();
     final bounds = ground.getBounds();
 
+    // Sales floor: a polished light terrazzo, brighter toward the camera so the
+    // near half of the shop is the lit stage.
     canvas.drawPath(
       ground,
       Paint()
@@ -281,27 +407,74 @@ class IsoMarketPainter extends CustomPainter {
         ),
     );
 
-    // Checkerboard tiling in world space keeps the perspective honest — tiles
-    // narrow toward the far corner for free because the projection does it.
-    const divisions = 10;
-    final tile = Paint()..color = Colors.white.withValues(alpha: 0.16);
-    for (var ix = 0; ix < divisions; ix++) {
-      for (var iy = 0; iy < divisions; iy++) {
-        if ((ix + iy).isEven) continue;
-        brush.groundQuad(
-          canvas,
-          x0: ix / divisions,
-          y0: iy / divisions,
-          x1: (ix + 1) / divisions,
-          y1: (iy + 1) / divisions,
-          color: tile.color,
-        );
-      }
-    }
+    // Zone materials. A single checkerboard over the whole floor told the
+    // player nothing; different surfaces per area are how a real shop signals
+    // "this part of the room does a different job".
+    canvas.save();
+    canvas.clipPath(ground);
 
+    // Chiller aisle: cool grey, running the full left edge.
+    brush.groundQuad(
+      canvas,
+      x0: -0.02,
+      y0: -0.02,
+      x1: 0.16,
+      y1: 1.02,
+      color: const Color(0xFFDCE6E8),
+    );
+    // Bakery: warm boards.
+    brush.groundQuad(
+      canvas,
+      x0: GameController.bakeryZone.dx - 0.10,
+      y0: GameController.bakeryZone.dy - 0.12,
+      x1: GameController.bakeryZone.dx + 0.16,
+      y1: GameController.bakeryZone.dy + 0.14,
+      color: const Color(0xFFE6C79A),
+    );
+    // Checkout apron: a slightly darker service surface.
+    brush.groundQuad(
+      canvas,
+      x0: 0.52,
+      y0: -0.02,
+      x1: 1.02,
+      y1: 0.30,
+      color: const Color(0xFFDDE3DE),
+    );
+
+    // Circulation lane: the bright walkway the shopper follows from the door,
+    // round the aisles and to the tills. It is the scene's main line of
+    // movement and it was completely absent.
+    const laneColour = Color(0x40FFFFFF);
+    brush.groundQuad(
+      canvas,
+      x0: 0.30,
+      y0: 0.86,
+      x1: 1.02,
+      y1: 0.99,
+      color: laneColour,
+    );
+    brush.groundQuad(
+      canvas,
+      x0: 0.30,
+      y0: 0.02,
+      x1: 0.40,
+      y1: 0.99,
+      color: laneColour,
+    );
+    brush.groundQuad(
+      canvas,
+      x0: 0.66,
+      y0: 0.02,
+      x1: 0.76,
+      y1: 0.99,
+      color: laneColour,
+    );
+
+    // Tile grid, tighter than before so the floor has a real sense of scale.
+    const divisions = 14;
     final seam = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(0.5, 0.7 * p.scale)
+      ..strokeWidth = math.max(0.5, 0.6 * p.scale)
       ..color = _floorSeam;
     for (var i = 1; i < divisions; i++) {
       final t = i / divisions;
@@ -309,61 +482,246 @@ class IsoMarketPainter extends CustomPainter {
       canvas.drawLine(p.project(0, t), p.project(1, t), seam);
     }
 
-    // Warm pool over the middle of the shop floor.
-    canvas.save();
-    canvas.clipPath(ground);
+    // Specular sheen sweeping across the polished floor.
     canvas.drawRect(
       bounds,
       Paint()
         ..blendMode = BlendMode.plus
-        ..shader = ui.Gradient.radial(
-          p.project(0.45, 0.55),
-          bounds.width * 0.42,
-          [const Color(0x33FFDCA0), const Color(0x00FFDCA0)],
+        ..shader = ui.Gradient.linear(
+          bounds.topLeft,
+          bounds.bottomRight,
+          [
+            const Color(0x00FFFFFF),
+            const Color(0x1FFFFFFF),
+            const Color(0x00FFFFFF),
+          ],
+          const [0.25, 0.5, 0.78],
         ),
     );
     canvas.restore();
 
+    // Foreground falloff: the apron nearest the camera drops away into shadow
+    // so the frame closes rather than trailing off into flat colour.
+    canvas.drawPath(
+      room,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(roomBounds.center.dx, bounds.bottom),
+          Offset(roomBounds.center.dx, roomBounds.bottom),
+          const [Color(0x0004150F), Color(0x8C04150F)],
+        ),
+    );
+
+    // Rim light where the sales floor meets the apron, so the lit stage reads
+    // as raised out of the back-of-house.
     canvas.drawPath(
       ground,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.2, 2 * p.scale)
-        ..color = const Color(0x66452F16),
+        ..strokeWidth = math.max(1.6, 2.4 * p.scale)
+        ..color = Colors.white.withValues(alpha: 0.55),
     );
   }
 
-  /// Warm pools cast by overhead fixtures.
-  ///
-  /// Regularly spaced light on the floor is what reads as "a lit shop" rather
-  /// than "an evenly shaded diagram". The pools sit under the props so fixtures
-  /// still cast their own contact shadows on top.
+  /// Hanging light rig. Pools of light alone read as stains on the floor; the
+  /// fixtures themselves are what tell the player there is a ceiling up there.
   void _paintCeilingLights(Canvas canvas, IsoProjection p) {
-    final ground = p.groundPath();
-    canvas.save();
-    canvas.clipPath(ground);
     const spots = <Offset>[
-      Offset(0.28, 0.28),
-      Offset(0.72, 0.28),
-      Offset(0.28, 0.72),
-      Offset(0.72, 0.72),
-      Offset(0.5, 0.5),
+      Offset(0.24, 0.24),
+      Offset(0.74, 0.24),
+      Offset(0.24, 0.74),
+      Offset(0.74, 0.74),
+      Offset(0.49, 0.49),
     ];
+
+    // Floor pools first, clipped to the sales floor.
+    canvas.save();
+    canvas.clipPath(p.groundPath());
     for (final spot in spots) {
       final centre = p.project(spot.dx, spot.dy);
-      final radius = p.tileWidth * 0.22;
-      canvas.drawCircle(
-        centre,
-        radius,
+      final radius = p.tileWidth * 0.26;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: centre,
+          width: radius * 2,
+          height: radius * 1.05,
+        ),
         Paint()
           ..blendMode = BlendMode.plus
           ..shader = ui.Gradient.radial(centre, radius, [
-            const Color(0x2EFFE6B0),
-            const Color(0x00FFE6B0),
+            const Color(0x3AFFEBC2),
+            const Color(0x00FFEBC2),
           ]),
       );
     }
     canvas.restore();
+
+    // Then the fixtures, hanging from the rig.
+    const z = IsoProjection.ceilingHeight;
+    for (final spot in spots) {
+      final anchor = p.project(spot.dx, spot.dy, z + 0.14);
+      final lamp = p.project(spot.dx, spot.dy, z);
+      canvas.drawLine(
+        anchor,
+        lamp,
+        Paint()
+          ..color = const Color(0x99223A31)
+          ..strokeWidth = math.max(1, 1.4 * p.scale),
+      );
+      final r = p.tileWidth * 0.035;
+      // Shade: a shallow cone seen from slightly above.
+      canvas.drawPath(
+        Path()
+          ..moveTo(lamp.dx - r, lamp.dy)
+          ..lineTo(lamp.dx + r, lamp.dy)
+          ..lineTo(lamp.dx + r * 0.34, lamp.dy - r * 1.1)
+          ..lineTo(lamp.dx - r * 0.34, lamp.dy - r * 1.1)
+          ..close(),
+        Paint()..color = const Color(0xFF2C4C3F),
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(lamp.dx, lamp.dy),
+          width: r * 2,
+          height: r * 0.8,
+        ),
+        Paint()..color = const Color(0xFFFFF0C8),
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(lamp.dx, lamp.dy + r * 0.1),
+          width: r * 3.4,
+          height: r * 1.8,
+        ),
+        Paint()
+          ..blendMode = BlendMode.plus
+          ..shader = ui.Gradient.radial(
+            Offset(lamp.dx, lamp.dy),
+            r * 1.7,
+            [const Color(0x55FFE9B8), const Color(0x00FFE9B8)],
+          ),
+      );
+    }
+  }
+
+  /// Floor-level interaction affordances.
+  ///
+  /// The scene previously gave the player no spatial feedback at all: nothing
+  /// showed where they were heading, which zone was live, or which fixture
+  /// needed attention. These are drawn on the ground, under the fixtures, so
+  /// they read as markings in the world rather than as an overlay on top of it.
+  void _paintAffordances(Canvas canvas, IsoBrush brush, IsoProjection p) {
+    final t = game.totalPlaySeconds;
+    canvas.save();
+    canvas.clipPath(p.groundPath());
+
+    /// A pulsing ring painted flat on the floor at a world position.
+    void ring(Offset at, Color colour, double radius, double phase) {
+      final pulse = 0.5 + 0.5 * math.sin(t * 2.4 + phase);
+      final r = radius * (0.86 + 0.14 * pulse);
+      final centre = p.projectOffset(at);
+      final rect = Rect.fromCenter(
+        center: centre,
+        width: r * p.tileWidth,
+        height: r * p.tileHeight,
+      );
+      canvas.drawOval(
+        rect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.6, 2.6 * p.scale)
+          ..color = colour.withValues(alpha: 0.30 + 0.34 * pulse),
+      );
+      canvas.drawOval(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.radial(centre, rect.width / 2, [
+            colour.withValues(alpha: 0.20 * pulse),
+            colour.withValues(alpha: 0),
+          ]),
+      );
+    }
+
+    // Live zones: where the player can act right now.
+    ring(GameController.stockZone, const Color(0xFF6FD3E8), 0.30, 0);
+    ring(GameController.shelfZone, const Color(0xFF56E8A9), 0.34, 1.1);
+    ring(GameController.checkoutZone, const Color(0xFFFFC33D), 0.30, 2.2);
+    if (game.bakeryUnlocked) {
+      ring(GameController.bakeryZone, _bakeryBody, 0.28, 3.1);
+    }
+
+    // Carry state: a trail under the player while they are holding stock, so
+    // the run from the storeroom to the shelves is legible at a glance.
+    if (game.carried > 0) {
+      final from = GameController.stockZone;
+      final to = GameController.shelfZone;
+      for (var i = 1; i < 7; i++) {
+        final k = i / 7;
+        final at = Offset(
+          from.dx + (to.dx - from.dx) * k,
+          from.dy + (to.dy - from.dy) * k,
+        );
+        final fade = (math.sin(t * 3 - i * 0.7) + 1) / 2;
+        final centre = p.projectOffset(at);
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: centre,
+            width: 0.05 * p.tileWidth,
+            height: 0.05 * p.tileHeight,
+          ),
+          Paint()
+            ..color = _accentGold.withValues(alpha: 0.18 + 0.30 * fade),
+        );
+      }
+    }
+
+    canvas.restore();
+  }
+
+  /// Attention marker floating over a fixture that needs the player.
+  void _alertMarker(Canvas canvas, IsoProjection p, Offset at, double lift) {
+    final t = game.totalPlaySeconds;
+    final hover = math.sin(t * 3.2) * p.unitHeight * 0.012;
+    final anchor = p.project(at.dx, at.dy, lift);
+    final centre = Offset(anchor.dx, anchor.dy + hover);
+    final r = math.max(7.0, 9.0 * p.scale);
+
+    canvas.drawCircle(
+      centre,
+      r * 1.7,
+      Paint()
+        ..shader = ui.Gradient.radial(centre, r * 1.7, [
+          const Color(0x66FF6B6B),
+          const Color(0x00FF6B6B),
+        ]),
+    );
+    canvas.drawCircle(
+      centre.translate(0, r * 0.22),
+      r,
+      Paint()..color = const Color(0x5504211A),
+    );
+    canvas.drawCircle(centre, r, Paint()..color = const Color(0xFFE8503F));
+    canvas.drawCircle(
+      centre,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1, 1.4 * p.scale)
+        ..color = Colors.white.withValues(alpha: 0.85),
+    );
+    final bar = Paint()..color = Colors.white;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: centre.translate(0, -r * 0.14),
+          width: r * 0.24,
+          height: r * 0.74,
+        ),
+        Radius.circular(r * 0.12),
+      ),
+      bar,
+    );
+    canvas.drawCircle(centre.translate(0, r * 0.44), r * 0.13, bar);
   }
 
   void _paintFloorDecals(Canvas canvas, IsoBrush brush, IsoProjection p) {
@@ -418,11 +776,14 @@ class IsoMarketPainter extends CustomPainter {
     // identical green blocks.
     // Two tidy aisles with a clear walking lane between and gaps between the
     // runs, so the floor reads as open rather than packed wall to wall.
+    // Three long parallel runs spanning the sales floor, with walking aisles
+    // between them. The old layout was four short stubs clustered in one
+    // quadrant, which is why the shop read as objects dropped on a plane rather
+    // than as a floor plan somebody had laid out.
     const runs = <({double x, double y, double length, int category})>[
-      (x: 0.14, y: 0.26, length: 0.20, category: 0),
-      (x: 0.14, y: 0.54, length: 0.20, category: 1),
-      (x: 0.42, y: 0.26, length: 0.20, category: 2),
-      (x: 0.42, y: 0.54, length: 0.20, category: 3),
+      (x: 0.20, y: 0.13, length: 0.58, category: 0),
+      (x: 0.42, y: 0.13, length: 0.58, category: 1),
+      (x: 0.64, y: 0.13, length: 0.58, category: 2),
     ];
     final fillRatio = (game.shelfStock / 12).clamp(0.0, 1.0);
     for (final run in runs) {
@@ -487,6 +848,18 @@ class IsoMarketPainter extends CustomPainter {
     // made the shop feel cramped; the aisles need clear walking space to read
     // as roomy, so the produce bins are gone and only corner greenery and a
     // single tucked-away trolley remain.
+    // Promo island near the entrance — the seasonal dump bin every shop puts
+    // in the first thing you walk past.
+    add(
+      IsoProjection.depthOf(0.86, 0.60),
+      (canvas) => _promoIsland(canvas, brush, 0.78, 0.52),
+    );
+    // Trolley bay just inside the doors.
+    add(
+      IsoProjection.depthOf(0.94, 0.86),
+      (canvas) => _trolleyBay(canvas, brush, 0.88, 0.80),
+    );
+
     const planters = <Offset>[Offset(0.05, 0.92), Offset(0.92, 0.06)];
     for (final spot in planters) {
       add(
@@ -498,6 +871,121 @@ class IsoMarketPainter extends CustomPainter {
     add(
       IsoProjection.depthOf(0.93, 0.9),
       (canvas) => _trolley(canvas, brush, const Offset(0.93, 0.9)),
+    );
+  }
+
+  /// Seasonal promo island: a low bin heaped with produce under a price flag.
+  void _promoIsland(Canvas canvas, IsoBrush brush, double x, double y) {
+    const w = 0.14;
+    const d = 0.14;
+    brush.castShadow(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + w,
+      y1: y + d,
+      height: 0.12,
+    );
+    brush.box(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + w,
+      y1: y + d,
+      height: 0.10,
+      color: const Color(0xFFE2E6E0),
+      topColor: const Color(0xFFF6F8F4),
+    );
+    brush.box(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + w,
+      y1: y + d,
+      height: 0.022,
+      color: _accentGold,
+      outline: false,
+    );
+    // Heaped stock.
+    const heap = <(double, double, Color)>[
+      (0.035, 0.040, Color(0xFFE8663C)),
+      (0.075, 0.035, Color(0xFF3FA85C)),
+      (0.050, 0.085, Color(0xFFFFC33D)),
+      (0.095, 0.080, Color(0xFFE8663C)),
+      (0.068, 0.060, Color(0xFF9B6FD4)),
+    ];
+    for (final (dx, dy, colour) in heap) {
+      brush.sphere(
+        canvas,
+        x: x + dx,
+        y: y + dy,
+        z: 0.118,
+        radius: 0.020,
+        color: colour,
+      );
+    }
+    // Price flag on a stem.
+    brush.box(
+      canvas,
+      x0: x + w / 2 - 0.004,
+      y0: y + d / 2 - 0.004,
+      x1: x + w / 2 + 0.004,
+      y1: y + d / 2 + 0.004,
+      base: 0.12,
+      height: 0.16,
+      color: const Color(0xFFB9C4BD),
+      outline: false,
+    );
+    brush.box(
+      canvas,
+      x0: x + w / 2 - 0.004,
+      y0: y + d / 2 - 0.030,
+      x1: x + w / 2 + 0.004,
+      y1: y + d / 2 + 0.030,
+      base: 0.24,
+      height: 0.055,
+      color: _promoRed,
+      topColor: const Color(0xFFFF8A7A),
+      outline: false,
+    );
+  }
+
+  /// Trolley bay just inside the doors — nested trolleys against a rail.
+  void _trolleyBay(Canvas canvas, IsoBrush brush, double x, double y) {
+    brush.castShadow(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + 0.07,
+      y1: y + 0.16,
+      height: 0.08,
+    );
+    for (var i = 0; i < 4; i++) {
+      final oy = y + i * 0.026;
+      brush.box(
+        canvas,
+        x0: x,
+        y0: oy,
+        x1: x + 0.062,
+        y1: oy + 0.030,
+        base: 0.030,
+        height: 0.055,
+        color: const Color(0xFFCFD8D2),
+        topColor: const Color(0xFFEAF0EC),
+        outline: false,
+      );
+    }
+    // Guide rail.
+    brush.box(
+      canvas,
+      x0: x - 0.014,
+      y0: y - 0.010,
+      x1: x - 0.006,
+      y1: y + 0.17,
+      base: 0,
+      height: 0.10,
+      color: const Color(0xFF9FB0A8),
+      outline: false,
     );
   }
 
@@ -625,6 +1113,13 @@ class IsoMarketPainter extends CustomPainter {
         ),
       };
 
+  /// A supermarket gondola: solid cabinet, coloured kick plate, three product
+  /// bands facing the aisle and a lit header sign.
+  ///
+  /// Drawing each tier as its own deck box produced a staircase of bare white
+  /// slabs whenever stock was low. A solid cabinet with the tiers expressed as
+  /// bands on the aisle-facing face reads correctly at every stock level, and
+  /// is how a real gondola looks from this angle anyway.
   void _shelfRun(
     Canvas canvas,
     IsoBrush brush,
@@ -635,91 +1130,119 @@ class IsoMarketPainter extends CustomPainter {
     double fill,
     int category,
   ) {
-    const width = 0.10;
-    const deckHeight = 0.05;
+    const width = 0.075;
+    const kick = 0.03;
+    const height = 0.30;
+    const tiers = 3;
     final theme = _category(category);
+    final top = kick + height;
 
-    brush.groundShadow(
+    brush.castShadow(
       canvas,
-      x: x + width / 2,
-      y: y + length / 2,
-      radiusX: width * 1.7,
-      radiusY: length * 1.35,
-      opacity: 0.24,
+      x0: x,
+      y0: y,
+      x1: x + width,
+      y1: y + length,
+      height: top,
     );
 
-    // White cabinet with a coloured kick strip — real gondolas read as bright
-    // fixtures, not solid slabs.
+    // Coloured kick plate: the aisle's identity band at floor level.
     brush.box(
       canvas,
       x0: x,
       y0: y,
       x1: x + width,
       y1: y + length,
-      height: deckHeight,
-      color: const Color(0xFFF3F1EA),
-      topColor: const Color(0xFFFBFAF5),
-    );
-    brush.box(
-      canvas,
-      x0: x,
-      y0: y,
-      x1: x + width,
-      y1: y + length,
-      base: 0,
-      height: 0.014,
-      color: theme.trim,
+      height: kick,
+      color: IsoLight.shade(theme.trim, 0.80),
+      topColor: theme.trim,
       outline: false,
     );
 
-    // Recognisable products in two dense columns. The item shape follows the
-    // aisle category — bottles in drinks, boxes with a label in snacks and
-    // household, fruit in crates in produce — so the shelves read as a real
-    // shop, not rows of coloured cubes.
-    const cols = 2;
-    final gap = 0.011;
-    final colW = (width - gap * (cols + 1)) / cols;
-    final rows = (length / 0.03).floor();
-    final stocked = (rows * fill).clamp(0, rows).round();
-    for (var r = 0; r < stocked; r++) {
-      final cy = y + gap + r * 0.03;
-      for (var c = 0; c < cols; c++) {
-        final cx = x + gap + c * (colW + gap);
-        final seed = r * cols + c + (x * 53).round() + category * 7;
-        final colour = theme.products[seed % theme.products.length];
+    // Cabinet body.
+    brush.box(
+      canvas,
+      x0: x,
+      y0: y,
+      x1: x + width,
+      y1: y + length,
+      base: kick,
+      height: height,
+      color: const Color(0xFFEDEFE9),
+      topColor: const Color(0xFFF9FAF6),
+    );
+
+    // Product bands on the aisle-facing side. Each band is a shallow box
+    // standing proud of the cabinet face, segmented along the run so individual
+    // packs read at this scale.
+    final segments = (length / 0.05).floor().clamp(3, 24);
+    for (var t = 0; t < tiers; t++) {
+      final base = kick + 0.035 + t * (height - 0.075) / (tiers - 1);
+      // Shelf lip the products stand on.
+      brush.box(
+        canvas,
+        x0: x + width - 0.004,
+        y0: y + 0.008,
+        x1: x + width + 0.012,
+        y1: y + length - 0.008,
+        base: base - 0.012,
+        height: 0.012,
+        color: const Color(0xFFDFE3DC),
+        topColor: const Color(0xFFF4F6F1),
+        outline: false,
+      );
+
+      // Upper tiers sell down first, so an emptying shelf is legible.
+      final tierFill = (fill * tiers - (tiers - 1 - t)).clamp(0.0, 1.0);
+      final stocked = (segments * tierFill).round();
+      for (var i = 0; i < stocked; i++) {
+        final sy = y + 0.010 + i * (length - 0.020) / segments;
+        final seed = i + (x * 71).round() + category * 5 + t * 3;
         _product(
           canvas,
           brush,
-          cx,
-          cy,
-          colW,
-          deckHeight,
-          colour,
+          x + width - 0.002,
+          sy,
+          (length - 0.020) / segments - 0.008,
+          base,
+          theme.products[seed % theme.products.length],
           category,
           seed,
         );
       }
     }
 
-    // Coloured header board standing at the back of the run — the aisle's
-    // category banner.
+    // Header sign board above the cabinet.
     brush.box(
       canvas,
-      x0: x,
-      y0: y,
-      x1: x + 0.012,
-      y1: y + length,
-      base: deckHeight + 0.10,
-      height: 0.03,
+      x0: x + 0.012,
+      y0: y + length * 0.22,
+      x1: x + 0.030,
+      y1: y + length * 0.78,
+      base: top + 0.012,
+      height: 0.075,
       color: theme.trim,
-      topColor: IsoLight.lift(theme.trim, 0.25),
+      topColor: IsoLight.lift(theme.trim, 0.34),
+      outline: false,
+    );
+    brush.box(
+      canvas,
+      x0: x + 0.030,
+      y0: y + length * 0.26,
+      x1: x + 0.034,
+      y1: y + length * 0.74,
+      base: top + 0.028,
+      height: 0.042,
+      color: Colors.white.withValues(alpha: 0.9),
       outline: false,
     );
   }
 
-  /// One recognisable grocery item on a shelf slot [cx],[cy] of width [w],
-  /// standing on the deck at height [base]. Shape depends on the aisle
-  /// [category]; [seed] adds small per-item variation.
+  /// One pack standing on a gondola band at [cx],[cy], [w] deep along the run.
+  ///
+  /// Shape follows the aisle [category] — bottles in drinks, produce in the
+  /// fruit aisle, cartons elsewhere — so a glance at an aisle tells you what it
+  /// sells. [seed] adds per-item variation so a run is not a repeating pattern.
   void _product(
     Canvas canvas,
     IsoBrush brush,
@@ -731,90 +1254,74 @@ class IsoMarketPainter extends CustomPainter {
     int category,
     int seed,
   ) {
-    const d = 0.022; // slot depth
-    switch (category) {
-      case 2: // Drinks — a bottle: slim body, white label band, dark cap.
-        final bx0 = cx + w * 0.30;
-        final bx1 = cx + w * 0.70;
+    final jitter = (seed % 5) * 0.004;
+    switch (category % 4) {
+      case 2:
+        // Drinks: a slim bottle with a lighter cap.
         brush.box(
           canvas,
-          x0: bx0,
-          y0: cy + d * 0.16,
-          x1: bx1,
-          y1: cy + d * 0.84,
-          base: base,
-          height: 0.052,
-          color: color,
-          topColor: IsoLight.lift(color, 0.28),
-          outline: false,
-        );
-        brush.box(
-          canvas,
-          x0: bx0,
-          y0: cy + d * 0.16,
-          x1: bx1,
-          y1: cy + d * 0.84,
-          base: base + 0.02,
-          height: 0.012,
-          color: Colors.white.withValues(alpha: 0.9),
-          outline: false,
-        );
-        brush.box(
-          canvas,
-          x0: cx + w * 0.40,
-          y0: cy + d * 0.34,
-          x1: cx + w * 0.60,
-          y1: cy + d * 0.66,
-          base: base + 0.052,
-          height: 0.014,
-          color: IsoLight.shade(color, 0.55),
-          outline: false,
-        );
-      case 0: // Produce — a shallow crate heaped with round fruit.
-        brush.box(
-          canvas,
-          x0: cx,
+          x0: cx - 0.020,
           y0: cy,
-          x1: cx + w,
-          y1: cy + d,
+          x1: cx - 0.004,
+          y1: cy + w,
+          base: base,
+          height: 0.060 + jitter,
+          color: color,
+          outline: false,
+        );
+        brush.box(
+          canvas,
+          x0: cx - 0.016,
+          y0: cy + w * 0.28,
+          x1: cx - 0.008,
+          y1: cy + w * 0.72,
+          base: base + 0.060 + jitter,
+          height: 0.018,
+          color: IsoLight.lift(color, 0.4),
+          outline: false,
+        );
+      case 0:
+        // Produce: a low mound in an open tray.
+        brush.box(
+          canvas,
+          x0: cx - 0.024,
+          y0: cy,
+          x1: cx - 0.002,
+          y1: cy + w,
           base: base,
           height: 0.018,
-          color: const Color(0xFF9C6B3C),
+          color: _crateBody,
           outline: false,
         );
-        for (var i = 0; i < 2; i++) {
-          brush.sphere(
-            canvas,
-            x: cx + w * (0.32 + 0.36 * i),
-            y: cy + d * 0.5,
-            z: base + 0.03,
-            radius: w * 0.62,
-            color: i.isEven ? color : IsoLight.lift(color, 0.18),
-          );
-        }
-      default: // Snacks / household — a box with a bright label panel.
-        final h = 0.05 + (seed % 3) * 0.006;
-        brush.box(
+        brush.sphere(
           canvas,
-          x0: cx,
-          y0: cy,
-          x1: cx + w,
-          y1: cy + d,
-          base: base,
-          height: h,
+          x: cx - 0.013,
+          y: cy + w / 2,
+          z: base + 0.026,
+          radius: 0.016,
           color: color,
-          topColor: IsoLight.lift(color, 0.30),
-          outline: false,
         );
-        // Label band wrapped around the box just below the top.
+      default:
+        // Cartons with a label band.
         brush.box(
           canvas,
-          x0: cx,
+          x0: cx - 0.022,
           y0: cy,
-          x1: cx + w,
-          y1: cy + d,
-          base: base + h * 0.42,
-          height: h * 0.30,
+          x1: cx - 0.003,
+          y1: cy + w,
+          base: base,
+          height: 0.052 + jitter,
+          color: color,
+          outline: false,
+        );
+        brush.box(
+          canvas,
+          x0: cx - 0.023,
+          y0: cy,
+          x1: cx - 0.019,
+          y1: cy + w,
+          base: base + 0.016,
+          height: 0.016,
           color: Colors.white.withValues(alpha: 0.82),
           outline: false,
         );
@@ -1070,37 +1577,96 @@ class IsoMarketPainter extends CustomPainter {
     }
   }
 
+  /// Glazed shopfront at the near edge: two piers, a glass door between them,
+  /// a fascia and an entrance mat on the floor.
+  ///
+  /// The old version was a bare arch standing in open floor with nothing
+  /// attached, which read as a goalpost rather than a door.
   void _entrance(Canvas canvas, IsoBrush brush, IsoProjection p) {
+    const y0 = 0.985;
+    const y1 = 1.02;
+    const h = 0.34;
+
+    // Mat, so the threshold reads from above too.
+    brush.groundQuad(
+      canvas,
+      x0: 0.62,
+      y0: 0.86,
+      x1: 1.0,
+      y1: 0.985,
+      color: const Color(0x99244A3C),
+    );
+
+    brush.castShadow(
+      canvas,
+      x0: 0.60,
+      y0: y0,
+      x1: 1.02,
+      y1: y1,
+      height: h,
+      opacity: 0.24,
+    );
+
+    // Glazing between the piers.
     brush.box(
       canvas,
-      x0: 0.66,
-      y0: 0.99,
-      x1: 0.74,
-      y1: 1.02,
-      height: 0.30,
-      color: const Color(0xFF1F5C46),
+      x0: 0.70,
+      y0: y0 + 0.008,
+      x1: 0.94,
+      y1: y1 - 0.008,
+      height: h - 0.03,
+      color: const Color(0xFFBFE0E6),
+      topColor: const Color(0xFFDDF0F4),
       outline: false,
     );
+    // Door frame split.
     brush.box(
       canvas,
-      x0: 0.92,
-      y0: 0.99,
-      x1: 1.0,
-      y1: 1.02,
-      height: 0.30,
-      color: const Color(0xFF1F5C46),
+      x0: 0.818,
+      y0: y0,
+      x1: 0.826,
+      y1: y1,
+      height: h - 0.03,
+      color: const Color(0xFF2A7A5C),
       outline: false,
     );
+
+    for (final x in const [0.60, 0.94]) {
+      brush.box(
+        canvas,
+        x0: x,
+        y0: y0,
+        x1: x + 0.08,
+        y1: y1,
+        height: h,
+        color: const Color(0xFF1F5C46),
+        topColor: const Color(0xFF2A7A5C),
+        outline: false,
+      );
+    }
+
+    // Fascia across the top, carrying the shop's accent.
     brush.box(
       canvas,
-      x0: 0.66,
-      y0: 0.99,
-      x1: 1.0,
-      y1: 1.02,
-      base: 0.30,
-      height: 0.07,
+      x0: 0.60,
+      y0: y0,
+      x1: 1.02,
+      y1: y1,
+      base: h,
+      height: 0.075,
       color: const Color(0xFF2A7A5C),
       topColor: _accentGold,
+    );
+    brush.box(
+      canvas,
+      x0: 0.66,
+      y0: y0 - 0.004,
+      x1: 0.96,
+      y1: y0,
+      base: h + 0.014,
+      height: 0.045,
+      color: _accentGold,
+      outline: false,
     );
   }
 
