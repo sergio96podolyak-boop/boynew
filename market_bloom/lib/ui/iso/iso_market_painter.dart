@@ -132,8 +132,8 @@ class IsoMarketPainter extends CustomPainter {
         text: TextSpan(
           text: text,
           style: TextStyle(
-            color: Colors.white,
-            fontSize: math.max(7, 8.5 * p.scale),
+            color: Colors.white.withValues(alpha: 0.88),
+            fontSize: math.max(6.5, 7.5 * p.scale),
             fontWeight: FontWeight.w900,
             letterSpacing: 0.5,
             height: 1,
@@ -157,19 +157,15 @@ class IsoMarketPainter extends CustomPainter {
       final rect = Rect.fromCenter(center: Offset(cx, cy), width: w, height: h);
       final rrect = RRect.fromRectAndRadius(rect, Radius.circular(h / 2));
       canvas.drawRRect(
-        rrect.shift(Offset(0, 1.5 * p.scale)),
-        Paint()..color = const Color(0x4404211A),
-      );
-      canvas.drawRRect(
         rrect,
-        Paint()..color = const Color(0xE60D2A21),
+        Paint()..color = const Color(0x990D2A21),
       );
       canvas.drawRRect(
         rrect,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(0.8, 1 * p.scale)
-          ..color = color.withValues(alpha: 0.75),
+          ..strokeWidth = math.max(0.7, 0.9 * p.scale)
+          ..color = color.withValues(alpha: 0.45),
       );
       // Zone colour reads from the dot, so the tag itself can stay quiet.
       canvas.drawCircle(
@@ -551,12 +547,14 @@ class IsoMarketPainter extends CustomPainter {
   /// Hanging light rig. Pools of light alone read as stains on the floor; the
   /// fixtures themselves are what tell the player there is a ceiling up there.
   void _paintCeilingLights(Canvas canvas, IsoProjection p) {
+    // Fewer fixtures, placed over the areas that matter: the working aisle
+    // between the gondolas, the till, and the door. Light is the cheapest way
+    // to say "look here".
     const spots = <Offset>[
-      Offset(0.24, 0.24),
-      Offset(0.74, 0.24),
-      Offset(0.24, 0.74),
-      Offset(0.74, 0.74),
-      Offset(0.49, 0.49),
+      Offset(0.40, 0.34),
+      Offset(0.40, 0.62),
+      Offset(0.76, 0.24),
+      Offset(0.70, 0.82),
     ];
 
     // Floor pools first, clipped to the sales floor.
@@ -833,8 +831,8 @@ class IsoMarketPainter extends CustomPainter {
     }
 
     // Chiller run along the far-left wall, clear of the aisles.
-    for (var i = 0; i < 3; i++) {
-      final y = 0.12 + i * 0.20;
+    for (var i = 0; i < 2; i++) {
+      final y = 0.16 + i * 0.24;
       add(
         IsoProjection.depthOf(0.06 + _chillerDepth, y + 0.17),
         (canvas) => _fridge(canvas, brush, p, 0.06, y, y + 0.17),

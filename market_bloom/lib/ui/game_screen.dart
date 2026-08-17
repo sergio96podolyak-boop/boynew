@@ -347,31 +347,6 @@ class _GameScreenState extends State<GameScreen>
                                               ),
                                             ),
                                           ),
-                                        if (game.fastCheckoutActive)
-                                          Positioned(
-                                            top: 70,
-                                            left: 22,
-                                            right: 22,
-                                            child: _FastCheckoutBanner(
-                                              claimed: game.fastCheckoutClaimed,
-                                              onClaim: () {
-                                                if (game
-                                                    .claimFastCheckoutBonus()) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        AppLocalizations.of(
-                                                          context,
-                                                        ).fastCheckoutBonus,
-                                                      ),
-                                                    ),
-                                                  );
-                                                }
-                                              },
-                                            ),
-                                          ),
                                         if (game.comboCount > 1)
                                           Positioned(
                                             top: 14,
@@ -452,11 +427,33 @@ class _GameScreenState extends State<GameScreen>
                                   10,
                                   0,
                                 ),
-                                child: Align(
-                                  alignment: AlignmentDirectional.centerStart,
-                                  child: AnimatedBuilder(
-                                    animation: game,
-                                    builder: (context, _) => _MissionPod(
+                                child: AnimatedBuilder(
+                                  animation: game,
+                                  builder: (context, _) =>
+                                      game.fastCheckoutActive
+                                      ? _FastCheckoutBanner(
+                                          claimed: game.fastCheckoutClaimed,
+                                          onClaim: () {
+                                            if (game
+                                                .claimFastCheckoutBonus()) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    AppLocalizations.of(
+                                                      context,
+                                                    ).fastCheckoutBonus,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                        )
+                                      : Align(
+                                          alignment:
+                                              AlignmentDirectional.centerStart,
+                                          child: _MissionPod(
                                       key: const ValueKey('objective-strip'),
                                       quest: game.quest,
                                       title: AppLocalizations.of(
@@ -604,6 +601,10 @@ class _GameScreenState extends State<GameScreen>
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showRewardCenter() {
     return showModalBottomSheet<void>(
       context: context,
@@ -616,6 +617,10 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -673,6 +678,10 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -1712,6 +1721,10 @@ void _showContextHint(BuildContext context, String message) {
   );
 }
 
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
 // ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.

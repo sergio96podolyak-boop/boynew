@@ -24,29 +24,30 @@ class IsoProjection {
     // place you stand in. This is a true 2:1 isometric — the diamond is twice
     // as wide as it is tall — with a large unit height so fixtures, walls and
     // people have real vertical presence instead of lying flat on the plane.
-    // The camera is zoomed *into* the shop rather than framing the whole
-    // diamond. Fitting the field to the frame width left it as a small raised
-    // island in a sea of apron; overscanning crops the two side corners — which
-    // are wall, not shopping space — and lets the sales floor fill the screen.
-    //
-    // Nothing becomes unreachable: movement is tap-to-move and taps can only
-    // land inside the frame, so the player cannot be sent off-camera.
-    final tileWidth = size.width * 1.40;
+    // True isometric, per the 45-45 rule: yaw 45 degrees, pitch 35.264 degrees
+    // (the angle whose sine is 1/sqrt(3)). Work the projection through and both
+    // the diamond's height and the vertical axis come out at 0.577 of its
+    // width — and crucially they are *equal*, which is what makes a world cube
+    // render as a cube. The previous 0.76 / 0.63 pair was neither the correct
+    // ratio nor internally consistent, so nothing in the scene could be
+    // proportioned reliably against anything else.
+    const isoRatio = 0.5774;
+    // Overscans the frame so the two side corners of the field — wall, not
+    // shopping space — fall outside it. A fully visible diamond reads as a
+    // model on a table. Movement is tap-to-move and taps can only land inside
+    // the frame, so nothing becomes unreachable.
+    final tileWidth = size.width * 1.95;
     return IsoProjection(
       origin: Offset(
         size.width / 2,
-        // The room sits low so the back wall, its fascia and the hanging light
-        // rig occupy the upper third, which used to be empty sky.
-        size.height * 0.28,
+        // The room sits high enough that the back wall, its fascia and the
+        // hanging rig occupy the upper band, and low enough that the near floor
+        // carries to the bottom of the frame.
+        size.height * 0.26,
       ),
       tileWidth: tileWidth,
-      tileHeight: tileWidth * 0.76,
-      // One world unit along x projects to a screen segment of length
-      // sqrt((tw/2)^2 + (th/2)^2) ≈ 0.63·tw at this pitch, so the vertical axis
-      // has to match that for a cube to read as a cube. The previous value was
-      // roughly double it, which stretched every fixture upward — the reason
-      // shelves and chillers loomed over the shoppers.
-      unitHeight: tileWidth * 0.63,
+      tileHeight: tileWidth * isoRatio,
+      unitHeight: tileWidth * isoRatio,
       scale: math.min(size.width, size.height) / 380,
     );
   }

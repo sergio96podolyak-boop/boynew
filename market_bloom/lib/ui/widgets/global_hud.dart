@@ -211,6 +211,39 @@ class _FloatingHud extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Shift timing as an edge hairline rather than its own pod: constant
+        // monitoring info belongs on a screen edge, and one fewer persistent
+        // overlay is one fewer thing competing with the world.
+        AnimatedBuilder(
+          animation: game,
+          builder: (context, _) => _ShiftEdge(game: game, loc: loc),
+        ),
+        _FloatingHudBody(
+          game: game,
+          loc: loc,
+          reducedMotion: reducedMotion,
+        ),
+      ],
+    );
+  }
+}
+
+class _FloatingHudBody extends StatelessWidget {
+  const _FloatingHudBody({
+    required this.game,
+    required this.loc,
+    required this.reducedMotion,
+  });
+
+  final GameController game;
+  final AppLocalizations loc;
+  final bool reducedMotion;
+
+  @override
+  Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 430;
     return IgnorePointer(
@@ -278,11 +311,6 @@ class _FloatingHud extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: _ShiftPod(game: game, loc: loc),
-                  ),
                 ],
               ),
             ),
@@ -314,9 +342,13 @@ class _BrandPod extends StatelessWidget {
   );
 }
 
-/// Shift phase and timing as a compact pod that hugs its content.
-class _ShiftPod extends StatelessWidget {
-  const _ShiftPod({required this.game, required this.loc});
+/// Shift phase and timing, drawn as a hairline across the very top edge.
+///
+/// Costs no layout space, is edge-anchored where constant-monitoring readouts
+/// belong, and its colour alone communicates the phase — so the shift no longer
+/// needs a pod of its own competing with the brand and the wallet.
+class _ShiftEdge extends StatelessWidget {
+  const _ShiftEdge({required this.game, required this.loc});
 
   final GameController game;
   final AppLocalizations loc;
@@ -326,35 +358,27 @@ class _ShiftPod extends StatelessWidget {
     final style = _phaseStyle(game.shiftPhase, loc);
     return Semantics(
       label: '${style.label}, ${loc.shift} ${game.shiftNumber}',
-      child: PoPod(
-        padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 12, 6),
+      child: SizedBox(
+        height: 4,
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(style.icon, size: 14, color: style.face),
-            const SizedBox(width: 6),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 116),
-              child: Text(
-                '${style.label} · ${game.shiftNumber}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PoText.caption.copyWith(
-                  color: PoColor.onChrome,
-                  fontWeight: FontWeight.w900,
+            Expanded(
+              flex: (game.shiftProgress.clamp(0.0, 1.0) * 1000).round(),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      PoColor.lighten(style.face, 0.30),
+                      style.face,
+                    ],
+                  ),
+                  boxShadow: PoElevate.glow(style.face, strength: 0.5),
                 ),
               ),
             ),
-            const SizedBox(width: 9),
-            SizedBox(
-              width: 92,
-              child: PoGauge(
-                value: game.shiftProgress,
-                face: style.face,
-                height: 9,
-                segments: 8,
-                onChrome: true,
-              ),
+            Expanded(
+              flex: 1000 - (game.shiftProgress.clamp(0.0, 1.0) * 1000).round(),
+              child: const ColoredBox(color: Color(0x33FFFFFF)),
             ),
           ],
         ),
