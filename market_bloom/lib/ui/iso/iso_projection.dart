@@ -22,14 +22,14 @@ class IsoProjection {
     // The diamond is as wide as the board and a little over half as tall, which
     // leaves the upper band free for wall height without cropping the front
     // corner.
-    final tileWidth = size.width * 1.12;
-    final tileHeight = size.height * 0.70;
-    final wallRoom = size.height * 0.20;
+    final tileWidth = size.width * 1.02;
+    final tileHeight = size.height * 0.62;
+    final wallRoom = size.height * 0.22;
     return IsoProjection(
       origin: Offset(size.width / 2, wallRoom),
       tileWidth: tileWidth,
       tileHeight: tileHeight,
-      unitHeight: size.height * 0.24,
+      unitHeight: size.height * 0.22,
       scale: math.min(size.width, size.height) / 380,
     );
   }

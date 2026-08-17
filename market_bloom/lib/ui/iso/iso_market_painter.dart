@@ -395,11 +395,13 @@ class IsoMarketPainter extends CustomPainter {
     // shelves look, so the board reflects play state at a glance. Each run is a
     // different category so the aisles read as a colourful shop, not a row of
     // identical green blocks.
+    // Two tidy aisles with a clear walking lane between and gaps between the
+    // runs, so the floor reads as open rather than packed wall to wall.
     const runs = <({double x, double y, double length, int category})>[
-      (x: 0.15, y: 0.28, length: 0.28, category: 0),
-      (x: 0.15, y: 0.54, length: 0.28, category: 1),
-      (x: 0.45, y: 0.28, length: 0.24, category: 2),
-      (x: 0.45, y: 0.54, length: 0.24, category: 3),
+      (x: 0.14, y: 0.26, length: 0.20, category: 0),
+      (x: 0.14, y: 0.54, length: 0.20, category: 1),
+      (x: 0.42, y: 0.26, length: 0.20, category: 2),
+      (x: 0.42, y: 0.54, length: 0.20, category: 3),
     ];
     final fillRatio = (game.shelfStock / 12).clamp(0.0, 1.0);
     for (final run in runs) {
@@ -460,12 +462,13 @@ class IsoMarketPainter extends CustomPainter {
       (canvas) => _entrance(canvas, brush, p),
     );
 
-    // Dressing. An empty floor reads as a prototype however good the lighting
-    // is, so the corners get props that also hint at what the shop sells.
+    // Dressing, kept to the corners only. Props in the middle of the floor
+    // made the shop feel cramped; the aisles need clear walking space to read
+    // as roomy, so the produce bins are gone and only corner greenery and a
+    // single tucked-away trolley remain.
     const planters = <Offset>[
-      Offset(0.06, 0.90),
-      Offset(0.90, 0.08),
-      Offset(0.93, 0.93),
+      Offset(0.05, 0.92),
+      Offset(0.92, 0.06),
     ];
     for (final spot in planters) {
       add(
@@ -474,24 +477,10 @@ class IsoMarketPainter extends CustomPainter {
       );
     }
 
-    const carts = <Offset>[Offset(0.80, 0.94), Offset(0.88, 0.86)];
-    for (final spot in carts) {
-      add(
-        IsoProjection.depthOf(spot.dx, spot.dy),
-        (canvas) => _trolley(canvas, brush, spot),
-      );
-    }
-
-    // Produce bins in the middle of the floor break up the empty span between
-    // the gondolas and the tills.
-    const bins = <Offset>[Offset(0.62, 0.60), Offset(0.62, 0.74)];
-    for (var i = 0; i < bins.length; i++) {
-      final spot = bins[i];
-      add(
-        IsoProjection.depthOf(spot.dx + 0.05, spot.dy + 0.05),
-        (canvas) => _produceBin(canvas, brush, spot, i),
-      );
-    }
+    add(
+      IsoProjection.depthOf(0.93, 0.9),
+      (canvas) => _trolley(canvas, brush, const Offset(0.93, 0.9)),
+    );
   }
 
   void _planter(Canvas canvas, IsoBrush brush, Offset at) {
@@ -563,41 +552,6 @@ class IsoMarketPainter extends CustomPainter {
       color: const Color(0xFF7B8B84),
       outline: false,
     );
-  }
-
-  void _produceBin(Canvas canvas, IsoBrush brush, Offset at, int index) {
-    brush.groundShadow(
-      canvas,
-      x: at.dx + 0.05,
-      y: at.dy + 0.05,
-      radiusX: 0.13,
-      radiusY: 0.13,
-      opacity: 0.26,
-    );
-    brush.box(
-      canvas,
-      x0: at.dx,
-      y0: at.dy,
-      x1: at.dx + 0.10,
-      y1: at.dy + 0.10,
-      height: 0.048,
-      color: index.isEven ? const Color(0xFF8C5A33) : const Color(0xFF7A6A4A),
-    );
-    // Loose produce heaped above the rim.
-    final palette = index.isEven
-        ? const [Color(0xFFE0573F), Color(0xFFEF7A4D), Color(0xFFC94430)]
-        : const [Color(0xFF7FB93E), Color(0xFF9CCB53), Color(0xFF5F9A2E)];
-    for (var i = 0; i < 5; i++) {
-      final angle = i * 1.257 + index;
-      brush.sphere(
-        canvas,
-        x: at.dx + 0.05 + math.cos(angle) * 0.024,
-        y: at.dy + 0.05 + math.sin(angle) * 0.024,
-        z: 0.062,
-        radius: 0.030,
-        color: palette[i % palette.length],
-      );
-    }
   }
 
   /// A category colour theme for one gondola: the header/kick trim plus the
