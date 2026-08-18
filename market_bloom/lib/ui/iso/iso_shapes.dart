@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
-import 'package:flutter/painting.dart';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
 
 import 'iso_projection.dart';
 
@@ -13,19 +15,35 @@ abstract final class IsoLight {
   /// Multiplier applied to the upward-facing surface.
   static const top = 1.0;
 
-  /// Screen-left face — the one turned toward the lamp.
-  static const left = 0.78;
+  /// Screen-left face — the one turned toward the key light.
+  static const left = 0.86;
 
-  /// Screen-right face — turned away, so it carries the darkest tone.
-  static const right = 0.55;
+  /// Screen-right face — turned away, carrying the cool fill.
+  static const right = 0.66;
+
+  /// Warm key, cool fill. Shading by darkening toward one flat near-black gave
+  /// every surface the same grey cast, which is what made the scene read as
+  /// flat-shaded geometry. Real stylised lighting tints as it darkens: shadowed
+  /// faces go cool and blue, lit faces go warm. That single change is most of
+  /// the difference between "diagram" and "lit miniature".
+  static const _shadowTint = Color(0xFF17384F);
+  static const _keyTint = Color(0xFFFFE9C4);
 
   static Color shade(Color base, double factor) {
     if (factor >= 1) return base;
-    return Color.lerp(const Color(0xFF0A1D16), base, factor)!;
+    // Darken and cool together.
+    final darkened = Color.lerp(base, const Color(0xFF0C1F19), 1 - factor)!;
+    return Color.lerp(darkened, _shadowTint, (1 - factor) * 0.42)!;
   }
 
-  static Color lift(Color base, double amount) =>
-      Color.lerp(base, const Color(0xFFFFFFFF), amount)!;
+  /// Lit companion of [base], warmed rather than simply whitened.
+  static Color lift(Color base, double amount) {
+    final lightened = Color.lerp(base, const Color(0xFFFFFFFF), amount)!;
+    return Color.lerp(lightened, _keyTint, amount * 0.35)!;
+  }
+
+  /// Cool bounce used on the underside of overhangs and inside recesses.
+  static Color bounce(Color base) => Color.lerp(base, _shadowTint, 0.30)!;
 }
 
 /// A drawing scheduled against a depth key so props can be sorted back-to-front.
@@ -130,6 +148,52 @@ class IsoBrush {
     );
   }
 
+  /// Rounds the corners of a closed screen-space polygon.
+  ///
+  /// Hard-edged polygons are the single strongest "this is a diagram" cue.
+  /// Softening every corner by a fixed screen radius turns the same geometry
+  /// into moulded forms, which is the shape language stylised mobile art uses
+  /// for readability at small sizes.
+  Path _rounded(List<Offset> points, double radius) {
+    if (radius <= 0.4 || points.length < 3) {
+      final path = Path()..moveTo(points.first.dx, points.first.dy);
+      for (final p in points.skip(1)) {
+        path.lineTo(p.dx, p.dy);
+      }
+      return path..close();
+    }
+    final path = Path();
+    for (var i = 0; i < points.length; i++) {
+      final prev = points[(i - 1 + points.length) % points.length];
+      final cur = points[i];
+      final next = points[(i + 1) % points.length];
+
+      Offset toward(Offset from, Offset to) {
+        final d = to - from;
+        final len = d.distance;
+        if (len < 0.001) return from;
+        // Never round more than a third of the shorter edge, or thin fixtures
+        // collapse into lozenges.
+        final r = math.min(radius, len / 3);
+        return from + d * (r / len);
+      }
+
+      final entry = toward(cur, prev);
+      final exit = toward(cur, next);
+      if (i == 0) {
+        path.moveTo(entry.dx, entry.dy);
+      } else {
+        path.lineTo(entry.dx, entry.dy);
+      }
+      path.quadraticBezierTo(cur.dx, cur.dy, exit.dx, exit.dy);
+    }
+    return path..close();
+  }
+
+  /// A lit solid: three rounded faces, each gradient-shaded, with a contact
+  /// shadow beneath and a highlight along its lit top edge.
+  ///
+  /// Replaces the flat three-tone box every fixture used to be built from.
   void box(
     Canvas canvas, {
     required double x0,
@@ -143,51 +207,104 @@ class IsoBrush {
     bool outline = true,
   }) {
     final top = base + height;
+    final p = projection;
+    // Radius scales with the object so small props round proportionally.
+    final span = math.min((x1 - x0).abs(), (y1 - y0).abs()) * p.tileWidth;
+    final radius = math.min(6.0 * p.scale, math.max(1.2, span * 0.16));
 
-    // Screen-left face lies on the x = x1 plane; screen-right on y = y1.
-    final leftFace = Path()
-      ..moveTo(projection.project(x1, y0, base).dx, projection.project(x1, y0, base).dy)
-      ..lineTo(projection.project(x1, y1, base).dx, projection.project(x1, y1, base).dy)
-      ..lineTo(projection.project(x1, y1, top).dx, projection.project(x1, y1, top).dy)
-      ..lineTo(projection.project(x1, y0, top).dx, projection.project(x1, y0, top).dy)
-      ..close();
+    Offset at(double x, double y, double z) => p.project(x, y, z);
 
-    final rightFace = Path()
-      ..moveTo(projection.project(x0, y1, base).dx, projection.project(x0, y1, base).dy)
-      ..lineTo(projection.project(x1, y1, base).dx, projection.project(x1, y1, base).dy)
-      ..lineTo(projection.project(x1, y1, top).dx, projection.project(x1, y1, top).dy)
-      ..lineTo(projection.project(x0, y1, top).dx, projection.project(x0, y1, top).dy)
-      ..close();
-
-    final topFace = Path()
-      ..moveTo(projection.project(x0, y0, top).dx, projection.project(x0, y0, top).dy)
-      ..lineTo(projection.project(x1, y0, top).dx, projection.project(x1, y0, top).dy)
-      ..lineTo(projection.project(x1, y1, top).dx, projection.project(x1, y1, top).dy)
-      ..lineTo(projection.project(x0, y1, top).dx, projection.project(x0, y1, top).dy)
-      ..close();
+    final leftFace = _rounded([
+      at(x1, y0, base),
+      at(x1, y1, base),
+      at(x1, y1, top),
+      at(x1, y0, top),
+    ], radius);
+    final rightFace = _rounded([
+      at(x0, y1, base),
+      at(x1, y1, base),
+      at(x1, y1, top),
+      at(x0, y1, top),
+    ], radius);
+    final topFace = _rounded([
+      at(x0, y0, top),
+      at(x1, y0, top),
+      at(x1, y1, top),
+      at(x0, y1, top),
+    ], radius);
 
     _fill
-      ..shader = null
-      ..style = PaintingStyle.fill;
+      ..style = PaintingStyle.fill
+      ..shader = null;
 
-    _fill.color = IsoLight.shade(color, IsoLight.left);
-    canvas.drawPath(leftFace, _fill);
+    // Ambient occlusion where the solid meets whatever it stands on. Cheap,
+    // and it is what stops props looking pasted onto the floor.
+    if (height > 0.004) {
+      final footprint = _rounded([
+        at(x0, y0, base),
+        at(x1, y0, base),
+        at(x1, y1, base),
+        at(x0, y1, base),
+      ], radius);
+      canvas.drawPath(
+        footprint,
+        Paint()
+          ..color = const Color(0xFF0A2A22).withValues(alpha: 0.30)
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            math.max(1.6, 4 * p.scale),
+          ),
+      );
+    }
 
-    _fill.color = IsoLight.shade(color, IsoLight.right);
-    canvas.drawPath(rightFace, _fill);
+    // Side faces carry a vertical gradient: darker at the floor, lighter
+    // toward the lit top edge.
+    void shadeFace(Path face, double factor) {
+      final bounds = face.getBounds();
+      canvas.drawPath(
+        face,
+        Paint()
+          ..isAntiAlias = true
+          ..shader = ui.Gradient.linear(
+            Offset(bounds.center.dx, bounds.bottom),
+            Offset(bounds.center.dx, bounds.top),
+            [
+              IsoLight.shade(color, factor * 0.82),
+              IsoLight.shade(color, factor),
+              IsoLight.lift(IsoLight.shade(color, factor), 0.10),
+            ],
+            const [0, 0.62, 1],
+          ),
+      );
+    }
 
-    _fill.color = topColor ?? IsoLight.lift(color, 0.12);
-    canvas.drawPath(topFace, _fill);
+    shadeFace(leftFace, IsoLight.left);
+    shadeFace(rightFace, IsoLight.right);
 
-    if (outline) {
-      _fill
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(0.6, 0.9 * projection.scale)
-        ..color = IsoLight.shade(color, 0.34).withValues(alpha: 0.55);
-      canvas.drawPath(topFace, _fill);
-      canvas.drawPath(leftFace, _fill);
-      canvas.drawPath(rightFace, _fill);
-      _fill.style = PaintingStyle.fill;
+    final crown = topColor ?? IsoLight.lift(color, 0.16);
+    final topBounds = topFace.getBounds();
+    canvas.drawPath(
+      topFace,
+      Paint()
+        ..isAntiAlias = true
+        ..shader = ui.Gradient.linear(
+          topBounds.topCenter,
+          topBounds.bottomCenter,
+          [IsoLight.lift(crown, 0.14), crown],
+        ),
+    );
+
+    // Specular edge along the lit rim, which is what sells a moulded surface.
+    if (outline && height > 0.004) {
+      canvas.drawLine(
+        at(x0, y0, top),
+        at(x1, y0, top),
+        Paint()
+          ..isAntiAlias = true
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = math.max(0.8, 1.3 * p.scale)
+          ..color = Colors.white.withValues(alpha: 0.34),
+      );
     }
   }
 

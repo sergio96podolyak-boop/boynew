@@ -36,7 +36,10 @@ class IsoProjection {
     // shopping space — fall outside it. A fully visible diamond reads as a
     // model on a table. Movement is tap-to-move and taps can only land inside
     // the frame, so nothing becomes unreachable.
-    final tileWidth = size.width * 1.95;
+    // Overscan is capped by height as well as driven by width. On a short or
+    // landscape frame a width-only zoom made the field taller than the screen,
+    // so the player saw a fragment of one aisle and no shop at all.
+    final tileWidth = math.min(size.width * 1.95, size.height * 1.35);
     return IsoProjection(
       origin: Offset(
         size.width / 2,

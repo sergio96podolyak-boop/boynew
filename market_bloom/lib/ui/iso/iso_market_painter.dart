@@ -39,22 +39,22 @@ class IsoMarketPainter extends CustomPainter {
 
   // Store palette. Saturated enough to survive the ambient grade without
   // turning garish under the warm key light.
-  static const _floorLight = Color(0xFFF4F0E7);
-  static const _floorDark = Color(0xFFDED6C6);
-  static const _floorSeam = Color(0x22705E3A);
+  static const _floorLight = Color(0xFFFFF6E4);
+  static const _floorDark = Color(0xFFE7D9BC);
+  static const _floorSeam = Color(0x2A8A6A33);
   // Light walls that recede as backdrop. Dark walls dominated the frame and
   // made the shop feel like a basement; commercial tycoon boards use bright,
   // near-white interiors.
-  static const _wallUpper = Color(0xFFE8F2EC);
-  static const _wallLower = Color(0xFFBFD9CC);
-  static const _wallJoint = Color(0x33607A6E);
-  static const _wallSkirt = Color(0xFF5E7C70);
-  static const _wallCap = Color(0xFFF6FBF8);
-  static const _fridgeBody = Color(0xFF3D8FC4);
-  static const _counterBody = Color(0xFF3C4F58);
-  static const _crateBody = Color(0xFFB07C43);
-  static const _bakeryBody = Color(0xFFE0A542);
-  static const _accentGold = Color(0xFFFFC33D);
+  static const _wallUpper = Color(0xFFE8F7EF);
+  static const _wallLower = Color(0xFF57C1A0);
+  static const _wallJoint = Color(0x3A1E5546);
+  static const _wallSkirt = Color(0xFF1E5546);
+  static const _wallCap = Color(0xFFFFFDF4);
+  static const _fridgeBody = Color(0xFF2C86D8);
+  static const _counterBody = Color(0xFF2E4A5C);
+  static const _crateBody = Color(0xFFC8823A);
+  static const _bakeryBody = Color(0xFFF2A93B);
+  static const _accentGold = Color(0xFFFFC02E);
 
   // --------------------------------------------------------------- dimensions
   //
@@ -205,7 +205,7 @@ class IsoMarketPainter extends CustomPainter {
           // Matched to the apron so the room has no visible outer edge: a
           // hard seam around the floor is what made the shop read as a model
           // sitting on a table rather than a space you are standing in.
-          colors: [Color(0xFF9DBBAD), Color(0xFFAFC8BB)],
+          colors: [Color(0xFF14523F), Color(0xFF1D6A52)],
         ).createShader(rect),
     );
   }
@@ -392,7 +392,7 @@ class IsoMarketPainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           Offset(roomBounds.center.dx, roomBounds.top),
           Offset(roomBounds.center.dx, roomBounds.bottom),
-          const [Color(0xFF8FB0A2), Color(0xFFB0C9BD)],
+          const [Color(0xFF175C46), Color(0xFF227558)],
         ),
     );
 
@@ -403,7 +403,7 @@ class IsoMarketPainter extends CustomPainter {
     final apronSeam = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = math.max(0.5, 0.7 * p.scale)
-      ..color = const Color(0x1A0A2A1E);
+      ..color = const Color(0x22052A20);
     const lo = -IsoProjection.farMargin;
     const hi = 1 + IsoProjection.nearMargin;
     for (var i = -2; i <= 17; i++) {
@@ -441,7 +441,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: -0.02,
       x1: 0.16,
       y1: 1.02,
-      color: const Color(0xFFDCE6E8),
+      color: const Color(0xFFCFE4F2),
     );
     // Bakery: warm boards.
     brush.groundQuad(
@@ -450,7 +450,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: GameController.bakeryZone.dy - 0.12,
       x1: GameController.bakeryZone.dx + 0.16,
       y1: GameController.bakeryZone.dy + 0.14,
-      color: const Color(0xFFE6C79A),
+      color: const Color(0xFFF3CE96),
     );
     // Checkout apron: a slightly darker service surface.
     brush.groundQuad(
@@ -459,7 +459,7 @@ class IsoMarketPainter extends CustomPainter {
       y0: -0.02,
       x1: 1.02,
       y1: 0.30,
-      color: const Color(0xFFDDE3DE),
+      color: const Color(0xFFD9E7DF),
     );
 
     // Circulation lane: the bright walkway the shopper follows from the door,
@@ -1874,9 +1874,9 @@ class IsoMarketPainter extends CustomPainter {
       canvas,
       x: x,
       y: y,
-      radiusX: 0.058,
-      radiusY: 0.058,
-      opacity: 0.36,
+      radiusX: 0.052,
+      radiusY: 0.030,
+      opacity: 0.42,
     );
 
     final paint = Paint()..isAntiAlias = true;
@@ -1886,17 +1886,34 @@ class IsoMarketPainter extends CustomPainter {
           Radius.circular(w / 2),
         );
 
+    /// Fills a limb with the scene's key/fill ramp instead of a flat colour.
+    void moulded(RRect r, Color base) {
+      canvas.drawRRect(
+        r,
+        Paint()
+          ..isAntiAlias = true
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              IsoLight.lift(base, 0.30),
+              base,
+              IsoLight.shade(base, 0.62),
+            ],
+            stops: const [0, 0.48, 1],
+          ).createShader(r.outerRect),
+      );
+    }
+
     // Legs — the trailing one is darkened so the stride reads at small sizes.
     final legColor = IsoLight.shade(body, 0.52);
-    paint.color = IsoLight.shade(legColor, 0.82);
-    canvas.drawRRect(
+    moulded(
       pill(ground.dx - u * 0.34 - stride, baseY - u * 0.34, u * 0.46, u * 0.86),
-      paint,
+      IsoLight.shade(legColor, 0.82),
     );
-    paint.color = legColor;
-    canvas.drawRRect(
+    moulded(
       pill(ground.dx + u * 0.34 + stride, baseY - u * 0.34, u * 0.46, u * 0.86),
-      paint,
+      legColor,
     );
 
     // Torso.
@@ -1905,15 +1922,26 @@ class IsoMarketPainter extends CustomPainter {
       width: u * 1.62,
       height: u * 1.44,
     );
-    paint.shader = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [IsoLight.lift(body, 0.26), body, IsoLight.shade(body, 0.66)],
-      stops: const [0, 0.5, 1],
-    ).createShader(torsoRect);
+    moulded(
+      RRect.fromRectAndRadius(torsoRect, Radius.circular(u * 0.5)),
+      body,
+    );
+    // Warm rim down the lit shoulder, the cue that separates a figure from the
+    // fixture behind it.
     canvas.drawRRect(
       RRect.fromRectAndRadius(torsoRect, Radius.circular(u * 0.5)),
-      paint,
+      Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.8, u * 0.11)
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.50),
+            Colors.white.withValues(alpha: 0),
+          ],
+        ).createShader(torsoRect),
     );
     paint.shader = null;
 
@@ -1932,16 +1960,16 @@ class IsoMarketPainter extends CustomPainter {
     }
 
     // Arms.
-    paint.color = IsoLight.shade(body, 0.86);
-    canvas.drawRRect(
+    moulded(
       pill(
         ground.dx - u * 0.92,
         baseY - u * 1.30 + stride * 0.5,
         u * 0.40,
         u * 1.02,
       ),
-      paint,
+      IsoLight.shade(body, 0.86),
     );
+    paint.color = IsoLight.shade(body, 0.86);
     canvas.drawRRect(
       pill(
         ground.dx + u * 0.92,
