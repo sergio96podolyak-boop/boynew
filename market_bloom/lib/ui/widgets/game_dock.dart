@@ -48,8 +48,8 @@ class GameDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final duration = PoMotion.respect(context, PoMotion.normal);
-    final tier = PoBreak.of(context);
-    final inset = tier.isCompact ? 8.0 : 12.0;
+    final k = PoScale.of(context);
+    final inset = PoChrome.dockInset(context);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -87,9 +87,9 @@ class GameDock extends StatelessWidget {
                 // but never wider than the space available — five fixed 60px
                 // slots overflowed a 320pt phone by exactly the dock padding.
                 final slots = primary.length + 1;
-                final slot = ((constraints.maxWidth - 10) / slots).clamp(
-                  46.0,
-                  64.0,
+                final slot = ((constraints.maxWidth - 10 * k) / slots).clamp(
+                  49.0 * k,
+                  66.0 * k,
                 );
                 return _Measure(
                   shrink: true,
@@ -102,25 +102,31 @@ class GameDock extends StatelessWidget {
                       gradient: const LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [PoColor.chromeLift, PoColor.chrome],
+                        colors: [Color(0xF21B4635), Color(0xF2072119)],
                       ),
-                      borderRadius: BorderRadius.circular(PoRadius.xl),
+                      borderRadius: BorderRadius.circular(
+                        PoChrome.dockRadius(context),
+                      ),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        width: 1.4,
+                        color: PoColor.goldFace.withValues(alpha: 0.24),
+                        width: 1.2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: PoColor.chromeDeep.withValues(alpha: 0.55),
-                          blurRadius: 26,
-                          offset: const Offset(0, 12),
+                          color: PoColor.chromeDeep.withValues(alpha: 0.66),
+                          blurRadius: 30 * k,
+                          offset: Offset(0, 14 * k),
+                        ),
+                        BoxShadow(
+                          color: PoColor.primaryFace.withValues(alpha: 0.10),
+                          blurRadius: 18 * k,
                         ),
                       ],
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 7,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6 * k,
+                        vertical: 7 * k,
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -135,6 +141,7 @@ class GameDock extends StatelessWidget {
                                 active: destination == selected,
                                 badge: hasBadge(destination),
                                 onTap: () => onSelect(destination),
+                                scale: k,
                               ),
                             ),
                           SizedBox(
@@ -149,6 +156,7 @@ class GameDock extends StatelessWidget {
                               badge: overflow.any(hasBadge),
                               onTap: onToggleMore,
                               semanticExpanded: expanded,
+                              scale: k,
                             ),
                           ),
                         ],
@@ -204,6 +212,7 @@ class _DockSlot extends StatefulWidget {
     required this.badge,
     required this.onTap,
     this.semanticExpanded,
+    this.scale = 1,
   });
 
   final IconData icon;
@@ -212,6 +221,7 @@ class _DockSlot extends StatefulWidget {
   final bool badge;
   final VoidCallback onTap;
   final bool? semanticExpanded;
+  final double scale;
 
   @override
   State<_DockSlot> createState() => _DockSlotState();
@@ -225,6 +235,7 @@ class _DockSlotState extends State<_DockSlot> {
     final duration = PoMotion.respect(context, PoMotion.fast);
     final active = widget.active;
     final ink = active ? Colors.white : PoColor.onChromeMuted;
+    final iconBox = active ? 42.0 * widget.scale : 34.0 * widget.scale;
 
     return Semantics(
       button: true,
@@ -252,34 +263,42 @@ class _DockSlotState extends State<_DockSlot> {
                     AnimatedContainer(
                       duration: PoMotion.respect(context, PoMotion.normal),
                       curve: PoMotion.curve,
-                      height: 34,
-                      width: 46,
+                      height: iconBox,
+                      width: iconBox,
                       decoration: BoxDecoration(
                         gradient: active
                             ? LinearGradient(
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  PoColor.lighten(PoColor.primaryFace, 0.30),
-                                  PoColor.deepen(PoColor.primaryFace, 0.12),
+                                  PoColor.lighten(PoColor.primaryFace, 0.24),
+                                  PoColor.primaryFace,
+                                  PoColor.deepen(PoColor.primaryFace, 0.18),
                                 ],
+                                stops: const [0, 0.56, 1],
                               )
                             : null,
                         color: active ? null : PoColor.chromeGlass,
-                        borderRadius: BorderRadius.circular(PoRadius.sm),
+                        borderRadius: BorderRadius.circular(
+                          active ? 14 * widget.scale : 11 * widget.scale,
+                        ),
                         border: Border.all(
                           color: active
-                              ? Colors.white.withValues(alpha: 0.55)
+                              ? Colors.white.withValues(alpha: 0.62)
                               : Colors.white.withValues(alpha: 0.10),
                         ),
                         boxShadow: active
                             ? PoElevate.glow(
                                 PoColor.primaryFace,
-                                strength: 0.75,
+                                strength: 0.85,
                               )
                             : null,
                       ),
-                      child: Icon(widget.icon, size: 21, color: ink),
+                      child: Icon(
+                        widget.icon,
+                        size: (active ? 23 : 20) * widget.scale,
+                        color: ink,
+                      ),
                     ),
                     if (widget.badge)
                       PositionedDirectional(
@@ -301,18 +320,16 @@ class _DockSlotState extends State<_DockSlot> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 3),
+                SizedBox(height: 3 * widget.scale),
                 Text(
                   widget.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: PoText.caption.copyWith(
-                    fontSize: 9.5,
+                    fontSize: 9.6 * widget.scale,
                     fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                    color: active
-                        ? PoColor.lighten(PoColor.primaryFace, 0.30)
-                        : PoColor.onChromeMuted,
+                    color: active ? Colors.white : PoColor.onChromeMuted,
                   ),
                 ),
               ],

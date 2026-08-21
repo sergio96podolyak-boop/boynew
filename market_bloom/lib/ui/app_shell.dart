@@ -135,28 +135,46 @@ class _AppShellState extends State<AppShell> {
                           compactMode: true,
                           floating: true,
                         ),
-                        bottomChrome: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
+                        bottomChrome: Builder(
+                          builder: (context) {
                             // Ambient context, so it sits at the foot of the
-                            // world rather than taking a slot at the top.
-                            if (dailyEvent != null)
-                              Padding(
-                                padding:
-                                    const EdgeInsetsDirectional.fromSTEB(
-                                      10,
+                            // world rather than taking a slot at the top — and
+                            // it is the first thing to go when there is no room
+                            // for it. On a landscape phone the banner plus the
+                            // dock sandwiched the world into a sliver.
+                            final height = MediaQuery.sizeOf(context).height;
+                            final showEvent = dailyEvent != null && height >= 520;
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (showEvent)
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                      PoChrome.dockInset(context),
                                       0,
-                                      10,
-                                      6,
+                                      PoChrome.dockInset(context),
+                                      6 * PoScale.of(context),
                                     ),
-                                child: DailyEventBanner(
-                                  game: dailyEvent.game,
-                                  settings: dailyEvent.settings,
-                                  compact: true,
-                                ),
-                              ),
-                            _dock(loc),
-                          ],
+                                    // Shares the dock's measure so the two read
+                                    // as one bottom stack rather than a
+                                    // full-bleed bar above a floating pill.
+                                    child: Center(
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 620,
+                                        ),
+                                        child: DailyEventBanner(
+                                          game: dailyEvent.game,
+                                          settings: dailyEvent.settings,
+                                          compact: true,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                _dock(loc),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ),

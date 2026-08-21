@@ -51,11 +51,7 @@ class GlobalHud extends StatelessWidget {
         settings.reducedMotion || MediaQuery.disableAnimationsOf(context);
 
     if (floating) {
-      return _FloatingHud(
-        game: game,
-        loc: loc,
-        reducedMotion: reducedMotion,
-      );
+      return _FloatingHud(game: game, loc: loc, reducedMotion: reducedMotion);
     }
 
     return DecoratedBox(
@@ -211,23 +207,7 @@ class _FloatingHud extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Shift timing as an edge hairline rather than its own pod: constant
-        // monitoring info belongs on a screen edge, and one fewer persistent
-        // overlay is one fewer thing competing with the world.
-        AnimatedBuilder(
-          animation: game,
-          builder: (context, _) => _ShiftEdge(game: game, loc: loc),
-        ),
-        _FloatingHudBody(
-          game: game,
-          loc: loc,
-          reducedMotion: reducedMotion,
-        ),
-      ],
-    );
+    return _FloatingHudBody(game: game, loc: loc, reducedMotion: reducedMotion);
   }
 }
 
@@ -246,6 +226,7 @@ class _FloatingHudBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 430;
+    final k = PoScale.of(context);
     return IgnorePointer(
       ignoring: false,
       child: SafeArea(
@@ -257,61 +238,142 @@ class _FloatingHudBody extends StatelessWidget {
             label:
                 'PoMarket, ${loc.levelLabel} ${game.storeLevel}, ${game.coins} ${loc.coinsShort}, ${game.gems} ${loc.gemsShort}',
             child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(10, 8, _cloudBadgeLane, 0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _BrandPod(subtitle: loc.yourMiniMarket, compact: compact),
-                      Expanded(
-                        child: Align(
-                          alignment: AlignmentDirectional.centerEnd,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (game.shelfStock < 3) ...[
-                                  _LowStockFlag(message: loc.lowStock),
-                                  const SizedBox(width: 7),
-                                ],
-                                _LevelMedallion(
-                                  level: game.storeLevel,
-                                  progress: game.levelProgress,
-                                  label: loc.levelLabel,
-                                  compact: compact,
-                                  reducedMotion: reducedMotion,
+              padding: EdgeInsetsDirectional.fromSTEB(
+                PoChrome.hudInset(context),
+                PoChrome.hudTopGap(context),
+                PoChrome.hudInset(context),
+                0,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 620),
+                  child: Container(
+                    height: PoChrome.hudHeight(context),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                      8 * k,
+                      7 * k,
+                      7 * k,
+                      7 * k,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xF21A4736), Color(0xF2072119)],
+                      ),
+                      borderRadius: BorderRadius.circular(
+                        PoChrome.hudRadius(context),
+                      ),
+                      border: Border.all(
+                        color: PoColor.goldFace.withValues(alpha: 0.36),
+                        width: 1.1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: PoColor.chromeDeep.withValues(alpha: 0.60),
+                          blurRadius: 26 * k,
+                          offset: Offset(0, 12 * k),
+                        ),
+                        BoxShadow(
+                          color: PoColor.primaryFace.withValues(alpha: 0.12),
+                          blurRadius: 18 * k,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(
+                                  PoChrome.hudRadius(context),
                                 ),
-                                const SizedBox(width: 7),
-                                _WalletCapsule(
-                                  icon: Icons.monetization_on_rounded,
-                                  value: game.coins,
-                                  face: PoColor.goldFace,
-                                  compact: compact,
-                                  semanticLabel: loc.coinsShort,
-                                  reducedMotion: reducedMotion,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.08),
+                                    Colors.transparent,
+                                  ],
                                 ),
-                                const SizedBox(width: 7),
-                                _WalletCapsule(
-                                  icon: Icons.diamond_rounded,
-                                  value: game.gems,
-                                  face: PoColor.accentFace,
-                                  compact: compact,
-                                  semanticLabel: loc.gemsShort,
-                                  reducedMotion: reducedMotion,
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _BrandPod(
+                              subtitle: loc.yourMiniMarket,
+                              compact: compact,
+                              scale: k,
+                            ),
+                            // Expanded + Align rather than a bare Spacer: a
+                            // Spacer only distributes leftover space, it does
+                            // not shrink the other children, so an unbounded
+                            // FittedBox here still overflowed the row on a
+                            // 320pt phone. Giving the cluster a bounded box is
+                            // what makes BoxFit.scaleDown actually apply.
+                            Expanded(
+                              child: Align(
+                                alignment: AlignmentDirectional.centerEnd,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: AlignmentDirectional.centerEnd,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _WalletCapsule(
+                                        icon: Icons.monetization_on_rounded,
+                                        value: game.coins,
+                                        face: PoColor.goldFace,
+                                        compact: compact,
+                                        semanticLabel: loc.coinsShort,
+                                        reducedMotion: reducedMotion,
+                                        scale: k,
+                                      ),
+                                      SizedBox(width: 6 * k),
+                                      _WalletCapsule(
+                                        icon: Icons.diamond_rounded,
+                                        value: game.gems,
+                                        face: PoColor.accentFace,
+                                        compact: compact,
+                                        semanticLabel: loc.gemsShort,
+                                        reducedMotion: reducedMotion,
+                                        scale: k,
+                                      ),
+                                      SizedBox(width: 6 * k),
+                                      _NotificationPod(
+                                        active: game.shelfStock < 3,
+                                        message: loc.lowStock,
+                                        scale: k,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        PositionedDirectional(
+                          start: 18 * k,
+                          end: 18 * k,
+                          bottom: -0.5,
+                          child: SizedBox(
+                            height: 2.5 * k,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(
+                                PoRadius.pill,
+                              ),
+                              child: _ShiftEdge(game: game, loc: loc),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -321,22 +383,98 @@ class _FloatingHudBody extends StatelessWidget {
   }
 }
 
+class _NotificationPod extends StatelessWidget {
+  const _NotificationPod({
+    required this.active,
+    required this.message,
+    required this.scale,
+  });
+
+  final bool active;
+  final String message;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: active
+        ? message
+        : MaterialLocalizations.of(context).alertDialogLabel,
+    child: Semantics(
+      label: active
+          ? message
+          : MaterialLocalizations.of(context).alertDialogLabel,
+      child: SizedBox(
+        width: 35 * scale,
+        height: 35 * scale,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: PoPod(
+                padding: EdgeInsets.zero,
+                child: Icon(
+                  Icons.notifications_rounded,
+                  color: active
+                      ? PoColor.lighten(PoColor.primaryFace, 0.24)
+                      : PoColor.onChromeMuted,
+                  size: 18 * scale,
+                ),
+              ),
+            ),
+            if (active)
+              PositionedDirectional(
+                top: -1 * scale,
+                end: -1 * scale,
+                child: Container(
+                  width: 10 * scale,
+                  height: 10 * scale,
+                  decoration: BoxDecoration(
+                    color: PoColor.danger,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: PoColor.chrome,
+                      width: 1.6 * scale,
+                    ),
+                    boxShadow: PoElevate.glow(PoColor.danger, strength: 0.45),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// Brand identity as a single glass pod rather than a logo floating on a bar.
 class _BrandPod extends StatelessWidget {
-  const _BrandPod({required this.subtitle, required this.compact});
+  const _BrandPod({
+    required this.subtitle,
+    required this.compact,
+    required this.scale,
+  });
 
   final String subtitle;
   final bool compact;
+  final double scale;
 
   @override
   Widget build(BuildContext context) => PoPod(
-    padding: const EdgeInsetsDirectional.fromSTEB(5, 5, 12, 5),
+    padding: EdgeInsetsDirectional.fromSTEB(
+      5 * scale,
+      4 * scale,
+      11 * scale,
+      4 * scale,
+    ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _BrandMark(compact: compact),
-        const SizedBox(width: 9),
-        SizedBox(width: 86, child: _BrandWordmark(subtitle: subtitle)),
+        _BrandMark(compact: compact, scale: scale),
+        SizedBox(width: 9 * scale),
+        SizedBox(
+          width: 84 * scale,
+          child: _BrandWordmark(subtitle: subtitle, scale: scale),
+        ),
       ],
     ),
   );
@@ -367,10 +505,7 @@ class _ShiftEdge extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      PoColor.lighten(style.face, 0.30),
-                      style.face,
-                    ],
+                    colors: [PoColor.lighten(style.face, 0.30), style.face],
                   ),
                   boxShadow: PoElevate.glow(style.face, strength: 0.5),
                 ),
@@ -454,22 +589,24 @@ class _HudGlowPainter extends CustomPainter {
 /// Store logo. Squircle medallion with gloss, matching the icon language used
 /// throughout the management screens.
 class _BrandMark extends StatelessWidget {
-  const _BrandMark({required this.compact});
+  const _BrandMark({required this.compact, this.scale = 1});
 
   final bool compact;
+  final double scale;
 
   @override
   Widget build(BuildContext context) => PoIconBadge(
     icon: Icons.storefront_rounded,
-    size: compact ? 34 : 38,
-    radius: compact ? 11 : 12,
+    size: (compact ? 34 : 38) * scale,
+    radius: (compact ? 11 : 12) * scale,
   );
 }
 
 class _BrandWordmark extends StatelessWidget {
-  const _BrandWordmark({required this.subtitle});
+  const _BrandWordmark({required this.subtitle, this.scale = 1});
 
   final String subtitle;
+  final double scale;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -482,17 +619,22 @@ class _BrandWordmark extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: PoText.h3.copyWith(
-          letterSpacing: 0.9,
+          fontSize: PoText.h3.fontSize! * scale,
+          letterSpacing: 0.9 * scale,
           height: 1,
           color: PoColor.onChrome,
         ),
       ),
-      const SizedBox(height: 3),
+      SizedBox(height: 3 * scale),
       Text(
         subtitle,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: PoText.caption.copyWith(height: 1, color: PoColor.onChromeMuted),
+        style: PoText.caption.copyWith(
+          fontSize: PoText.caption.fontSize! * scale,
+          height: 1,
+          color: PoColor.onChromeMuted,
+        ),
       ),
     ],
   );
@@ -645,6 +787,7 @@ class _WalletCapsule extends StatefulWidget {
     required this.compact,
     required this.semanticLabel,
     required this.reducedMotion,
+    this.scale = 1,
   });
 
   final IconData icon;
@@ -653,6 +796,7 @@ class _WalletCapsule extends StatefulWidget {
   final bool compact;
   final String semanticLabel;
   final bool reducedMotion;
+  final double scale;
 
   @override
   State<_WalletCapsule> createState() => _WalletCapsuleState();
@@ -683,7 +827,7 @@ class _WalletCapsuleState extends State<_WalletCapsule> {
     final value = widget.value;
     final semanticLabel = widget.semanticLabel;
     final reducedMotion = widget.reducedMotion;
-    final height = compact ? 32.0 : 36.0;
+    final height = (compact ? 32.0 : 36.0) * widget.scale;
     final medallion = height - 8;
     final capsule = _PopOnChange(
       value: value,
@@ -692,7 +836,12 @@ class _WalletCapsuleState extends State<_WalletCapsule> {
         label: '$semanticLabel $value',
         child: Container(
           height: height,
-          padding: EdgeInsetsDirectional.fromSTEB(4, 4, compact ? 11 : 13, 4),
+          padding: EdgeInsetsDirectional.fromSTEB(
+            4 * widget.scale,
+            4 * widget.scale,
+            (compact ? 11 : 13) * widget.scale,
+            4 * widget.scale,
+          ),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -742,11 +891,17 @@ class _WalletCapsuleState extends State<_WalletCapsule> {
                   color: PoColor.deepen(face, 0.30),
                 ),
               ),
-              SizedBox(width: compact ? 7 : 8),
+              SizedBox(width: (compact ? 7 : 8) * widget.scale),
               PoValue(
                 poShort(value),
-                size: compact ? 15 : 16.5,
+                size: (compact ? 15 : 16.5) * widget.scale,
                 rim: PoColor.deepen(face, 0.62),
+              ),
+              SizedBox(width: 4 * widget.scale),
+              Icon(
+                Icons.add_rounded,
+                size: 16 * widget.scale,
+                color: Colors.white.withValues(alpha: 0.88),
               ),
             ],
           ),

@@ -233,13 +233,33 @@ class IsoBrush {
       at(x0, y1, top),
     ], radius);
 
+    // The union of the three visible faces, as a single hexagon: top vertex,
+    // round the lit side, along the base, and back up the shadow side.
+    //
+    // Used twice. First as an under-fill, because each face rounds its corners
+    // independently and the two side faces therefore curve away from each
+    // other at the vertical corner they share, leaving a hairline of
+    // background showing through the middle of a solid object. Second as the
+    // contour stroke below.
+    final solid = height > 0.004;
+    final silhouette = solid
+        ? _rounded([
+            at(x0, y0, top),
+            at(x1, y0, top),
+            at(x1, y0, base),
+            at(x1, y1, base),
+            at(x0, y1, base),
+            at(x0, y1, top),
+          ], radius)
+        : null;
+
     _fill
       ..style = PaintingStyle.fill
       ..shader = null;
 
     // Ambient occlusion where the solid meets whatever it stands on. Cheap,
     // and it is what stops props looking pasted onto the floor.
-    if (height > 0.004) {
+    if (solid) {
       final footprint = _rounded([
         at(x0, y0, base),
         at(x1, y0, base),
@@ -254,6 +274,14 @@ class IsoBrush {
             BlurStyle.normal,
             math.max(1.6, 4 * p.scale),
           ),
+      );
+      // Seam guard: the darker of the two side tones, so any gap left by the
+      // independently rounded faces reads as shadow rather than as a hole.
+      canvas.drawPath(
+        silhouette!,
+        Paint()
+          ..isAntiAlias = true
+          ..color = IsoLight.shade(color, IsoLight.right),
       );
     }
 
@@ -294,8 +322,37 @@ class IsoBrush {
         ),
     );
 
-    // Specular edge along the lit rim, which is what sells a moulded surface.
-    if (outline && height > 0.004) {
+    // Contour. A tinted dark edge around the whole solid — tinted rather than
+    // black, so it stays inside the scene's palette — is what stops a bright
+    // cabinet dissolving into a bright floor. It is the single strongest
+    // readability cue stylised mobile 2.5D has.
+    //
+    // Gated on screen size rather than on [outline], so it needs no call-site
+    // changes: every large fixture picks a contour up automatically, while the
+    // hundreds of small packs facing off a gondola stay clean and cheap.
+    final screenSpan = math.max(
+      (x1 - x0).abs() * p.tileWidth,
+      height * p.unitHeight,
+    );
+    final contoured = solid && screenSpan > 7 * p.scale;
+    if (contoured) {
+      canvas.drawPath(
+        silhouette!,
+        Paint()
+          ..isAntiAlias = true
+          ..style = PaintingStyle.stroke
+          ..strokeJoin = StrokeJoin.round
+          ..strokeWidth = math.max(0.9, 1.1 * p.scale)
+          ..color = IsoLight.shade(color, 0.30).withValues(alpha: 0.38),
+      );
+    }
+
+    // Specular edge along the lit rim, which is what sells a moulded surface,
+    // and a cool rim down the shadow side to answer it. A warm highlight alone
+    // only says "this face is bright"; the pair says "this is a solid sitting
+    // in light", and it separates a fixture from whatever is behind it even
+    // where the two are the same value.
+    if (outline && contoured) {
       canvas.drawLine(
         at(x0, y0, top),
         at(x1, y0, top),
@@ -305,6 +362,13 @@ class IsoBrush {
           ..strokeWidth = math.max(0.8, 1.3 * p.scale)
           ..color = Colors.white.withValues(alpha: 0.34),
       );
+      final coolRim = Paint()
+        ..isAntiAlias = true
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = math.max(0.7, 1.0 * p.scale)
+        ..color = const Color(0xFF8FC7E8).withValues(alpha: 0.30);
+      canvas.drawLine(at(x0, y0, top), at(x0, y1, top), coolRim);
+      canvas.drawLine(at(x0, y1, top), at(x0, y1, base), coolRim);
     }
   }
 

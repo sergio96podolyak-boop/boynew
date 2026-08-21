@@ -69,9 +69,44 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
+/// Reports the vertical slice of the board that is free of chrome.
+///
+/// The board paints full-bleed behind the HUD and dock, so the camera cannot
+/// infer from its own size how much of it the player can actually see. This
+/// measures the layout column's middle slot — which is exactly that slice — and
+/// hands it to the projection.
+class _BandProbe extends StatefulWidget {
+  const _BandProbe({required this.stackKey, required this.onMeasured});
+
+  final GlobalKey stackKey;
+  final ValueChanged<({double top, double bottom})> onMeasured;
+
+  @override
+  State<_BandProbe> createState() => _BandProbeState();
+}
+
+class _BandProbeState extends State<_BandProbe> {
+  final _key = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final self = _key.currentContext?.findRenderObject();
+      final stack = widget.stackKey.currentContext?.findRenderObject();
+      if (self is! RenderBox || stack is! RenderBox) return;
+      if (!self.hasSize || !stack.hasSize) return;
+      final top = self.localToGlobal(Offset.zero, ancestor: stack).dy;
+      widget.onMeasured((top: top, bottom: top + self.size.height));
+    });
+    return SizedBox.expand(key: _key);
+  }
+}
+
 class _GameScreenState extends State<GameScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final Ticker _ticker;
+  final _viewportKey = GlobalKey();
+  ({double top, double bottom})? _band;
   Duration _previousElapsed = Duration.zero;
   bool _offlineSheetShown = false;
   bool _startupFlowStarted = false;
@@ -274,7 +309,7 @@ class _GameScreenState extends State<GameScreen>
           // other element floats over it — the world is the subject, the UI is
           // an overlay on it.
           child: Stack(
-            key: const ValueKey('market-page-viewport'),
+            key: _viewportKey,
             fit: StackFit.expand,
             children: [
               AnimatedBuilder(
@@ -286,247 +321,248 @@ class _GameScreenState extends State<GameScreen>
                       key: const ValueKey('market-board'),
                       child: Stack(
                         children: [
-                                        Positioned.fill(
-                                          child: RepaintBoundary(
-                                            child: CustomPaint(
-                                              painter: IsoMarketPainter(
-                                                game: game,
-                                                storageLabel:
-                                                    AppLocalizations.of(
-                                                      context,
-                                                    ).storage.toUpperCase(),
-                                                bakeryLabel:
-                                                    AppLocalizations.of(context)
-                                                        .departmentBakery
-                                                        .toUpperCase(),
-                                                checkoutLabel:
-                                                    AppLocalizations.of(context)
-                                                        .assignmentCheckout
-                                                        .toUpperCase(),
-                                                shelfLabel: AppLocalizations.of(
-                                                  context,
-                                                ).shelfStock.toUpperCase(),
-                                                textDirection:
-                                                    Directionality.of(context),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        // The isometric painter does its own
-                                        // lighting and vignette, so the old
-                                        // flat-board grade overlay is dropped
-                                        // here to avoid double-darkening.
-                                        Positioned.fill(
-                                          child: TouchMovement(
-                                            game: game,
-                                            onTap: () {},
-                                            controlMode: settings.controlMode,
-                                            // Map taps through the same iso
-                                            // projection the board is drawn
-                                            // with so the player walks to
-                                            // where the finger lands.
-                                            screenToWorld: (local, size) =>
-                                                IsoProjection.fit(
-                                                  size,
-                                                ).unproject(local),
-                                            worldToScreen: (world, size) =>
-                                                IsoProjection.fit(
-                                                  size,
-                                                ).projectOffset(world),
-                                          ),
-                                        ),
-                                        if (game.pendingShiftSummary != null)
-                                          Positioned.fill(
-                                            child: Padding(
-                                              padding: const EdgeInsets.all(8),
-                                              child: ShiftPnlSummary(
-                                                summary:
-                                                    game.pendingShiftSummary!,
-                                                cashBalance: game.coins,
-                                                onContinue: game.startNextShift,
-                                              ),
-                                            ),
-                                          ),
-                                        if (game.comboCount > 1)
-                                          Positioned(
-                                            top: 14,
-                                            right: 14,
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 6,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                gradient: const LinearGradient(
-                                                  colors: [
-                                                    Color(0xFFFFA726),
-                                                    Color(0xFFEE4664),
-                                                  ],
-                                                ),
-                                                borderRadius:
-                                                    BorderRadius.circular(20),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                    color: Color(0x66EE4664),
-                                                    blurRadius: 8,
-                                                    offset: Offset(0, 3),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  const Icon(
-                                                    Icons
-                                                        .local_fire_department_rounded,
-                                                    color: Colors.white,
-                                                    size: 20,
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    '${game.comboCount}x COMBO!',
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontWeight:
-                                                          FontWeight.w900,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
+                          Positioned.fill(
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                painter: IsoMarketPainter(
+                                  band: _band,
+                                  game: game,
+                                  storageLabel: AppLocalizations.of(
+                                    context,
+                                  ).storage.toUpperCase(),
+                                  bakeryLabel: AppLocalizations.of(
+                                    context,
+                                  ).departmentBakery.toUpperCase(),
+                                  checkoutLabel: AppLocalizations.of(
+                                    context,
+                                  ).assignmentCheckout.toUpperCase(),
+                                  shelfLabel: AppLocalizations.of(
+                                    context,
+                                  ).shelfStock.toUpperCase(),
+                                  produceLabel: AppLocalizations.of(
+                                    context,
+                                  ).departmentProduce.toUpperCase(),
+                                  textDirection: Directionality.of(context),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // The isometric painter does its own
+                          // lighting and vignette, so the old
+                          // flat-board grade overlay is dropped
+                          // here to avoid double-darkening.
+                          Positioned.fill(
+                            child: TouchMovement(
+                              game: game,
+                              onTap: () {},
+                              controlMode: settings.controlMode,
+                              // Map taps through the same iso
+                              // projection the board is drawn
+                              // with so the player walks to
+                              // where the finger lands.
+                              screenToWorld: (local, size) => IsoProjection.fit(
+                                size,
+                                band: _band,
+                              ).unproject(local),
+                              worldToScreen: (world, size) => IsoProjection.fit(
+                                size,
+                                band: _band,
+                              ).projectOffset(world),
+                            ),
+                          ),
+                          if (game.pendingShiftSummary != null)
+                            Positioned.fill(
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: ShiftPnlSummary(
+                                  summary: game.pendingShiftSummary!,
+                                  cashBalance: game.coins,
+                                  onContinue: game.startNextShift,
+                                ),
+                              ),
+                            ),
+                          if (game.comboCount > 1)
+                            Positioned(
+                              top: 14,
+                              right: 14,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFFFA726),
+                                      Color(0xFFEE4664),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x66EE4664),
+                                      blurRadius: 8,
+                                      offset: Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.local_fire_department_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${game.comboCount}x COMBO!',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-                  // Every persistent layer lives in one column: top chrome,
-                  // one upper contextual element, the world's breathing room,
-                  // one lower contextual element, then bottom chrome. A column
-                  // cannot overlap itself, so the ordering is the guarantee —
-                  // no offsets to keep in sync as content changes.
-                  Positioned.fill(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        // Short viewports drop the optional layers rather than
-                        // letting them collide. Less UI beats overlapping UI.
-                        final height = constraints.maxHeight;
-                        final showActions = height >= 560;
-                        final showMission = height >= 460;
-                        return Column(
-                          children: [
-                            ?widget.topChrome,
-                            if (showMission)
-                              Padding(
-                                padding: const EdgeInsetsDirectional.fromSTEB(
-                                  10,
-                                  8,
-                                  10,
-                                  0,
-                                ),
-                                child: AnimatedBuilder(
-                                  animation: game,
-                                  builder: (context, _) =>
-                                      game.fastCheckoutActive
-                                      ? _FastCheckoutBanner(
-                                          claimed: game.fastCheckoutClaimed,
-                                          onClaim: () {
-                                            if (game
-                                                .claimFastCheckoutBonus()) {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    AppLocalizations.of(
-                                                      context,
-                                                    ).fastCheckoutBonus,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                        )
-                                      : Align(
-                                          alignment:
-                                              AlignmentDirectional.centerStart,
-                                          child: _MissionPod(
-                                      key: const ValueKey('objective-strip'),
-                                      quest: game.quest,
-                                      title: AppLocalizations.of(
-                                        context,
-                                      ).questTitle(
-                                        game.questStage,
-                                        game.quest.target,
-                                      ),
-                                      onClaim: _claimQuest,
-                                      reducedMotion:
-                                          settings.reducedMotion ||
-                                          MediaQuery.disableAnimationsOf(
+              // Every persistent layer lives in one column: top chrome,
+              // one upper contextual element, the world's breathing room,
+              // one lower contextual element, then bottom chrome. A column
+              // cannot overlap itself, so the ordering is the guarantee —
+              // no offsets to keep in sync as content changes.
+              Positioned.fill(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Short viewports drop the optional layers rather than
+                    // letting them collide. Less UI beats overlapping UI.
+                    final height = constraints.maxHeight;
+                    final showActions = height >= 560;
+                    final showMission = height >= 460;
+                    return Column(
+                      children: [
+                        ?widget.topChrome,
+                        if (showMission)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              10,
+                              8,
+                              10,
+                              0,
+                            ),
+                            child: AnimatedBuilder(
+                              animation: game,
+                              builder: (context, _) => game.fastCheckoutActive
+                                  ? _FastCheckoutBanner(
+                                      claimed: game.fastCheckoutClaimed,
+                                      onClaim: () {
+                                        if (game.claimFastCheckoutBonus()) {
+                                          ScaffoldMessenger.of(
                                             context,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            // Transient, but still in the column so it can
-                            // never land on the pod above or the world below.
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeOutCubic,
-                              child: _achievementToast == null
-                                  ? const SizedBox(width: double.infinity)
-                                  : Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        12,
-                                        8,
-                                        12,
-                                        0,
-                                      ),
-                                      child: _AchievementToast(
-                                        achievement: _achievementToast!,
-                                        title: AppLocalizations.of(
-                                          context,
-                                        ).achievementTitle(
-                                          _achievementToast!.id,
-                                        ),
-                                        description: AppLocalizations.of(
-                                          context,
-                                        ).achievementDescription(
-                                          _achievementToast!.id,
-                                        ),
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).fastCheckoutBonus,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    )
+                                  : Align(
+                                      alignment: AlignmentDirectional.center,
+                                      child: _MissionPod(
+                                        key: const ValueKey('objective-strip'),
+                                        quest: game.quest,
+                                        title: AppLocalizations.of(context)
+                                            .questTitle(
+                                              game.questStage,
+                                              game.quest.target,
+                                            ),
+                                        onClaim: _claimQuest,
+                                        reducedMotion:
+                                            settings.reducedMotion ||
+                                            MediaQuery.disableAnimationsOf(
+                                              context,
+                                            ),
                                       ),
                                     ),
                             ),
-                            // The world's share of the screen. Nothing is
-                            // painted here, so taps fall through to the board.
-                            const Expanded(child: SizedBox.expand()),
-                            if (showActions)
-                              Padding(
-                                padding: const EdgeInsetsDirectional.fromSTEB(
-                                  10,
-                                  0,
-                                  10,
-                                  8,
+                          ),
+                        // Transient, but still in the column so it can
+                        // never land on the pod above or the world below.
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          child: _achievementToast == null
+                              ? const SizedBox(width: double.infinity)
+                              : Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    8,
+                                    12,
+                                    0,
+                                  ),
+                                  child: _AchievementToast(
+                                    achievement: _achievementToast!,
+                                    title: AppLocalizations.of(
+                                      context,
+                                    ).achievementTitle(_achievementToast!.id),
+                                    description: AppLocalizations.of(context)
+                                        .achievementDescription(
+                                          _achievementToast!.id,
+                                        ),
+                                  ),
                                 ),
-                                child: _WorldContextActions(
-                                  game: game,
-                                  onOpenStaff: widget.onOpenStaff,
-                                  onOpenInventory: widget.onOpenInventory,
-                                  onOpenDepartments: widget.onOpenDepartments,
-                                ),
-                              ),
-                            ?widget.bottomChrome,
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                        ),
+                        // The world's share of the screen. Nothing is
+                        // painted here, so taps fall through to the board —
+                        // and its measured bounds are what the camera
+                        // composes the shop for.
+                        Expanded(
+                          child: _BandProbe(
+                            stackKey: _viewportKey,
+                            onMeasured: (band) {
+                              if (_band?.top == band.top &&
+                                  _band?.bottom == band.bottom) {
+                                return;
+                              }
+                              if (mounted) setState(() => _band = band);
+                            },
+                          ),
+                        ),
+                        if (showActions)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              10,
+                              0,
+                              10,
+                              8,
+                            ),
+                            child: _WorldContextActions(
+                              game: game,
+                              onOpenStaff: widget.onOpenStaff,
+                              onOpenInventory: widget.onOpenInventory,
+                              onOpenDepartments: widget.onOpenDepartments,
+                            ),
+                          ),
+                        ?widget.bottomChrome,
+                      ],
+                    );
+                  },
+                ),
               ),
+            ],
+          ),
         ),
       ),
     );
@@ -565,6 +601,8 @@ class _GameScreenState extends State<GameScreen>
     return true;
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -665,6 +703,8 @@ class _GameScreenState extends State<GameScreen>
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showUpgrades() {
     return showModalBottomSheet<void>(
       context: context,
@@ -686,6 +726,8 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -1298,8 +1340,6 @@ class _MissionPod extends StatefulWidget {
 }
 
 class _MissionPodState extends State<_MissionPod> {
-  bool _open = false;
-
   @override
   Widget build(BuildContext context) {
     final quest = widget.quest;
@@ -1308,139 +1348,203 @@ class _MissionPodState extends State<_MissionPod> {
         : (quest.progress / quest.target).clamp(0.0, 1.0);
     final ready = quest.completed;
     final face = ready ? PoColor.goldFace : PoColor.primaryFace;
-    final duration = widget.reducedMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 260);
+    final k = PoScale.of(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final maxWidth = (width - PoChrome.missionInset(context) * 2).clamp(
+      280.0,
+      620.0,
+    );
 
-    return AnimatedSize(
-      duration: duration,
-      curve: PoMotion.curve,
-      alignment: AlignmentDirectional.topStart,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: _open
-              ? (MediaQuery.sizeOf(context).width - 96).clamp(200.0, 320.0)
-              : 232,
-        ),
-        child: PoPressable(
-          onTap: () => setState(() => _open = !_open),
-          radius: PoRadius.lg,
-          semanticLabel: widget.title,
-          child: Container(
-            padding: const EdgeInsetsDirectional.fromSTEB(8, 8, 12, 8),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: AlignmentDirectional.topStart,
-                end: AlignmentDirectional.bottomEnd,
-                colors: [Color(0xF217402F), Color(0xF20D2A21)],
-              ),
-              borderRadius: BorderRadius.circular(PoRadius.lg),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: ready ? 0.34 : 0.16),
-                width: 1.4,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: PoColor.chromeDeep.withValues(alpha: 0.5),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-                if (ready) ...PoElevate.glow(PoColor.goldFace, strength: 0.7),
-              ],
+    return SizedBox(
+      width: maxWidth,
+      child: PoPressable(
+        onTap: ready ? widget.onClaim : null,
+        radius: PoChrome.missionRadius(context),
+        semanticLabel: widget.title,
+        child: Container(
+          padding: EdgeInsetsDirectional.fromSTEB(
+            10 * k,
+            10 * k,
+            10 * k,
+            10 * k,
+          ),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: AlignmentDirectional.topStart,
+              end: AlignmentDirectional.bottomEnd,
+              colors: [Color(0xF01B563F), Color(0xF0072119)],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+            borderRadius: BorderRadius.circular(
+              PoChrome.missionRadius(context),
+            ),
+            border: Border.all(
+              color: (ready ? PoColor.goldFace : PoColor.primaryFace)
+                  .withValues(alpha: ready ? 0.58 : 0.46),
+              width: 1.3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: PoColor.chromeDeep.withValues(alpha: 0.55),
+                blurRadius: 28 * k,
+                offset: Offset(0, 12 * k),
+              ),
+              ...PoElevate.glow(face, strength: ready ? 0.62 : 0.28),
+            ],
+          ),
+          child: Row(
+            children: [
+              _MissionRing(ratio: ratio, face: face, ready: ready, scale: k),
+              SizedBox(width: 10 * k),
+              Expanded(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _MissionRing(ratio: ratio, face: face, ready: ready),
-                    const SizedBox(width: 9),
-                    Flexible(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            AppLocalizations.of(context).quests.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: PoText.overline.copyWith(
-                              color: PoColor.lighten(face, 0.24),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.title,
-                            maxLines: _open ? 3 : 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: PoText.title.copyWith(
-                              color: PoColor.onChrome,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      AppLocalizations.of(context).quests.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PoText.overline.copyWith(
+                        fontSize: 9.5 * k,
+                        color: PoColor.lighten(face, 0.20),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      _open
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      size: 18,
-                      color: PoColor.onChromeMuted,
-                    ),
-                  ],
-                ),
-                if (_open) ...[
-                  const SizedBox(height: 10),
-                  PoGauge(
-                    value: ratio,
-                    face: face,
-                    height: 11,
-                    segments: quest.target.clamp(2, 12),
-                    onChrome: true,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.card_giftcard_rounded,
-                        size: 15,
-                        color: PoColor.goldFace,
+                    SizedBox(height: 3 * k),
+                    Text(
+                      widget.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: PoText.h3.copyWith(
+                        fontSize: 14.5 * k,
+                        color: PoColor.onChrome,
+                        height: 1.05,
                       ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '+${quest.reward} ${AppLocalizations.of(context).coinsShort}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 8 * k),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PoGauge(
+                            value: ratio,
+                            face: face,
+                            height: 9 * k,
+                            segments: 0,
+                            onChrome: true,
+                          ),
+                        ),
+                        SizedBox(width: 10 * k),
+                        Text(
+                          '${quest.progress} / ${quest.target}',
+                          textDirection: TextDirection.ltr,
                           style: PoText.caption.copyWith(
-                            color: PoColor.onChromeMuted,
+                            fontSize: 10.5 * k,
+                            color: PoColor.lighten(face, 0.10),
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  if (ready) ...[
-                    const SizedBox(height: 10),
-                    PoBtn(
-                      key: const ValueKey('mission-claim-action'),
-                      onPressed: widget.onClaim,
-                      expand: true,
-                      dense: true,
-                      face: PoColor.goldFace,
-                      icon: Icons.card_giftcard_rounded,
-                      label: AppLocalizations.of(context).claimReward,
+                      ],
                     ),
                   ],
+                ),
+              ),
+              SizedBox(width: 9 * k),
+              _MissionGift(
+                reward: quest.reward,
+                ready: ready,
+                scale: k,
+                onClaim: widget.onClaim,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MissionGift extends StatelessWidget {
+  const _MissionGift({
+    required this.reward,
+    required this.ready,
+    required this.scale,
+    required this.onClaim,
+  });
+
+  final int reward;
+  final bool ready;
+  final double scale;
+  final VoidCallback onClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = 54 * scale;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PoPressable(
+          onTap: ready ? onClaim : null,
+          radius: PoRadius.md,
+          semanticLabel: AppLocalizations.of(context).claimReward,
+          child: Container(
+            key: ready ? const ValueKey('mission-claim-action') : null,
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  PoColor.lighten(PoColor.accentFace, 0.18),
+                  PoColor.accentDeep,
                 ],
+              ),
+              borderRadius: BorderRadius.circular(16 * scale),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: ready ? 0.75 : 0.36),
+                width: 1.4 * scale,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: PoColor.accentDeep.withValues(alpha: 0.48),
+                  blurRadius: 18 * scale,
+                  offset: Offset(0, 7 * scale),
+                ),
+                if (ready) ...PoElevate.glow(PoColor.goldFace, strength: 0.75),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  child: Container(width: 8 * scale, color: PoColor.goldFace),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  child: Container(height: 8 * scale, color: PoColor.goldFace),
+                ),
+                Icon(
+                  Icons.card_giftcard_rounded,
+                  color: Colors.white,
+                  size: 29 * scale,
+                ),
               ],
             ),
           ),
         ),
-      ),
+        SizedBox(height: 4 * scale),
+        Text(
+          '+$reward',
+          textDirection: TextDirection.ltr,
+          style: PoText.caption.copyWith(
+            fontSize: 9.5 * scale,
+            color: PoColor.goldFace,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1451,22 +1555,24 @@ class _MissionRing extends StatelessWidget {
     required this.ratio,
     required this.face,
     required this.ready,
+    this.scale = 1,
   });
 
   final double ratio;
   final Color face;
   final bool ready;
+  final double scale;
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 34,
-    height: 34,
+    width: 36 * scale,
+    height: 36 * scale,
     child: CustomPaint(
       painter: _MissionRingPainter(ratio: ratio, face: face),
       child: Center(
         child: Icon(
           ready ? Icons.card_giftcard_rounded : Icons.flag_rounded,
-          size: 15,
+          size: 16 * scale,
           color: ready ? PoColor.goldFace : PoColor.onChrome,
         ),
       ),
@@ -1733,6 +1839,8 @@ void _showContextHint(BuildContext context, String message) {
   );
 }
 
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
 // ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.

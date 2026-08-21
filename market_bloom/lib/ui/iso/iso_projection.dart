@@ -18,38 +18,48 @@ class IsoProjection {
 
   /// Fits the diamond into [size], reserving head-room at the top for the back
   /// walls and the fixtures standing against them.
-  factory IsoProjection.fit(Size size) {
-    // Camera. The previous framing used a diamond taller than it was wide,
-    // which is a near-overhead angle: it reads as a floor plan rather than a
-    // place you stand in. This is a true 2:1 isometric — the diamond is twice
-    // as wide as it is tall — with a large unit height so fixtures, walls and
-    // people have real vertical presence instead of lying flat on the plane.
+  /// Fits the room to the frame.
+  ///
+  /// [band] is the vertical slice actually free of chrome. The board paints
+  /// full-bleed so the floor runs behind the HUD and dock, but the room is
+  /// *composed* for the band — otherwise the camera centres the shop on the
+  /// whole screen while a quarter of it is covered, which is what left a wedge
+  /// of empty apron above the dock and pushed the shop off centre.
+  factory IsoProjection.fit(Size size, {({double top, double bottom})? band}) {
     // True isometric, per the 45-45 rule: yaw 45 degrees, pitch 35.264 degrees
     // (the angle whose sine is 1/sqrt(3)). Work the projection through and both
     // the diamond's height and the vertical axis come out at 0.577 of its
     // width — and crucially they are *equal*, which is what makes a world cube
-    // render as a cube. The previous 0.76 / 0.63 pair was neither the correct
-    // ratio nor internally consistent, so nothing in the scene could be
-    // proportioned reliably against anything else.
+    // render as a cube.
     const isoRatio = 0.5774;
+
+    final top = band?.top ?? 0;
+    final bottom = band?.bottom ?? size.height;
+    final bandHeight = math.max(120.0, bottom - top);
+    final bandCentre = (top + bottom) / 2;
+
     // Overscans the frame so the two side corners of the field — wall, not
     // shopping space — fall outside it. A fully visible diamond reads as a
     // model on a table. Movement is tap-to-move and taps can only land inside
     // the frame, so nothing becomes unreachable.
-    // Overscan is capped by height as well as driven by width. On a short or
-    // landscape frame a width-only zoom made the field taller than the screen,
-    // so the player saw a fragment of one aisle and no shop at all.
-    final tileWidth = math.min(size.width * 1.95, size.height * 1.35);
+    //
+    // Capped by the band's height as well as driven by width: a width-only
+    // zoom made the field taller than a short or landscape frame, so the player
+    // saw a fragment of one aisle and no shop at all.
+    final tileWidth = math.min(size.width * 1.72, bandHeight / isoRatio * 1.06);
+    final tileHeight = tileWidth * isoRatio;
+
     return IsoProjection(
       origin: Offset(
         size.width / 2,
-        // The room sits high enough that the back wall, its fascia and the
-        // hanging rig occupy the upper band, and low enough that the near floor
-        // carries to the bottom of the frame.
-        size.height * 0.26,
+        // World (0,0) is the far corner, so the field runs a full tileHeight
+        // below the origin. Placing the origin half a field above the band's
+        // centre puts the shop in the middle of the space the player can
+        // actually see.
+        bandCentre - tileHeight / 2,
       ),
       tileWidth: tileWidth,
-      tileHeight: tileWidth * isoRatio,
+      tileHeight: tileHeight,
       unitHeight: tileWidth * isoRatio,
       scale: math.min(size.width, size.height) / 380,
     );

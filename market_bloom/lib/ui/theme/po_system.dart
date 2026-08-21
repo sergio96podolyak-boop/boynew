@@ -321,6 +321,48 @@ abstract final class PoSpace {
   static const xxl = 30.0;
 }
 
+/// Viewport scale for chrome.
+///
+/// Every HUD pod, badge, font and padding used to be a fixed pixel value, so
+/// the chrome occupied a constant ~240px whatever the screen: 42% of a 320x568
+/// phone and 27% of a 430x932 one. Driving those dimensions off one factor
+/// keeps the chrome a consistent *share* of the viewport instead.
+abstract final class PoScale {
+  /// Reference width — a current mid-size phone.
+  static const reference = 390.0;
+
+  static double of(BuildContext context) =>
+      fromSize(MediaQuery.sizeOf(context));
+
+  static double fromSize(Size size) {
+    // Portrait width, or landscape height: the axis that actually constrains
+    // how big chrome may be.
+    final short = math.min(size.width, size.height);
+    return (short / reference).clamp(0.80, 1.15);
+  }
+}
+
+/// Shared measurements for the persistent mobile game chrome.
+abstract final class PoChrome {
+  static double hudInset(BuildContext context) => 10 * PoScale.of(context);
+  static double hudTopGap(BuildContext context) => 8 * PoScale.of(context);
+  static double hudHeight(BuildContext context) => 58 * PoScale.of(context);
+  static double hudRadius(BuildContext context) => 22 * PoScale.of(context);
+  static double hudIcon(BuildContext context) => 40 * PoScale.of(context);
+  static double hudCurrencyHeight(BuildContext context) =>
+      34 * PoScale.of(context);
+
+  static double missionInset(BuildContext context) => 10 * PoScale.of(context);
+  static double missionRadius(BuildContext context) => 20 * PoScale.of(context);
+  static double missionIcon(BuildContext context) => 38 * PoScale.of(context);
+
+  static double dockInset(BuildContext context) => 10 * PoScale.of(context);
+  static double dockRadius(BuildContext context) => 22 * PoScale.of(context);
+  static double dockSlotWidth(BuildContext context) => 58 * PoScale.of(context);
+  static double dockIcon(BuildContext context) => 38 * PoScale.of(context);
+  static double dockGap(BuildContext context) => 7 * PoScale.of(context);
+}
+
 /// Shared layout measures.
 abstract final class PoLayout {
   /// Maximum width of a page's content column. Chrome stays full-bleed but its
