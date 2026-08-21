@@ -18,7 +18,7 @@ import 'widgets/game_dock.dart';
 import 'widgets/game_navigation.dart';
 import 'widgets/global_hud.dart';
 import 'widgets/main_game_phase_two.dart';
-import 'theme/pomarket_design.dart';
+import 'theme/po_system.dart';
 import 'widgets/privacy_consent_layer.dart';
 
 class AppShell extends StatefulWidget {
@@ -99,70 +99,154 @@ class _AppShellState extends State<AppShell> {
     final dailyEvent = DailyEventBannerLayer.maybeOf(context);
     final marketSelected = _selectedDestination == AppDestination.market;
     return Scaffold(
-      backgroundColor: PoDepthColors.deepSea,
-      body: DecoratedBox(
-        // Deep field behind the board. Bright surfaces read as premium when
-        // they float on a rich backdrop rather than another pale grey.
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              PoDepthColors.forest,
-              PoDepthColors.deepSea,
-              PoDepthColors.abyss,
-            ],
-            stops: [0, 0.45, 1],
-          ),
-        ),
-        child: Column(
-          children: [
-            GlobalHud(
-              game: widget.controller,
-              settings: widget.settings,
-              compactMode: marketSelected,
-            ),
-            if (dailyEvent != null)
-              DailyEventBanner(
-                game: dailyEvent.game,
-                settings: dailyEvent.settings,
-                compact: true,
-              ),
-            Expanded(
-              child: IndexedStack(
-                index: _selectedIndex,
+      backgroundColor: PoColor.canvas,
+      body: PoPageGround(
+        // Softer on the board screen: the market art supplies its own colour,
+        // so a strong page wash behind it would compete with the shelves.
+        aurora: marketSelected ? 0.5 : 1,
+        child: marketSelected
+            // The world is full-bleed and the chrome floats over it. Stacking
+            // the HUD, event banner and dock as bars above and below the board
+            // is what kept the composition feeling like a form with a picture
+            // in it rather than a game.
+            ? Stack(
                 children: [
-                  for (final destination in _allDestinations)
-                    _buildDestination(destination),
+                  // The market screen owns one layout column for every
+                  // persistent layer, and the shell hands it the chrome to
+                  // place. Positioning the HUD and dock separately here, while
+                  // the screen positioned its own pods against guessed offsets,
+                  // is what let the banners collide.
+                  Positioned.fill(
+                    child: MainGamePhaseTwo(
+                      game: widget.controller,
+                      settings: widget.settings,
+                      child: GameScreen(
+                        controller: widget.controller,
+                        settings: widget.settings,
+                        onOpenStaff: () =>
+                            _selectDestination(AppDestination.staff),
+                        onOpenInventory: () =>
+                            _selectDestination(AppDestination.inventory),
+                        onOpenDepartments: () =>
+                            _selectDestination(AppDestination.departments),
+                        topChrome: GlobalHud(
+                          game: widget.controller,
+                          settings: widget.settings,
+                          compactMode: true,
+                          floating: true,
+                        ),
+                        bottomChrome: Builder(
+                          builder: (context) {
+                            // Ambient context, so it sits at the foot of the
+                            // world rather than taking a slot at the top — and
+                            // it is the first thing to go when there is no room
+                            // for it. On a landscape phone the banner plus the
+                            // dock sandwiched the world into a sliver.
+                            final height = MediaQuery.sizeOf(context).height;
+                            final showEvent = dailyEvent != null && height >= 520;
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (showEvent)
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                      PoChrome.dockInset(context),
+                                      0,
+                                      PoChrome.dockInset(context),
+                                      6 * PoScale.of(context),
+                                    ),
+                                    // Shares the dock's measure so the two read
+                                    // as one bottom stack rather than a
+                                    // full-bleed bar above a floating pill.
+                                    child: Center(
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 620,
+                                        ),
+                                        child: DailyEventBanner(
+                                          game: dailyEvent.game,
+                                          settings: dailyEvent.settings,
+                                          compact: true,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                _dock(loc),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Keeps the other destinations mounted so their state and
+                  // controllers survive navigation exactly as before.
+                  Offstage(
+                    offstage: true,
+                    child: TickerMode(
+                      enabled: false,
+                      child: IndexedStack(
+                        index: _selectedIndex,
+                        children: [
+                          for (final destination in _allDestinations)
+                            if (destination == AppDestination.market)
+                              const SizedBox.shrink()
+                            else
+                              _buildDestination(destination),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  GlobalHud(
+                    game: widget.controller,
+                    settings: widget.settings,
+                    compactMode: false,
+                  ),
+                  if (dailyEvent != null)
+                    DailyEventBanner(
+                      game: dailyEvent.game,
+                      settings: dailyEvent.settings,
+                      compact: true,
+                    ),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _selectedIndex,
+                      children: [
+                        for (final destination in _allDestinations)
+                          _buildDestination(destination),
+                      ],
+                    ),
+                  ),
+                  _dock(loc),
                 ],
               ),
-            ),
-            // One dock on every screen. Previously the market hid navigation
-            // behind a floating hamburger while the management screens used a
-            // side rail, so the same action lived in two different places.
-            AnimatedBuilder(
-              animation: widget.controller,
-              builder: (context, _) {
-                final badges = _CommandBadges.from(widget.controller);
-                return GameDock(
-                  primary: _dockDestinations,
-                  overflow: _moreDestinations,
-                  selected: _selectedDestination,
-                  expanded: _worldMenuOpen,
-                  labelFor: (destination) => _labelFor(destination, loc),
-                  iconFor: _iconFor,
-                  hasBadge: badges.forDestination,
-                  moreLabel: loc.more,
-                  onSelect: _selectDestination,
-                  onToggleMore: _toggleWorldMenu,
-                );
-              },
-            ),
-          ],
-        ),
       ),
     );
   }
+
+  /// One dock, built the same way for both compositions.
+  Widget _dock(AppLocalizations loc) => AnimatedBuilder(
+    animation: widget.controller,
+    builder: (context, _) {
+      final badges = _CommandBadges.from(widget.controller);
+      return GameDock(
+        primary: _dockDestinations,
+        overflow: _moreDestinations,
+        selected: _selectedDestination,
+        expanded: _worldMenuOpen,
+        labelFor: (destination) => _labelFor(destination, loc),
+        iconFor: _iconFor,
+        hasBadge: badges.forDestination,
+        moreLabel: loc.more,
+        onSelect: _selectDestination,
+        onToggleMore: _toggleWorldMenu,
+      );
+    },
+  );
 
   Widget _buildDestination(AppDestination destination) {
     final game = widget.controller;
@@ -223,7 +307,6 @@ class _AppShellState extends State<AppShell> {
         AppDestination.settings => loc.settings,
       };
 }
-
 
 class _CommandBadges {
   const _CommandBadges({

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -11,7 +12,10 @@ import '../services/app_settings.dart';
 import '../services/monetization_service.dart';
 import '../services/sfx/sfx_backend.dart';
 import '../services/sfx/sfx_manager.dart';
+import 'iso/iso_market_painter.dart';
+import 'iso/iso_projection.dart';
 import 'market_painter.dart';
+import 'theme/po_system.dart';
 import 'theme/pomarket_design.dart';
 import 'widgets/celebration_overlay.dart';
 import 'widgets/onboarding_dialog.dart';
@@ -41,6 +45,8 @@ class GameScreen extends StatefulWidget {
     this.onOpenStaff,
     this.onOpenInventory,
     this.onOpenDepartments,
+    this.topChrome,
+    this.bottomChrome,
   });
 
   final GameController controller;
@@ -49,13 +55,58 @@ class GameScreen extends StatefulWidget {
   final VoidCallback? onOpenInventory;
   final VoidCallback? onOpenDepartments;
 
+  /// Persistent chrome the shell owns, placed in this screen's layout column.
+  ///
+  /// The HUD and the dock used to be positioned separately by the shell while
+  /// this screen positioned its own pods with hardcoded offsets, so nothing
+  /// knew how tall anything else was and the layers collided. Handing them in
+  /// means one column owns every persistent layer and overlap is structurally
+  /// impossible rather than tuned out by hand.
+  final Widget? topChrome;
+  final Widget? bottomChrome;
+
   @override
   State<GameScreen> createState() => _GameScreenState();
+}
+
+/// Reports the vertical slice of the board that is free of chrome.
+///
+/// The board paints full-bleed behind the HUD and dock, so the camera cannot
+/// infer from its own size how much of it the player can actually see. This
+/// measures the layout column's middle slot — which is exactly that slice — and
+/// hands it to the projection.
+class _BandProbe extends StatefulWidget {
+  const _BandProbe({required this.stackKey, required this.onMeasured});
+
+  final GlobalKey stackKey;
+  final ValueChanged<({double top, double bottom})> onMeasured;
+
+  @override
+  State<_BandProbe> createState() => _BandProbeState();
+}
+
+class _BandProbeState extends State<_BandProbe> {
+  final _key = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final self = _key.currentContext?.findRenderObject();
+      final stack = widget.stackKey.currentContext?.findRenderObject();
+      if (self is! RenderBox || stack is! RenderBox) return;
+      if (!self.hasSize || !stack.hasSize) return;
+      final top = self.localToGlobal(Offset.zero, ancestor: stack).dy;
+      widget.onMeasured((top: top, bottom: top + self.size.height));
+    });
+    return SizedBox.expand(key: _key);
+  }
 }
 
 class _GameScreenState extends State<GameScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final Ticker _ticker;
+  final _viewportKey = GlobalKey();
+  ({double top, double bottom})? _band;
   Duration _previousElapsed = Duration.zero;
   bool _offlineSheetShown = false;
   bool _startupFlowStarted = false;
@@ -67,7 +118,6 @@ class _GameScreenState extends State<GameScreen>
   GameController get game => widget.controller;
   AppSettings get settings => widget.settings;
   ShiftPhase? _lastAmbientPhase;
-
 
   @override
   void initState() {
@@ -104,7 +154,6 @@ class _GameScreenState extends State<GameScreen>
     };
     unawaited(SfxManager.instance.playAmbient(musicPhase));
   }
-
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -233,7 +282,6 @@ class _GameScreenState extends State<GameScreen>
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     return CelebrationOverlay(
@@ -247,301 +295,273 @@ class _GameScreenState extends State<GameScreen>
             end: Alignment.bottomCenter,
             colors: [
               PoDepthColors.forest,
+              PoDepthColors.canopy,
               PoDepthColors.deepSea,
-              PoDepthColors.abyss,
             ],
             stops: [0, 0.5, 1],
           ),
         ),
         child: SafeArea(
           top: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Stack(
-                key: const ValueKey('market-page-viewport'),
-                children: [
-                  AnimatedBuilder(
-                    animation: game,
-                    builder: (context, _) => Column(
-                      children: [
-                        Container(
-                          key: const ValueKey('objective-strip'),
-                          height: MediaQuery.sizeOf(context).width <= 420
-                              ? 52
-                              : 64,
-                          // Trailing gap clears the floating world menu that
-                          // AppShell pins to the top-end corner, which was
-                          // sitting on top of the objective text.
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            8,
-                            2,
-                            72,
-                            2,
-                          ),
-                          alignment: Alignment.center,
-                          child: _QuestCard(
-                            quest: game.quest,
-                            title: AppLocalizations.of(
-                              context,
-                            ).questTitle(game.questStage, game.quest.target),
-                            onClaim: _claimQuest,
-                            compact: MediaQuery.sizeOf(context).width <= 420,
-                            reducedMotion:
-                                settings.reducedMotion ||
-                                MediaQuery.disableAnimationsOf(context),
-                          ),
-                        ),
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final availableRatio =
-                                  constraints.maxWidth / constraints.maxHeight;
-                              final boardAspectRatio =
-                                  availableRatio.clamp(0.60, 1.08);
-                              return Center(
-                                child: AspectRatio(
-                                  aspectRatio: boardAspectRatio,
-                                  child: Container(
-                                    key: const ValueKey('market-board'),
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                    ),
-                                    child: Stack(
-                                      children: [
-                                          Positioned.fill(
-                                            child: RepaintBoundary(
-                                              child: CustomPaint(
-                                                painter: MarketPainter(
-                                                  game: game,
-                                                  departmentLabels: {
-                                                    for (final type
-                                                        in DepartmentType.values)
-                                                      type: switch (type) {
-                                                        DepartmentType.generalGoods =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentGeneralGoods,
-                                                        DepartmentType.bakery =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentBakery,
-                                                        DepartmentType.produce =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentProduce,
-                                                        DepartmentType.refrigerated =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentRefrigerated,
-                                                        DepartmentType.beauty =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentBeauty,
-                                                        DepartmentType.electronics =>
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).departmentElectronics,
-                                                      },
-                                                  },
-                                                  storageLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).storage.toUpperCase(),
-                                                  shelfLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).shelfStock.toUpperCase(),
-                                                  checkoutLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).assignmentCheckout.toUpperCase(),
-                                                  bakeryLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).departmentBakery.toUpperCase(),
-                                                  bakeryReadyLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).bakeryReady.replaceFirst(
-                                                        '{current}',
-                                                        '${game.bakeryReadyStock}',
-                                                      ).replaceFirst(
-                                                        '{capacity}',
-                                                        '${GameBalance.bakeryReadyCapacity}',
-                                                      ),
-                                                  bakeryLockedLabel:
-                                                      AppLocalizations.of(
-                                                        context,
-                                                      ).unlockAtLevel.replaceFirst(
-                                                        '{level}',
-                                                        '${GameBalance.bakeryUnlockLevel}',
-                                                      ),
-                                                  textDirection:
-                                                      Directionality.of(context),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          // Cinematic grade over the board art:
-                                          // warm key light on the play area,
-                                          // cool falloff at the corners.
-                                          Positioned.fill(
-                                            child: RepaintBoundary(
-                                              child: WorldLightOverlay(
-                                                warmth: settings.reducedMotion
-                                                    ? 0.6
-                                                    : 1,
-                                                clipper: boardClipFor,
-                                              ),
-                                            ),
-                                          ),
-                                          Positioned.fill(
-                                            child: TouchMovement(
-                                              game: game,
-                                              onTap: () {},
-                                              controlMode: settings.controlMode,
-                                            ),
-                                          ),
-                                          PositionedDirectional(
-                                            start: 10,
-                                            end: 10,
-                                            bottom: 8,
-                                            child: _WorldContextActions(
-                                              game: game,
-                                              onOpenStaff: widget.onOpenStaff,
-                                              onOpenInventory:
-                                                  widget.onOpenInventory,
-                                              onOpenDepartments:
-                                                  widget.onOpenDepartments,
-                                            ),
-                                          ),
-                                          if (game.pendingShiftSummary != null)
-                                            Positioned.fill(
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(8),
-                                                child: ShiftPnlSummary(
-                                                  summary: game.pendingShiftSummary!,
-                                                  cashBalance: game.coins,
-                                                  onContinue: game.startNextShift,
-                                                ),
-                                              ),
-                                            ),
-                                          if (game.fastCheckoutActive)
-                                            Positioned(
-                                              top: 70,
-                                              left: 22,
-                                              right: 22,
-                                              child: _FastCheckoutBanner(
-                                                claimed: game.fastCheckoutClaimed,
-                                                onClaim: () {
-                                                  if (game.claimFastCheckoutBonus()) {
-                                                    ScaffoldMessenger.of(
-                                                      context,
-                                                    ).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          AppLocalizations.of(
-                                                            context,
-                                                          ).fastCheckoutBonus,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }
-                                                },
-                                              ),
-                                            ),
-                                          if (game.comboCount > 1)
-                                            Positioned(
-                                              top: 14,
-                                              right: 14,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 6,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  gradient: const LinearGradient(
-                                                    colors: [
-                                                      Color(0xFFFF9F1C),
-                                                      Color(0xFFFF4040),
-                                                    ],
-                                                  ),
-                                                  borderRadius: BorderRadius.circular(20),
-                                                  boxShadow: const [
-                                                    BoxShadow(
-                                                      color: Color(0x66FF4040),
-                                                      blurRadius: 8,
-                                                      offset: Offset(0, 3),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    const Icon(
-                                                      Icons.local_fire_department_rounded,
-                                                      color: Colors.white,
-                                                      size: 20,
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      '${game.comboCount}x COMBO!',
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontWeight: FontWeight.w900,
-                                                        fontSize: 14,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
+          // Structural change: the board used to be a letterboxed square under
+          // a column of chrome bars, capped at 560px, so the world was the
+          // smallest thing on screen. It now fills the whole stage and every
+          // other element floats over it — the world is the subject, the UI is
+          // an overlay on it.
+          child: Stack(
+            key: _viewportKey,
+            fit: StackFit.expand,
+            children: [
+              AnimatedBuilder(
+                animation: game,
+                builder: (context, _) => Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned.fill(
+                      key: const ValueKey('market-board'),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                painter: IsoMarketPainter(
+                                  band: _band,
+                                  game: game,
+                                  storageLabel: AppLocalizations.of(
+                                    context,
+                                  ).storage.toUpperCase(),
+                                  bakeryLabel: AppLocalizations.of(
+                                    context,
+                                  ).departmentBakery.toUpperCase(),
+                                  checkoutLabel: AppLocalizations.of(
+                                    context,
+                                  ).assignmentCheckout.toUpperCase(),
+                                  shelfLabel: AppLocalizations.of(
+                                    context,
+                                  ).shelfStock.toUpperCase(),
+                                  produceLabel: AppLocalizations.of(
+                                    context,
+                                  ).departmentProduce.toUpperCase(),
+                                  textDirection: Directionality.of(context),
+                                ),
+                              ),
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    top: 112,
-                    left: 12,
-                    right: 12,
-                    child: IgnorePointer(
-                      ignoring: _achievementToast == null,
-                      child: AnimatedSlide(
-                        duration: const Duration(milliseconds: 360),
-                        curve: Curves.easeOutBack,
-                        offset: _achievementToast == null
-                            ? const Offset(0, -1.4)
-                            : Offset.zero,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 220),
-                          opacity: _achievementToast == null ? 0 : 1,
-                          child: _achievementToast == null
-                              ? const SizedBox.shrink()
-                              : _AchievementToast(
-                                  achievement: _achievementToast!,
-                                  title: AppLocalizations.of(
-                                    context,
-                                  ).achievementTitle(_achievementToast!.id),
-                                  description: AppLocalizations.of(context)
-                                      .achievementDescription(
-                                        _achievementToast!.id,
-                                      ),
+                          // The isometric painter does its own
+                          // lighting and vignette, so the old
+                          // flat-board grade overlay is dropped
+                          // here to avoid double-darkening.
+                          Positioned.fill(
+                            child: TouchMovement(
+                              game: game,
+                              onTap: () {},
+                              controlMode: settings.controlMode,
+                              // Map taps through the same iso
+                              // projection the board is drawn
+                              // with so the player walks to
+                              // where the finger lands.
+                              screenToWorld: (local, size) => IsoProjection.fit(
+                                size,
+                                band: _band,
+                              ).unproject(local),
+                              worldToScreen: (world, size) => IsoProjection.fit(
+                                size,
+                                band: _band,
+                              ).projectOffset(world),
+                            ),
+                          ),
+                          if (game.pendingShiftSummary != null)
+                            Positioned.fill(
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: ShiftPnlSummary(
+                                  summary: game.pendingShiftSummary!,
+                                  cashBalance: game.coins,
+                                  onContinue: game.startNextShift,
                                 ),
-                        ),
+                              ),
+                            ),
+                          if (game.comboCount > 1)
+                            Positioned(
+                              top: 14,
+                              right: 14,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFFFA726),
+                                      Color(0xFFEE4664),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x66EE4664),
+                                      blurRadius: 8,
+                                      offset: Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.local_fire_department_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${game.comboCount}x COMBO!',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              // Every persistent layer lives in one column: top chrome,
+              // one upper contextual element, the world's breathing room,
+              // one lower contextual element, then bottom chrome. A column
+              // cannot overlap itself, so the ordering is the guarantee —
+              // no offsets to keep in sync as content changes.
+              Positioned.fill(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Short viewports drop the optional layers rather than
+                    // letting them collide. Less UI beats overlapping UI.
+                    final height = constraints.maxHeight;
+                    final showActions = height >= 560;
+                    final showMission = height >= 460;
+                    return Column(
+                      children: [
+                        ?widget.topChrome,
+                        if (showMission)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              10,
+                              8,
+                              10,
+                              0,
+                            ),
+                            child: AnimatedBuilder(
+                              animation: game,
+                              builder: (context, _) => game.fastCheckoutActive
+                                  ? _FastCheckoutBanner(
+                                      claimed: game.fastCheckoutClaimed,
+                                      onClaim: () {
+                                        if (game.claimFastCheckoutBonus()) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                AppLocalizations.of(
+                                                  context,
+                                                ).fastCheckoutBonus,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    )
+                                  : Align(
+                                      alignment: AlignmentDirectional.center,
+                                      child: _MissionPod(
+                                        key: const ValueKey('objective-strip'),
+                                        quest: game.quest,
+                                        title: AppLocalizations.of(context)
+                                            .questTitle(
+                                              game.questStage,
+                                              game.quest.target,
+                                            ),
+                                        onClaim: _claimQuest,
+                                        reducedMotion:
+                                            settings.reducedMotion ||
+                                            MediaQuery.disableAnimationsOf(
+                                              context,
+                                            ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        // Transient, but still in the column so it can
+                        // never land on the pod above or the world below.
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          child: _achievementToast == null
+                              ? const SizedBox(width: double.infinity)
+                              : Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    8,
+                                    12,
+                                    0,
+                                  ),
+                                  child: _AchievementToast(
+                                    achievement: _achievementToast!,
+                                    title: AppLocalizations.of(
+                                      context,
+                                    ).achievementTitle(_achievementToast!.id),
+                                    description: AppLocalizations.of(context)
+                                        .achievementDescription(
+                                          _achievementToast!.id,
+                                        ),
+                                  ),
+                                ),
+                        ),
+                        // The world's share of the screen. Nothing is
+                        // painted here, so taps fall through to the board —
+                        // and its measured bounds are what the camera
+                        // composes the shop for.
+                        Expanded(
+                          child: _BandProbe(
+                            stackKey: _viewportKey,
+                            onMeasured: (band) {
+                              if (_band?.top == band.top &&
+                                  _band?.bottom == band.bottom) {
+                                return;
+                              }
+                              if (mounted) setState(() => _band = band);
+                            },
+                          ),
+                        ),
+                        if (showActions)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              10,
+                              0,
+                              10,
+                              8,
+                            ),
+                            child: _WorldContextActions(
+                              game: game,
+                              onOpenStaff: widget.onOpenStaff,
+                              onOpenInventory: widget.onOpenInventory,
+                              onOpenDepartments: widget.onOpenDepartments,
+                            ),
+                          ),
+                        ?widget.bottomChrome,
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -593,6 +613,40 @@ class _GameScreenState extends State<GameScreen>
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   Future<void> _showRewardCenter() {
     return showModalBottomSheet<void>(
       context: context,
@@ -605,6 +659,40 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -638,6 +726,40 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
+  // Retained for compatibility with legacy deep links.
+  // ignore: unused_element
   // Retained for compatibility with legacy deep links.
   // ignore: unused_element
   // Retained for compatibility with legacy deep links.
@@ -727,11 +849,11 @@ class _GameScreenState extends State<GameScreen>
           child: Container(
             padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFCF6),
+              color: const Color(0xFFFFFFFF),
               borderRadius: BorderRadius.circular(28),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x44315F4A),
+                  color: Color(0x440B3B2C),
                   blurRadius: 28,
                   offset: Offset(0, 13),
                 ),
@@ -745,12 +867,12 @@ class _GameScreenState extends State<GameScreen>
                   height: 92,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
+                      colors: [Color(0xFFFFD874), Color(0xFFD98505)],
                     ),
                     shape: BoxShape.circle,
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0x44F6A623),
+                        color: Color(0x44FFCB45),
                         blurRadius: 22,
                         offset: Offset(0, 10),
                       ),
@@ -766,7 +888,7 @@ class _GameScreenState extends State<GameScreen>
                 Text(
                   loc.dailyBonus,
                   style: const TextStyle(
-                    color: Color(0xFFE08D19),
+                    color: Color(0xFFD98505),
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.2,
@@ -775,7 +897,7 @@ class _GameScreenState extends State<GameScreen>
                 Text(
                   loc.dayStreak.replaceFirst('{streak}', '${bonus.streak}'),
                   style: const TextStyle(
-                    color: Color(0xFF315F4A),
+                    color: Color(0xFF1C3A32),
                     fontSize: 27,
                     fontWeight: FontWeight.w900,
                   ),
@@ -784,7 +906,7 @@ class _GameScreenState extends State<GameScreen>
                 Text(
                   loc.comeBackTomorrow,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF6F766F)),
+                  style: const TextStyle(color: Color(0xFF4A6E63)),
                 ),
                 const SizedBox(height: 17),
                 Row(
@@ -793,14 +915,14 @@ class _GameScreenState extends State<GameScreen>
                     _BonusPill(
                       icon: Icons.monetization_on_rounded,
                       value: '+${bonus.coinsAwarded}',
-                      color: const Color(0xFFF6A623),
+                      color: const Color(0xFFFFCB45),
                     ),
                     if (bonus.gemsAwarded > 0) ...[
                       const SizedBox(width: 9),
                       _BonusPill(
                         icon: Icons.diamond_rounded,
                         value: '+${bonus.gemsAwarded}',
-                        color: const Color(0xFF8B66D8),
+                        color: const Color(0xFF6234E0),
                       ),
                     ],
                   ],
@@ -810,7 +932,7 @@ class _GameScreenState extends State<GameScreen>
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
-                    backgroundColor: const Color(0xFF38B879),
+                    backgroundColor: const Color(0xFF2FD98F),
                   ),
                   icon: const Icon(Icons.card_giftcard_rounded),
                   label: Text(loc.collectReward),
@@ -835,7 +957,7 @@ class _RewardCenter extends StatelessWidget {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context);
     return Material(
-      color: const Color(0xFFFFFCF6),
+      color: const Color(0xFFFFFFFF),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       child: AnimatedBuilder(
         animation: game,
@@ -844,7 +966,7 @@ class _RewardCenter extends StatelessWidget {
             _RewardChoice(
               placement: RewardPlacement.instantCoins,
               icon: Icons.monetization_on_rounded,
-              color: const Color(0xFFF6A623),
+              color: const Color(0xFFFFCB45),
               title: loc.rewardCoinsTitle,
               benefit: loc.rewardCoinsBenefit.replaceFirst(
                 '{value}',
@@ -855,7 +977,7 @@ class _RewardCenter extends StatelessWidget {
               _RewardChoice(
                 placement: RewardPlacement.doubleOfflineEarnings,
                 icon: Icons.bolt_rounded,
-                color: const Color(0xFF38B879),
+                color: const Color(0xFF2FD98F),
                 title: loc.rewardOfflineTitle,
                 benefit: loc.rewardOfflineBenefit
                     .replaceFirst('{value}', '${game.offlineEarnings * 2}')
@@ -871,7 +993,7 @@ class _RewardCenter extends StatelessWidget {
                   children: [
                     const Icon(
                       Icons.ondemand_video_rounded,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                       size: 25,
                     ),
                     const SizedBox(width: 9),
@@ -879,7 +1001,7 @@ class _RewardCenter extends StatelessWidget {
                       child: Text(
                         loc.rewardCenterTitle,
                         style: const TextStyle(
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
                         ),
@@ -902,13 +1024,13 @@ class _RewardCenter extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(13),
                       decoration: BoxDecoration(
-                        color: const Color(0x14315F4A),
+                        color: const Color(0x140B3B2C),
                         borderRadius: BorderRadius.circular(15),
                       ),
                       child: Text(
                         loc.optionalAdDescription,
                         style: const TextStyle(
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                           fontSize: 12,
                           height: 1.35,
                           fontWeight: FontWeight.w700,
@@ -922,7 +1044,7 @@ class _RewardCenter extends StatelessWidget {
                     Text(
                       '${loc.rewardClaimsToday}: ${game.rewardClaimsToday}/${game.rewardDailyLimit}',
                       style: const TextStyle(
-                        color: Color(0xFF6B746E),
+                        color: Color(0xFF4A6E63),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1023,7 +1145,7 @@ class _RewardChoiceCard extends StatelessWidget {
                     Text(
                       choice.title,
                       style: const TextStyle(
-                        color: Color(0xFF315F4A),
+                        color: Color(0xFF1C3A32),
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -1031,7 +1153,7 @@ class _RewardChoiceCard extends StatelessWidget {
                     Text(
                       choice.benefit,
                       style: const TextStyle(
-                        color: Color(0xFF6B746E),
+                        color: Color(0xFF4A6E63),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1043,8 +1165,8 @@ class _RewardChoiceCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: available
-                            ? const Color(0xFF38A66E)
-                            : const Color(0xFF8A7D6C),
+                            ? const Color(0xFF0A8B59)
+                            : const Color(0xFF7D998F),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1062,7 +1184,7 @@ class _RewardChoiceCard extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(0, 42),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
-                  backgroundColor: const Color(0xFF315F4A),
+                  backgroundColor: const Color(0xFF1C3A32),
                 ),
                 child: Text(
                   available ? loc.watchAndReceive : loc.rewardUnavailable,
@@ -1090,19 +1212,19 @@ class _RewardPreviewNotice extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
+        color: const Color(0xFFFFF6E3),
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: const Color(0x33E09A20)),
+        border: Border.all(color: const Color(0x33D98505)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.phone_android_rounded, color: Color(0xFFE09A20)),
+          const Icon(Icons.phone_android_rounded, color: Color(0xFFD98505)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               '${loc.mobileFeaturePreview}: ${loc.rewardPreviewUnavailable}',
               style: const TextStyle(
-                color: Color(0xFF8A5B19),
+                color: Color(0xFF7A4E06),
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
@@ -1132,12 +1254,12 @@ class _FastCheckoutBanner extends StatelessWidget {
     final loc = AppLocalizations.of(context);
     return Card(
       margin: EdgeInsets.zero,
-      color: const Color(0xFFFFF3D7),
+      color: const Color(0xFFFFF6E3),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
-            const Icon(Icons.bolt_rounded, color: Color(0xFFE08D19)),
+            const Icon(Icons.bolt_rounded, color: Color(0xFFD98505)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -1193,133 +1315,145 @@ class _CurrencyPill extends StatelessWidget {
   }
 }
 
-class _QuestCard extends StatelessWidget {
-  const _QuestCard({
+/// Collapsible objective pod anchored over the world.
+///
+/// Replaces the full-width objective strip that used to sit above the board.
+/// Collapsed it is a compact badge with a ring showing progress; tapping it
+/// expands the detail — progressive disclosure, so the objective is always
+/// visible but only occupies the screen when the player asks for it.
+class _MissionPod extends StatefulWidget {
+  const _MissionPod({
+    super.key,
     required this.quest,
     required this.title,
     required this.onClaim,
-    required this.compact,
     required this.reducedMotion,
   });
 
   final Quest quest;
   final String title;
   final VoidCallback onClaim;
-  final bool compact;
   final bool reducedMotion;
 
   @override
+  State<_MissionPod> createState() => _MissionPodState();
+}
+
+class _MissionPodState extends State<_MissionPod> {
+  @override
   Widget build(BuildContext context) {
-    final motionDuration = reducedMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 220);
-    return TweenAnimationBuilder<double>(
-      key: ValueKey(quest.completed),
-      tween: Tween(begin: quest.completed ? 0.97 : 1, end: 1),
-      duration: motionDuration,
-      curve: Curves.easeOut,
-      builder: (context, scale, child) =>
-          Transform.scale(scale: scale, child: child),
-      child: Material(
-        elevation: compact ? 3 : 5,
-        color: const Color(0xFCFFF9F0),
-        shadowColor: const Color(0x33315F4A),
-        borderRadius: BorderRadius.circular(compact ? 15 : 18),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 9 : 12,
-            vertical: compact ? 5 : 9,
+    final quest = widget.quest;
+    final ratio = quest.target == 0
+        ? 0.0
+        : (quest.progress / quest.target).clamp(0.0, 1.0);
+    final ready = quest.completed;
+    final face = ready ? PoColor.goldFace : PoColor.primaryFace;
+    final k = PoScale.of(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final maxWidth = (width - PoChrome.missionInset(context) * 2).clamp(
+      280.0,
+      620.0,
+    );
+
+    return SizedBox(
+      width: maxWidth,
+      child: PoPressable(
+        onTap: ready ? widget.onClaim : null,
+        radius: PoChrome.missionRadius(context),
+        semanticLabel: widget.title,
+        child: Container(
+          padding: EdgeInsetsDirectional.fromSTEB(
+            10 * k,
+            10 * k,
+            10 * k,
+            10 * k,
+          ),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: AlignmentDirectional.topStart,
+              end: AlignmentDirectional.bottomEnd,
+              colors: [Color(0xF01B563F), Color(0xF0072119)],
+            ),
+            borderRadius: BorderRadius.circular(
+              PoChrome.missionRadius(context),
+            ),
+            border: Border.all(
+              color: (ready ? PoColor.goldFace : PoColor.primaryFace)
+                  .withValues(alpha: ready ? 0.58 : 0.46),
+              width: 1.3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: PoColor.chromeDeep.withValues(alpha: 0.55),
+                blurRadius: 28 * k,
+                offset: Offset(0, 12 * k),
+              ),
+              ...PoElevate.glow(face, strength: ready ? 0.62 : 0.28),
+            ],
           ),
           child: Row(
             children: [
-              Container(
-                width: compact ? 30 : 39,
-                height: compact ? 30 : 39,
-                decoration: BoxDecoration(
-                  color: quest.completed
-                      ? const Color(0xFF38B879)
-                      : const Color(0xFFFFE5AF),
-                  borderRadius: BorderRadius.circular(compact ? 10 : 13),
-                ),
-                child: Icon(
-                  quest.completed ? Icons.check_rounded : Icons.flag_rounded,
-                  size: compact ? 18 : 24,
-                  color: quest.completed
-                      ? Colors.white
-                      : const Color(0xFFA66B00),
-                ),
-              ),
-              SizedBox(width: compact ? 7 : 10),
+              _MissionRing(ratio: ratio, face: face, ready: ready, scale: k),
+              SizedBox(width: 10 * k),
               Expanded(
-                child: compact
-                    ? _CompactQuestDetails(quest: quest, title: title)
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: quest.fraction,
-                              minHeight: 6,
-                              color: const Color(0xFFF6A623),
-                              backgroundColor: const Color(0xFFE8E5DC),
-                            ),
-                          ),
-                        ],
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppLocalizations.of(context).quests.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PoText.overline.copyWith(
+                        fontSize: 9.5 * k,
+                        color: PoColor.lighten(face, 0.20),
                       ),
-              ),
-              SizedBox(width: compact ? 6 : 10),
-              if (quest.completed && compact)
-                Semantics(
-                  label: AppLocalizations.of(context).claimReward,
-                  button: true,
-                  child: IconButton(
-                    onPressed: onClaim,
-                    tooltip: AppLocalizations.of(context).claimReward,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 30,
-                      height: 30,
                     ),
-                    icon: const Icon(
-                      Icons.card_giftcard_rounded,
-                      size: 19,
-                      color: Color(0xFF38B879),
+                    SizedBox(height: 3 * k),
+                    Text(
+                      widget.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: PoText.h3.copyWith(
+                        fontSize: 14.5 * k,
+                        color: PoColor.onChrome,
+                        height: 1.05,
+                      ),
                     ),
-                  ),
-                )
-              else if (quest.completed)
-                FilledButton(
-                  onPressed: onClaim,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  child: Text(
-                    '${AppLocalizations.of(context).claimReward} ${quest.reward}',
-                  ),
-                )
-              else
-                Text(
-                  '${quest.progress.clamp(0, quest.target)}/${quest.target}',
-                  textDirection: TextDirection.ltr,
-                  style: const TextStyle(
-                    color: Color(0xFF6B746E),
-                    fontWeight: FontWeight.w900,
-                  ),
+                    SizedBox(height: 8 * k),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PoGauge(
+                            value: ratio,
+                            face: face,
+                            height: 9 * k,
+                            segments: 0,
+                            onChrome: true,
+                          ),
+                        ),
+                        SizedBox(width: 10 * k),
+                        Text(
+                          '${quest.progress} / ${quest.target}',
+                          textDirection: TextDirection.ltr,
+                          style: PoText.caption.copyWith(
+                            fontSize: 10.5 * k,
+                            color: PoColor.lighten(face, 0.10),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
+              ),
+              SizedBox(width: 9 * k),
+              _MissionGift(
+                reward: quest.reward,
+                ready: ready,
+                scale: k,
+                onClaim: widget.onClaim,
+              ),
             ],
           ),
         ),
@@ -1328,37 +1462,165 @@ class _QuestCard extends StatelessWidget {
   }
 }
 
-class _CompactQuestDetails extends StatelessWidget {
-  const _CompactQuestDetails({required this.quest, required this.title});
+class _MissionGift extends StatelessWidget {
+  const _MissionGift({
+    required this.reward,
+    required this.ready,
+    required this.scale,
+    required this.onClaim,
+  });
 
-  final Quest quest;
-  final String title;
+  final int reward;
+  final bool ready;
+  final double scale;
+  final VoidCallback onClaim;
 
   @override
   Widget build(BuildContext context) {
+    final size = 54 * scale;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+        PoPressable(
+          onTap: ready ? onClaim : null,
+          radius: PoRadius.md,
+          semanticLabel: AppLocalizations.of(context).claimReward,
+          child: Container(
+            key: ready ? const ValueKey('mission-claim-action') : null,
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  PoColor.lighten(PoColor.accentFace, 0.18),
+                  PoColor.accentDeep,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16 * scale),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: ready ? 0.75 : 0.36),
+                width: 1.4 * scale,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: PoColor.accentDeep.withValues(alpha: 0.48),
+                  blurRadius: 18 * scale,
+                  offset: Offset(0, 7 * scale),
+                ),
+                if (ready) ...PoElevate.glow(PoColor.goldFace, strength: 0.75),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  child: Container(width: 8 * scale, color: PoColor.goldFace),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  child: Container(height: 8 * scale, color: PoColor.goldFace),
+                ),
+                Icon(
+                  Icons.card_giftcard_rounded,
+                  color: Colors.white,
+                  size: 29 * scale,
+                ),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(height: 3),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: quest.fraction,
-            minHeight: 4,
-            color: const Color(0xFFF6A623),
-            backgroundColor: const Color(0xFFE8E5DC),
+        SizedBox(height: 4 * scale),
+        Text(
+          '+$reward',
+          textDirection: TextDirection.ltr,
+          style: PoText.caption.copyWith(
+            fontSize: 9.5 * scale,
+            color: PoColor.goldFace,
+            fontWeight: FontWeight.w900,
           ),
         ),
       ],
     );
   }
+}
+
+/// Progress ring plus count, used as the mission pod's collapsed state.
+class _MissionRing extends StatelessWidget {
+  const _MissionRing({
+    required this.ratio,
+    required this.face,
+    required this.ready,
+    this.scale = 1,
+  });
+
+  final double ratio;
+  final Color face;
+  final bool ready;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 36 * scale,
+    height: 36 * scale,
+    child: CustomPaint(
+      painter: _MissionRingPainter(ratio: ratio, face: face),
+      child: Center(
+        child: Icon(
+          ready ? Icons.card_giftcard_rounded : Icons.flag_rounded,
+          size: 16 * scale,
+          color: ready ? PoColor.goldFace : PoColor.onChrome,
+        ),
+      ),
+    ),
+  );
+}
+
+class _MissionRingPainter extends CustomPainter {
+  const _MissionRingPainter({required this.ratio, required this.face});
+
+  final double ratio;
+  final Color face;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centre = size.center(Offset.zero);
+    final stroke = size.shortestSide * 0.14;
+    final radius = (size.shortestSide - stroke) / 2;
+    canvas.drawCircle(
+      centre,
+      radius,
+      Paint()..color = Colors.white.withValues(alpha: 0.08),
+    );
+    canvas.drawCircle(
+      centre,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = Colors.black.withValues(alpha: 0.35),
+    );
+    if (ratio <= 0) return;
+    canvas.drawArc(
+      Rect.fromCircle(center: centre, radius: radius),
+      -math.pi / 2,
+      math.pi * 2 * ratio,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round
+        ..color = face,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _MissionRingPainter old) =>
+      old.ratio != ratio || old.face != face;
 }
 
 class _WorldContextActions extends StatelessWidget {
@@ -1530,7 +1792,8 @@ class _WorldContextButton extends StatelessWidget {
   String storage,
   String restock,
   String restockOrdered,
-}) _contextLabels(BuildContext context) {
+})
+_contextLabels(BuildContext context) {
   return switch (Localizations.localeOf(context).languageCode) {
     'he' => (
       stock: 'מלאי',
@@ -1588,6 +1851,40 @@ void _showContextHint(BuildContext context, String message) {
 // ignore: unused_element
 // Legacy implementation retained temporarily; it is no longer mounted.
 // ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
+// Legacy implementation retained temporarily; it is no longer mounted.
+// ignore: unused_element
 class _ControlDeck extends StatelessWidget {
   const _ControlDeck({
     required this.game,
@@ -1612,12 +1909,12 @@ class _ControlDeck extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 6),
       padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFFDF8EB),
+        color: const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x30315F4A)),
+        border: Border.all(color: const Color(0x300B3B2C)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x17315F4A),
+            color: Color(0x170B3B2C),
             blurRadius: 10,
             offset: Offset(0, 2),
           ),
@@ -1664,7 +1961,7 @@ class _ControlDeck extends StatelessWidget {
                         child: _RoundAction(
                           label: loc.upgrades,
                           icon: Icons.upgrade_rounded,
-                          color: const Color(0xFF315F4A),
+                          color: const Color(0xFF1C3A32),
                           onTap: onUpgrades,
                         ),
                       ),
@@ -1679,7 +1976,7 @@ class _ControlDeck extends StatelessWidget {
                               ? loc.loading
                               : loc.freeBonus,
                           icon: Icons.ondemand_video_rounded,
-                          color: const Color(0xFFB45C55),
+                          color: const Color(0xFFD32A47),
                           onTap: game.rewardInProgress ? null : onReward,
                         ),
                       ),
@@ -1692,7 +1989,7 @@ class _ControlDeck extends StatelessWidget {
                         child: _RoundAction(
                           label: loc.shop,
                           icon: Icons.shopping_bag_rounded,
-                          color: const Color(0xFFC48124),
+                          color: const Color(0xFFB06A04),
                           onTap: onShop,
                         ),
                       ),
@@ -1762,8 +2059,10 @@ class _QuickStockAction extends StatelessWidget {
         : emergency
         ? '${loc.emergencyStock} +${GameBalance.emergencyStockQuantity}'
         : loc.quickRestock;
-    final actionKey = pending ? const ValueKey('quick-restock-action-pending') : const ValueKey('quick-restock-action');
-    final color = emergency ? const Color(0xFF38B879) : const Color(0xFFF6A623);
+    final actionKey = pending
+        ? const ValueKey('quick-restock-action-pending')
+        : const ValueKey('quick-restock-action');
+    final color = emergency ? const Color(0xFF2FD98F) : const Color(0xFFFFCB45);
 
     void activate() {
       final succeeded = emergency
@@ -1820,7 +2119,7 @@ class _CarriedStatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: const Color(0x14315F4A),
+        color: const Color(0x140B3B2C),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -1829,14 +2128,14 @@ class _CarriedStatusChip extends StatelessWidget {
           const Icon(
             Icons.inventory_2_rounded,
             size: 13,
-            color: Color(0xFFE09A20),
+            color: Color(0xFFD98505),
           ),
           const SizedBox(width: 3),
           Text(
             '$carried/$capacity',
             textDirection: TextDirection.ltr,
             style: const TextStyle(
-              color: Color(0xFF315F4A),
+              color: Color(0xFF1C3A32),
               fontSize: 10,
               fontWeight: FontWeight.w900,
             ),
@@ -1877,7 +2176,7 @@ class _ControlInstruction extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.start,
           style: const TextStyle(
-            color: Color(0xFF315F4A),
+            color: Color(0xFF1C3A32),
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -1985,14 +2284,14 @@ class _UpgradeSheet extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                     ),
                   ),
                 ),
                 _CurrencyPill(
                   icon: Icons.monetization_on_rounded,
                   value: game.coins,
-                  color: const Color(0xFFF6A623),
+                  color: const Color(0xFFFFCB45),
                 ),
                 const SizedBox(width: 16),
               ],
@@ -2107,7 +2406,7 @@ class _UpgradeTile extends StatelessWidget {
       enabled: onTap != null,
       child: Material(
         color: onTap == null
-            ? const Color(0xFFF5F0E8).withValues(alpha: 0.6)
+            ? const Color(0xFFEFF2EF).withValues(alpha: 0.6)
             : Colors.white,
         borderRadius: BorderRadius.circular(16),
         elevation: onTap == null ? 0 : 2,
@@ -2121,8 +2420,8 @@ class _UpgradeTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: onTap == null
-                    ? const Color(0x33315F4A)
-                    : const Color(0x1A315F4A),
+                    ? const Color(0x330B3B2C)
+                    : const Color(0x1A0B3B2C),
               ),
             ),
             child: Row(
@@ -2133,10 +2432,10 @@ class _UpgradeTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isMaxed
-                          ? [const Color(0xFF38B879), const Color(0xFF2E9B5F)]
+                          ? [const Color(0xFF2FD98F), const Color(0xFF0A8B59)]
                           : canAfford
-                          ? [const Color(0xFF5B8DEF), const Color(0xFF4A7BD5)]
-                          : [const Color(0xFFE8E0D8), const Color(0xFFD8D0C8)],
+                          ? [const Color(0xFF62B4FF), const Color(0xFF1D6FD4)]
+                          : [const Color(0xFFDCE6E0), const Color(0xFFD3DFD8)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -2146,8 +2445,8 @@ class _UpgradeTile extends StatelessWidget {
                             BoxShadow(
                               color:
                                   (isMaxed
-                                          ? const Color(0xFF38B879)
-                                          : const Color(0xFF5B8DEF))
+                                          ? const Color(0xFF2FD98F)
+                                          : const Color(0xFF62B4FF))
                                       .withValues(alpha: 0.35),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
@@ -2159,7 +2458,7 @@ class _UpgradeTile extends StatelessWidget {
                     upgrade.icon,
                     color: isMaxed || canAfford
                         ? Colors.white
-                        : const Color(0xFF8B8078),
+                        : const Color(0xFF7D998F),
                     size: 24,
                   ),
                 ),
@@ -2174,7 +2473,7 @@ class _UpgradeTile extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -2185,8 +2484,8 @@ class _UpgradeTile extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           color: isMaxed
-                              ? const Color(0xFF38B879)
-                              : const Color(0xFF6B746E),
+                              ? const Color(0xFF2FD98F)
+                              : const Color(0xFF4A6E63),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -2198,7 +2497,7 @@ class _UpgradeTile extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF6B746E),
+                          color: Color(0xFF4A6E63),
                           fontSize: 10,
                         ),
                       ),
@@ -2213,13 +2512,13 @@ class _UpgradeTile extends StatelessWidget {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF38B879).withValues(alpha: 0.12),
+                      color: const Color(0xFF2FD98F).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       loc.maxLevel,
                       style: const TextStyle(
-                        color: Color(0xFF38B879),
+                        color: Color(0xFF2FD98F),
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2234,10 +2533,10 @@ class _UpgradeTile extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: canAfford
                           ? const LinearGradient(
-                              colors: [Color(0xFF5B8DEF), Color(0xFF4A7BD5)],
+                              colors: [Color(0xFF62B4FF), Color(0xFF1D6FD4)],
                             )
                           : null,
-                      color: canAfford ? null : const Color(0xFFE8E0D8),
+                      color: canAfford ? null : const Color(0xFFDCE6E0),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -2248,7 +2547,7 @@ class _UpgradeTile extends StatelessWidget {
                           size: 13,
                           color: canAfford
                               ? Colors.white
-                              : const Color(0xFF8B8078),
+                              : const Color(0xFF7D998F),
                         ),
                         const SizedBox(width: 3),
                         Text(
@@ -2256,7 +2555,7 @@ class _UpgradeTile extends StatelessWidget {
                           style: TextStyle(
                             color: canAfford
                                 ? Colors.white
-                                : const Color(0xFF8B8078),
+                                : const Color(0xFF7D998F),
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
@@ -2303,20 +2602,20 @@ class _MoneyShopSheet extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                     ),
                   ),
                 ),
                 _CurrencyPill(
                   icon: Icons.monetization_on_rounded,
                   value: game.coins,
-                  color: const Color(0xFFF6A623),
+                  color: const Color(0xFFFFCB45),
                 ),
                 const SizedBox(width: 8),
                 _CurrencyPill(
                   icon: Icons.diamond_rounded,
                   value: game.gems,
-                  color: const Color(0xFF8B66D8),
+                  color: const Color(0xFF6234E0),
                 ),
                 const SizedBox(width: 16),
               ],
@@ -2328,7 +2627,7 @@ class _MoneyShopSheet extends StatelessWidget {
                 subtitle:
                     '${AppLocalizations.of(context).freeBonusSubtitle} — ${AppLocalizations.of(context).rewardCoinsBenefit.replaceFirst('{value}', '${game.instantAdReward}')}',
                 icon: Icons.ondemand_video_rounded,
-                color: const Color(0xFFE85D75),
+                color: const Color(0xFFEE4664),
                 onTap: onReward,
               ),
             Flexible(
@@ -2388,7 +2687,7 @@ class _ShopRewardTile extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0x1A315F4A)),
+              border: Border.all(color: const Color(0x1A0B3B2C)),
             ),
             child: Row(
               children: [
@@ -2423,7 +2722,7 @@ class _ShopRewardTile extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -2431,7 +2730,7 @@ class _ShopRewardTile extends StatelessWidget {
                         subtitle,
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF6B746E),
+                          color: Color(0xFF4A6E63),
                         ),
                       ),
                     ],
@@ -2439,7 +2738,7 @@ class _ShopRewardTile extends StatelessWidget {
                 ),
                 const Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF8B8078),
+                  color: Color(0xFF7D998F),
                 ),
               ],
             ),
@@ -2502,7 +2801,7 @@ class _ShopProductTile extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0x1A315F4A)),
+              border: Border.all(color: const Color(0x1A0B3B2C)),
             ),
             child: Row(
               children: [
@@ -2512,8 +2811,8 @@ class _ShopProductTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        const Color(0xFFF6A623),
-                        const Color(0xFFE09A20),
+                        const Color(0xFFFFCB45),
+                        const Color(0xFFD98505),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -2521,7 +2820,7 @@ class _ShopProductTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFF6A623).withValues(alpha: 0.35),
+                        color: const Color(0xFFFFCB45).withValues(alpha: 0.35),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -2540,7 +2839,7 @@ class _ShopProductTile extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
-                          color: Color(0xFF315F4A),
+                          color: Color(0xFF1C3A32),
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -2548,7 +2847,7 @@ class _ShopProductTile extends StatelessWidget {
                         description,
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF6B746E),
+                          color: Color(0xFF4A6E63),
                         ),
                       ),
                     ],
@@ -2564,14 +2863,14 @@ class _ShopProductTile extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 12,
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 const Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF8B8078),
+                  color: Color(0xFF7D998F),
                 ),
               ],
             ),
@@ -2596,33 +2895,41 @@ class _OfflineEarningsSheet extends StatelessWidget {
         children: [
           const _SheetHandle(),
           const SizedBox(height: 8),
-          Container(
-            width: 92,
-            height: 92,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
-              ),
-              shape: BoxShape.circle,
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x44F6A623),
-                  blurRadius: 22,
-                  offset: Offset(0, 10),
+          SizedBox(
+            width: 150,
+            height: 150,
+            child: PoRayBurst(
+              color: PoColor.goldFace,
+              rays: 14,
+              child: Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFFFFE39B), Color(0xFFD98505)],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    width: 3,
+                  ),
+                  boxShadow: PoElevate.glow(PoColor.goldFace, strength: 1.4),
                 ),
-              ],
-            ),
-            child: const Icon(
-              Icons.nightlight_round,
-              size: 53,
-              color: Colors.white,
+                child: const Icon(
+                  Icons.nightlight_round,
+                  size: 50,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 15),
           Text(
             AppLocalizations.of(context).welcomeBack.toUpperCase(),
             style: const TextStyle(
-              color: Color(0xFFE08D19),
+              color: Color(0xFFD98505),
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.2,
@@ -2631,7 +2938,7 @@ class _OfflineEarningsSheet extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             AppLocalizations.of(context).businessKeptEarning,
-            style: const TextStyle(color: Color(0xFF6F766F), fontSize: 14),
+            style: const TextStyle(color: Color(0xFF4A6E63), fontSize: 14),
           ),
           const SizedBox(height: 17),
           Row(
@@ -2640,7 +2947,7 @@ class _OfflineEarningsSheet extends StatelessWidget {
               _BonusPill(
                 icon: Icons.monetization_on_rounded,
                 value: '+${game.offlineEarnings}',
-                color: const Color(0xFFF6A623),
+                color: const Color(0xFFFFCB45),
               ),
             ],
           ),
@@ -2648,29 +2955,22 @@ class _OfflineEarningsSheet extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: PoBtn(
                   onPressed: () => onCollect(false),
-                  icon: const Icon(Icons.check_rounded, size: 18),
-                  label: Text(AppLocalizations.of(context).collect),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    foregroundColor: const Color(0xFF315F4A),
-                    side: const BorderSide(color: Color(0xFF315F4A)),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
+                  expand: true,
+                  kind: PoBtnKind.secondary,
+                  icon: Icons.check_rounded,
+                  label: AppLocalizations.of(context).collect,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
+                child: PoBtn(
                   onPressed: () => onCollect(true),
-                  icon: const Icon(Icons.flash_on_rounded, size: 18),
-                  label: Text(AppLocalizations.of(context).double),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    backgroundColor: const Color(0xFFF6A623),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
+                  expand: true,
+                  face: PoColor.goldFace,
+                  icon: Icons.flash_on_rounded,
+                  label: AppLocalizations.of(context).double,
                 ),
               ),
             ],
@@ -2702,15 +3002,15 @@ class _AchievementToast extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFFFFFCF6), Color(0xFFFFF8F0)],
+            colors: [Color(0xFFFFFFFF), Color(0xFFFCFEFC)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE8DCC8)),
+          border: Border.all(color: const Color(0xFFFFE9B4)),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x33315F4A),
+              color: Color(0x330B3B2C),
               blurRadius: 20,
               offset: Offset(0, 8),
             ),
@@ -2723,12 +3023,12 @@ class _AchievementToast extends StatelessWidget {
               height: 48,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFFFC94D), Color(0xFFF08B32)],
+                  colors: [Color(0xFFFFD874), Color(0xFFD98505)],
                 ),
                 shape: BoxShape.circle,
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0x44F6A623),
+                    color: Color(0x44FFCB45),
                     blurRadius: 14,
                     offset: Offset(0, 6),
                   ),
@@ -2748,7 +3048,7 @@ class _AchievementToast extends StatelessWidget {
                   Text(
                     AppLocalizations.of(context).achievementUnlocked,
                     style: const TextStyle(
-                      color: Color(0xFFE08D19),
+                      color: Color(0xFFD98505),
                       fontSize: 10,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1,
@@ -2758,7 +3058,7 @@ class _AchievementToast extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
-                      color: Color(0xFF315F4A),
+                      color: Color(0xFF1C3A32),
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                     ),
@@ -2767,7 +3067,7 @@ class _AchievementToast extends StatelessWidget {
                   Text(
                     description,
                     style: const TextStyle(
-                      color: Color(0xFF6B746E),
+                      color: Color(0xFF4A6E63),
                       fontSize: 11,
                     ),
                   ),
@@ -2794,26 +3094,42 @@ class _BonusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A reward figure is the emotional payload of the whole sheet, so it is
+    // rendered as a minted value on an extruded medallion rather than as tinted
+    // body text in a bordered box.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsetsDirectional.fromSTEB(6, 6, 16, 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [PoColor.lighten(color, 0.22), PoColor.deepen(color, 0.24)],
+        ),
+        borderRadius: BorderRadius.circular(PoRadius.pill),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.5),
+          width: 1.6,
+        ),
+        boxShadow: PoElevate.glow(color, strength: 0.9),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: 12,
+          Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white, Color(0xFFE7EEEA)],
+              ),
             ),
+            child: Icon(icon, size: 18, color: PoColor.deepen(color, 0.3)),
           ),
+          const SizedBox(width: 9),
+          PoValue(value, size: 21, rim: PoColor.deepen(color, 0.6)),
         ],
       ),
     );
@@ -2834,18 +3150,19 @@ class _Panel extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: const Color(0xFFFFFCF6),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x44315F4A),
-                blurRadius: 28,
-                offset: Offset(0, 13),
-              ),
-            ],
+            // Same layered treatment as a modal panel elsewhere in the app, so
+            // every sheet, dialog and card reads as one product.
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [PoColor.surfaceLift, PoColor.surface],
+            ),
+            borderRadius: BorderRadius.circular(PoRadius.xl),
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: PoElevate.e4,
           ),
           child: child,
         ),
@@ -2861,12 +3178,12 @@ class _SheetHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        margin: const EdgeInsets.fromLTRB(0, 10, 0, 4),
-        width: 40,
+        margin: const EdgeInsets.fromLTRB(0, 9, 0, 5),
+        width: 44,
         height: 5,
         decoration: BoxDecoration(
-          color: const Color(0xFFD8D0C8),
-          borderRadius: BorderRadius.circular(3),
+          color: PoColor.ink.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(PoRadius.pill),
         ),
       ),
     );

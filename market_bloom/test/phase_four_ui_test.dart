@@ -9,6 +9,7 @@ import 'package:pomarket/services/monetization_service.dart';
 import 'package:pomarket/ui/screens/achievements_screen.dart';
 import 'package:pomarket/ui/screens/quests_screen.dart';
 import 'package:pomarket/ui/screens/shop_screen.dart';
+import 'package:pomarket/ui/theme/po_system.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -78,10 +79,10 @@ void main() {
     expect(find.text('Permanent Benefits'), findsOneWidget);
     expect(find.text('Locked'), findsWidgets);
 
-    final purchaseButtons = tester.widgetList<FilledButton>(
+    final purchaseButtons = tester.widgetList<PoBtn>(
       find.descendant(
         of: find.byType(ShopScreen),
-        matching: find.byType(FilledButton),
+        matching: find.byType(PoBtn),
       ),
     );
     expect(purchaseButtons, isNotEmpty);

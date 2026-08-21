@@ -22,7 +22,7 @@ import 'ui/app_shell.dart';
 import 'ui/splash_screen.dart';
 import 'ui/widgets/cloud_save_status_layer.dart';
 import 'ui/widgets/daily_event_banner.dart';
-import 'ui/widgets/premium_ui.dart';
+import 'ui/theme/po_system.dart';
 import 'ui/widgets/privacy_consent_layer.dart';
 
 GameAnalyticsTracker? analyticsTracker;
@@ -129,97 +129,7 @@ class PoMarketApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
             AppLocalizationsDelegate(),
           ],
-          theme: ThemeData(
-            colorScheme: colorScheme,
-            scaffoldBackgroundColor: PoMarketPalette.canvas,
-            useMaterial3: true,
-            fontFamilyFallback: const ['Arial', 'Helvetica'],
-            textTheme: ThemeData.light(useMaterial3: true).textTheme.apply(
-              bodyColor: PoMarketPalette.ink,
-              displayColor: PoMarketPalette.ink,
-            ),
-            appBarTheme: const AppBarTheme(
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              backgroundColor: PoMarketPalette.canvas,
-              foregroundColor: PoMarketPalette.ink,
-              surfaceTintColor: Colors.transparent,
-              titleTextStyle: TextStyle(
-                color: PoMarketPalette.ink,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            snackBarTheme: SnackBarThemeData(
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: PoMarketPalette.forest,
-              contentTextStyle: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            inputDecorationTheme: InputDecorationTheme(
-              filled: true,
-              fillColor: PoMarketPalette.cream,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: PoMarketPalette.line),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: PoMarketPalette.line),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                  color: PoMarketPalette.mint,
-                  width: 2,
-                ),
-              ),
-            ),
-            filledButtonTheme: FilledButtonThemeData(
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                backgroundColor: PoMarketPalette.forest,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: PoMarketPalette.muted.withValues(
-                  alpha: 0.22,
-                ),
-                disabledForegroundColor: PoMarketPalette.muted,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-            outlinedButtonTheme: OutlinedButtonThemeData(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                foregroundColor: PoMarketPalette.forest,
-                side: const BorderSide(color: PoMarketPalette.line),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                foregroundColor: PoMarketPalette.forest,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-            iconButtonTheme: const IconButtonThemeData(
-              style: ButtonStyle(
-                minimumSize: WidgetStatePropertyAll(Size(48, 48)),
-                tapTargetSize: MaterialTapTargetSize.padded,
-              ),
-            ),
-          ),
+          theme: _poTheme(colorScheme),
           home: _AppHome(
             controller: controller,
             settings: settings,
@@ -288,10 +198,7 @@ class _AppHomeState extends State<_AppHome> {
             : (child, animation) => FadeTransition(
                 opacity: animation,
                 child: ScaleTransition(
-                  scale: Tween<double>(
-                    begin: 0.985,
-                    end: 1,
-                  ).animate(animation),
+                  scale: Tween<double>(begin: 0.985, end: 1).animate(animation),
                   child: child,
                 ),
               ),
@@ -324,4 +231,199 @@ class _AppHomeState extends State<_AppHome> {
       ),
     );
   }
+}
+
+/// Global Material theme.
+///
+/// The game draws its own controls for anything the player touches during a
+/// shift, but the management screens still use Material buttons, snack bars and
+/// dialogs in ~70 places. Theming them here means those all inherit the design
+/// system instead of each screen restyling one button at a time.
+ThemeData _poTheme(ColorScheme colorScheme) {
+  final base = ThemeData.light(useMaterial3: true);
+  return ThemeData(
+    colorScheme: colorScheme.copyWith(
+      primary: PoColor.primaryDeep,
+      secondary: PoColor.secondaryDeep,
+      surface: PoColor.surface,
+      error: PoColor.danger,
+    ),
+    scaffoldBackgroundColor: PoColor.canvas,
+    useMaterial3: true,
+    fontFamilyFallback: const ['Arial', 'Helvetica'],
+    textTheme: base.textTheme
+        .apply(bodyColor: PoColor.ink, displayColor: PoColor.ink)
+        .copyWith(
+          headlineSmall: PoText.h1,
+          titleLarge: PoText.h2,
+          titleMedium: PoText.h3,
+          titleSmall: PoText.title,
+          bodyMedium: PoText.body,
+          bodySmall: PoText.bodySm,
+          labelLarge: PoText.button,
+          labelMedium: PoText.label,
+          labelSmall: PoText.caption,
+        ),
+    splashFactory: InkSparkle.splashFactory,
+    appBarTheme: const AppBarTheme(
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: PoColor.surface,
+      foregroundColor: PoColor.ink,
+      surfaceTintColor: Colors.transparent,
+      titleTextStyle: PoText.h1,
+    ),
+    dividerTheme: const DividerThemeData(
+      color: PoColor.hairline,
+      thickness: 1,
+      space: PoSpace.lg,
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: PoColor.ink,
+      elevation: 10,
+      insetPadding: const EdgeInsets.all(PoSpace.md),
+      actionTextColor: PoColor.primaryFace,
+      contentTextStyle: PoText.title.copyWith(color: Colors.white),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(PoRadius.md),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: PoColor.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 24,
+      shadowColor: PoColor.ink.withValues(alpha: 0.4),
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: PoSpace.lg,
+        vertical: PoSpace.xl,
+      ),
+      titleTextStyle: PoText.h1,
+      contentTextStyle: PoText.body,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(PoRadius.xl),
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: PoColor.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 24,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(PoRadius.xl)),
+      ),
+      dragHandleColor: PoColor.hairlineStrong,
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: PoColor.primaryFace,
+      linearTrackColor: Color(0xFFDCE6E0),
+      linearMinHeight: 8,
+      borderRadius: BorderRadius.all(Radius.circular(PoRadius.pill)),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: PoColor.surfaceSunken,
+      hintStyle: PoText.body.copyWith(color: PoColor.textTertiary),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: PoSpace.md,
+        vertical: PoSpace.md,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(PoRadius.sm),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(PoRadius.sm),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(PoRadius.sm),
+        borderSide: const BorderSide(color: PoColor.primaryFace, width: 2),
+      ),
+    ),
+    // Primary Material action: saturated brand face, dark ink, generous radius
+    // and a real elevation so it reads as the thing to press.
+    filledButtonTheme: FilledButtonThemeData(
+      style:
+          FilledButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            backgroundColor: PoColor.primaryDeep,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: PoColor.surfaceMuted,
+            disabledForegroundColor: PoColor.textDisabled,
+            elevation: 3,
+            shadowColor: PoColor.ink.withValues(alpha: 0.30),
+            padding: const EdgeInsets.symmetric(horizontal: PoSpace.lg),
+            textStyle: PoText.button,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(PoRadius.md),
+            ),
+          ).copyWith(
+            // Pressing collapses the elevation, which is the flat-UI equivalent of
+            // the extruded controls used on the board.
+            elevation: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.pressed) ? 0 : 3,
+            ),
+          ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        foregroundColor: PoColor.inkSoft,
+        backgroundColor: PoColor.surface,
+        disabledForegroundColor: PoColor.textDisabled,
+        side: const BorderSide(color: PoColor.hairlineStrong, width: 1.4),
+        padding: const EdgeInsets.symmetric(horizontal: PoSpace.lg),
+        textStyle: PoText.button,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(PoRadius.md),
+        ),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        foregroundColor: PoColor.primaryDeep,
+        textStyle: PoText.button,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(PoRadius.sm),
+        ),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        foregroundColor: PoColor.inkSoft,
+        tapTargetSize: MaterialTapTargetSize.padded,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(PoRadius.sm),
+        ),
+      ),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? Colors.white
+            : const Color(0xFFF6F9F7),
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? PoColor.primaryFace
+            : const Color(0xFFD5DFD9),
+      ),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+    ),
+    sliderTheme: const SliderThemeData(
+      activeTrackColor: PoColor.primaryFace,
+      inactiveTrackColor: Color(0xFFD5DFD9),
+      thumbColor: Colors.white,
+      trackHeight: 6,
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: PoColor.ink,
+        borderRadius: BorderRadius.circular(PoRadius.xs),
+      ),
+      textStyle: PoText.caption.copyWith(color: Colors.white),
+    ),
+  );
 }

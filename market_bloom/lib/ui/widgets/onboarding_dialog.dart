@@ -53,7 +53,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
             .replaceFirst('{total}', '$_stepCount'),
         title: loc.moveAndCollect,
         description: loc.moveAndCollectDesc,
-        color: const Color(0xFF5B8DEF),
+        color: const Color(0xFF62B4FF),
       ),
       _TutorialStep(
         icon: Icons.shelves,
@@ -62,7 +62,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
             .replaceFirst('{total}', '$_stepCount'),
         title: loc.keepShelvesFull,
         description: loc.keepShelvesFullDesc,
-        color: const Color(0xFFF6A623),
+        color: const Color(0xFFFFCB45),
       ),
       _TutorialStep(
         icon: Icons.trending_up_rounded,
@@ -71,7 +71,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
             .replaceFirst('{total}', '$_stepCount'),
         title: loc.sellEarnGrow,
         description: loc.sellEarnGrowDesc,
-        color: const Color(0xFF38B879),
+        color: const Color(0xFF2FD98F),
       ),
     ];
     final size = MediaQuery.sizeOf(context);
@@ -86,11 +86,11 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
           child: Container(
             padding: EdgeInsets.fromLTRB(20, compact ? 18 : 24, 20, 18),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFCF6),
+              color: const Color(0xFFFFFFFF),
               borderRadius: BorderRadius.circular(28),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x44315F4A),
+                  color: Color(0x440B3B2C),
                   blurRadius: 30,
                   offset: Offset(0, 14),
                 ),
@@ -105,7 +105,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF315F4A),
+                        color: const Color(0xFF1C3A32),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(
@@ -121,7 +121,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                           Text(
                             loc.welcomeToPoMarket,
                             style: const TextStyle(
-                              color: Color(0xFF315F4A),
+                              color: Color(0xFF1C3A32),
                               fontSize: 13,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.4,
@@ -130,7 +130,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                           Text(
                             loc.tutorialSubtitle,
                             style: const TextStyle(
-                              color: Color(0xFF747A75),
+                              color: Color(0xFF7D998F),
                               fontSize: 11,
                             ),
                           ),
@@ -164,7 +164,7 @@ class _PoMarketOnboardingDialogState extends State<PoMarketOnboardingDialog> {
                       decoration: BoxDecoration(
                         color: index == _index
                             ? steps[_index].color
-                            : const Color(0xFFD7D5CE),
+                            : const Color(0xFFD3DFD8),
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
@@ -270,7 +270,7 @@ class _TutorialPage extends StatelessWidget {
                 step.description,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Color(0xFF606862),
+                  color: Color(0xFF4A6E63),
                   fontSize: 11.5,
                   height: 1.3,
                 ),

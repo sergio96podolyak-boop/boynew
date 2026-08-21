@@ -5,6 +5,7 @@ import '../../game/daily_event_models.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_settings.dart';
+import '../theme/po_system.dart';
 import 'premium_ui.dart';
 
 class DailyEventBannerLayer extends StatelessWidget {
@@ -32,7 +33,8 @@ class DailyEventBannerLayer extends StatelessWidget {
   static ({DailyEventGameController game, AppSettings settings})? maybeOf(
     BuildContext context,
   ) {
-    final scope = context.dependOnInheritedWidgetOfExactType<_DailyEventScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_DailyEventScope>();
     return scope == null ? null : (game: scope.game, settings: scope.settings);
   }
 }
@@ -123,24 +125,21 @@ class _DailyEventCard extends StatelessWidget {
           compact ? 4 : 7,
         ),
         decoration: BoxDecoration(
-          gradient: compact
-              ? null
-              : LinearGradient(
-                  begin: AlignmentDirectional.centerStart,
-                  end: AlignmentDirectional.centerEnd,
-                  colors: [
-                    Color.lerp(const Color(0xFFFFFBF2), color, .08)!,
-                    const Color(0xFFFFFCF6),
-                  ],
-                ),
-          color: compact ? const Color(0xFFF8F4E9) : null,
+          gradient: LinearGradient(
+            begin: AlignmentDirectional.centerStart,
+            end: AlignmentDirectional.centerEnd,
+            colors: [
+              Color.lerp(PoColor.chromeLift, color, .16)!,
+              PoColor.chrome,
+            ],
+          ),
           borderRadius: BorderRadius.circular(compact ? 12 : 17),
           border: Border.all(color: color.withValues(alpha: .25)),
           boxShadow: compact
               ? null
               : const [
                   BoxShadow(
-                    color: Color(0x17063D2C),
+                    color: Color(0x170B3B2C),
                     blurRadius: 10,
                     offset: Offset(0, 4),
                   ),
@@ -176,7 +175,7 @@ class _DailyEventCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: PoMarketPalette.ink,
+                            color: PoColor.onChrome,
                             fontSize: 10,
                             height: 1.15,
                             fontWeight: FontWeight.w900,
@@ -228,7 +227,7 @@ class _DailyEventCard extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  color: PoMarketPalette.ink,
+                                  color: PoColor.onChrome,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -239,7 +238,7 @@ class _DailyEventCard extends StatelessWidget {
                                 dateKey,
                                 textDirection: TextDirection.ltr,
                                 style: const TextStyle(
-                                  color: PoMarketPalette.muted,
+                                  color: PoColor.onChromeMuted,
                                   fontSize: 8,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -254,7 +253,7 @@ class _DailyEventCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: PoMarketPalette.muted,
+                            color: PoColor.onChromeMuted,
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
                           ),

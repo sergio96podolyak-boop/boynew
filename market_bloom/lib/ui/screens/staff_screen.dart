@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../game/game_controller.dart';
 import '../../game/game_models.dart';
 import '../../services/app_localizations.dart';
+import '../theme/po_system.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
 import '../widgets/pressable_scale.dart';
@@ -24,8 +25,7 @@ class StaffScreen extends StatelessWidget {
           final hired = controller.totalHiredWorkers;
           final productivity = controller.staffMembers.fold<int>(
             0,
-            (total, member) =>
-                total + (member.hired ? member.productivity : 0),
+            (total, member) => total + (member.hired ? member.productivity : 0),
           );
           final availableSlots = StaffRole.values.fold<int>(
             0,
@@ -43,7 +43,7 @@ class StaffScreen extends StatelessWidget {
                 icon: Icons.badge_rounded,
                 title: loc.teamOverview,
                 subtitle: loc.teamMembers.replaceFirst('{count}', '$hired'),
-                colors: const [Color(0xFF173F34), Color(0xFF16805C)],
+                colors: const [Color(0xFF0B1F1A), Color(0xFF2FD98F)],
                 metrics: [
                   ManagementHeroMetric(
                     icon: Icons.people_alt_rounded,
@@ -125,7 +125,8 @@ class _StaffCard extends StatelessWidget {
     final upgradeable = hired && member.level < 10;
     final canHire = unlocked && controller.coins >= member.hireCost;
     final canUpgrade = upgradeable && controller.coins >= member.upgradeCost;
-    final canAddWorker = hired &&
+    final canAddWorker =
+        hired &&
         workerCount < GameBalance.maxWorkersPerRole &&
         nextWorkerLevel == null &&
         controller.coins >= member.additionalHireCost;
@@ -447,7 +448,11 @@ class _WorkerCapacity extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (var index = 0; index < GameBalance.maxWorkersPerRole; index++) ...[
+          for (
+            var index = 0;
+            index < GameBalance.maxWorkersPerRole;
+            index++
+          ) ...[
             _WorkerSlot(
               filled: index < workerCount,
               available: index < availableSlots,
@@ -549,22 +554,14 @@ class _StaffAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return PressableScale(
       enabled: enabled,
-      child: FilledButton.icon(
+      child: PoBtn(
         onPressed: enabled ? onPressed : null,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(44, 46),
-          backgroundColor: filled ? color : color.withValues(alpha: 0.11),
-          foregroundColor: filled ? Colors.white : color,
-          disabledBackgroundColor: color.withValues(alpha: 0.06),
-          disabledForegroundColor: color.withValues(alpha: 0.42),
-        ),
-        icon: Icon(icon, size: 17),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
-        ),
+        expand: true,
+        dense: true,
+        kind: filled ? PoBtnKind.primary : PoBtnKind.secondary,
+        face: filled ? color : null,
+        icon: icon,
+        label: label,
       ),
     );
   }
@@ -727,13 +724,13 @@ IconData _roleIcon(StaffRole role) => switch (role) {
 };
 
 Color _roleColor(StaffRole role) => switch (role) {
-  StaffRole.cashier => const Color(0xFF315F8F),
+  StaffRole.cashier => const Color(0xFF1D6FD4),
   StaffRole.stocker => PoMarketPalette.blue,
-  StaffRole.cleaner => const Color(0xFF1FA8A8),
+  StaffRole.cleaner => const Color(0xFF0C837E),
   StaffRole.baker => PoMarketPalette.gold,
   StaffRole.manager => PoMarketPalette.violet,
   StaffRole.courier => PoMarketPalette.coral,
-  StaffRole.promoter => const Color(0xFF38B879),
+  StaffRole.promoter => const Color(0xFF2FD98F),
 };
 
 String _term(

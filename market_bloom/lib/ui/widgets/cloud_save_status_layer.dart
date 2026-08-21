@@ -54,11 +54,24 @@ class CloudSaveStatusLayer extends StatelessWidget {
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: const Color(0xD90A4937),
+                    // The badge floats over the dark HUD, so it needs its own
+                    // lift rather than blending into the shell.
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x33FFFFFF), Color(0x14FFFFFF)],
+                    ),
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: presentation.color.withValues(alpha: .48),
+                      color: presentation.color.withValues(alpha: .70),
+                      width: 1.4,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: presentation.color.withValues(alpha: .32),
+                        blurRadius: 8,
+                      ),
+                    ],
                   ),
                   child: Icon(
                     presentation.icon,

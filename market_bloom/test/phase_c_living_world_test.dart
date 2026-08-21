@@ -6,7 +6,7 @@ import 'package:pomarket/main.dart';
 import 'package:pomarket/services/app_settings.dart';
 import 'package:pomarket/services/game_storage.dart';
 import 'package:pomarket/services/monetization_service.dart';
-import 'package:pomarket/ui/market_painter.dart';
+import 'package:pomarket/ui/iso/iso_market_painter.dart';
 import 'package:pomarket/ui/vertical_slice_world_painter.dart';
 import 'package:pomarket/ui/world_motion.dart';
 
@@ -58,7 +58,7 @@ void main() {
     expect(VerticalSliceRenderSettings.reducedMotion, isTrue);
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is CustomPaint && widget.painter is MarketPainter,
+        (widget) => widget is CustomPaint && widget.painter is IsoMarketPainter,
       ),
       findsOneWidget,
     );

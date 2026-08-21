@@ -16,18 +16,36 @@ void main(){
   testWidgets('mobile navigation has deliberate destinations and compact hub',(tester)async{
     await _pumpApp(tester,const Size(390,844));
     expect(find.byKey(const ValueKey('mobile-game-navigation')),findsOneWidget);
-    for(final name in <String>['market','upgrades','staff','shop','settings']){expect(find.byKey(ValueKey('mobile-nav-$name')),findsOneWidget);}
+    // Four permanent slots plus the overflow hub. Settings moved into the hub
+    // when the dock replaced the hamburger, so it is asserted on expand below
+    // rather than as a permanent slot.
+    for(final name in <String>['market','upgrades','staff','shop']){expect(find.byKey(ValueKey('mobile-nav-$name')),findsOneWidget);}
     expect(find.byKey(const ValueKey('mobile-nav-more')),findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('mobile-nav-upgrades')));await tester.pump(const Duration(milliseconds:220));expect(find.byType(UpgradesScreen),findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('mobile-nav-more')));await tester.pump(const Duration(milliseconds:320));
-    for(final label in <String>['Departments','Inventory','Quests','Achievements']){expect(find.text(label),findsOneWidget);}
+    for(final label in <String>['Departments','Inventory','Quests','Achievements','Settings']){expect(find.text(label),findsWidgets);}
     expect(find.byIcon(Icons.close_rounded),findsOneWidget);expect(tester.takeException(),isNull);
   });
 
-  testWidgets('wide navigation occupies the trailing side',(tester)async{
-    await _pumpApp(tester,const Size(900,700));
-    final rail=tester.getRect(find.byKey(const ValueKey('game-navigation-rail')));final viewport=tester.getRect(find.byKey(const ValueKey('pomarket-app-shell')));
-    expect(rail.center.dx,greaterThan(viewport.center.dx));expect(tester.takeException(),isNull);
+  testWidgets('the dock spans the bottom symmetrically at every size',(tester)async{
+    // The trailing side rail was removed so one dock serves every breakpoint;
+    // it should sit across the bottom rather than hugging one edge.
+    //
+    // The dock is now a floating segmented pill that sizes to its slots rather
+    // than stretching: an edge-to-edge bar reads as browser chrome, and on a
+    // desktop window five stretched slots left huge gaps between icons. So this
+    // asserts what actually matters — it is centred, symmetric, bottom-anchored
+    // and never wider than the space available.
+    for(final size in const[Size(320,568),Size(900,700),Size(1440,900)]){
+      await _pumpApp(tester,size);
+      final dock=tester.getRect(find.byKey(const ValueKey('mobile-game-navigation')));final viewport=tester.getRect(find.byKey(const ValueKey('pomarket-app-shell')));
+      final inset=size.width<420?8.0:12.0;
+      expect(dock.width,greaterThan(220),reason:'at $size');
+      expect(dock.width,lessThanOrEqualTo(viewport.width-inset*2+1),reason:'at $size');
+      expect(dock.left-viewport.left,closeTo(viewport.right-dock.right,1),reason:'at $size');
+      expect(viewport.bottom-dock.bottom,lessThanOrEqualTo(20),reason:'at $size');
+      expect(tester.takeException(),isNull,reason:'at $size');
+    }
   });
 
   testWidgets('HUD event and management title occupy separate vertical regions',(tester)async{

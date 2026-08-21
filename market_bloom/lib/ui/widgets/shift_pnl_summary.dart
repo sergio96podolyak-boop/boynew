@@ -29,9 +29,7 @@ class ShiftPnlSummary extends StatelessWidget {
     final ledger = summary.ledger;
     final netProfit = ledger.netProfit;
     final netPositive = netProfit >= 0;
-    final netColor = netPositive
-        ? PoMarketPalette.mint
-        : PoMarketPalette.coral;
+    final netColor = netPositive ? PoMarketPalette.mint : PoMarketPalette.coral;
     final totalCosts =
         ledger.stockOrderCosts +
         ledger.payroll +
@@ -90,8 +88,8 @@ class ShiftPnlSummary extends StatelessWidget {
                               'أداء محاسبي فقط — يبقى الرصيد النقدي $cashBalance عملة',
                             ),
                             colors: netPositive
-                                ? const [Color(0xFF0B4B38), Color(0xFF16805C)]
-                                : const [Color(0xFF6A2633), Color(0xFFB9475C)],
+                                ? const [Color(0xFF0A8B59), Color(0xFF2FD98F)]
+                                : const [Color(0xFF7E1128), Color(0xFFD32A47)],
                             metrics: [
                               ManagementHeroMetric(
                                 icon: Icons.account_balance_wallet_rounded,
@@ -508,12 +506,7 @@ class _InactiveAwareCostTile extends StatelessWidget {
           if (value == 0) ...[
             const SizedBox(height: 5),
             ManagementStatusPill(
-              label: _t(
-                context,
-                'Not active',
-                'לא פעיל',
-                'غير مفعل',
-              ),
+              label: _t(context, 'Not active', 'לא פעיל', 'غير مفعل'),
               color: PoMarketPalette.muted,
               icon: Icons.pause_circle_outline_rounded,
             ),

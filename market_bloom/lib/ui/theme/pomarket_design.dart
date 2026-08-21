@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../widgets/premium_ui.dart';
+import 'po_system.dart';
 
 /// Advanced visual language for PoMarket.
 ///
@@ -12,120 +13,70 @@ import '../widgets/premium_ui.dart';
 /// the tactile "candy" feel that top-grossing tycoon titles rely on, without
 /// pulling in a heavier rendering stack.
 
-/// Deep backdrop ramp. Bright surfaces read as premium when they float on a
-/// rich field instead of another pale grey.
+/// Board-side aliases onto the design system.
+///
+/// The isometric painter and the market screen were written against these
+/// names before `theme/po_system.dart` existed. Rather than churn 1500 lines of
+/// painter code, the names now resolve to [PoColor] roles, so retuning the
+/// system retunes the board too and the two can never drift apart.
 abstract final class PoDepthColors {
-  static const abyss = Color(0xFF04211A);
-  static const deepSea = Color(0xFF073024);
-  static const forest = Color(0xFF0A4433);
-  static const canopy = Color(0xFF10614A);
+  /// Darkest token — text and shadow tint, never a fill.
+  static const abyss = PoColor.ink;
 
-  /// Translucent card fills for use on top of the dark ramp.
-  static const glass = Color(0x1FFFFFFF);
-  static const glassStrong = Color(0x2EFFFFFF);
-  static const hairline = Color(0x24FFFFFF);
+  /// Page ground.
+  static const deepSea = PoColor.canvas;
+
+  /// Raised chrome (HUD, dock).
+  static const forest = PoColor.chrome;
+
+  /// Slightly tinted chrome for gradient tops.
+  static const canopy = Color(0xFFF6FAF7);
+
+  static const glass = Color(0x0F0B1F1A);
+  static const glassStrong = Color(0x1A0B1F1A);
+  static const hairline = PoColor.hairline;
 }
 
-/// Paired light/dark stops so every accent can be extruded consistently.
+/// Paired light/dark accent stops, aliased onto the system's accent roles.
 abstract final class PoAccent {
-  static const goldFace = Color(0xFFFFD264);
-  static const goldDeep = Color(0xFFE08A0B);
+  static const goldFace = PoColor.goldFace;
+  static const goldDeep = PoColor.goldDeep;
 
-  static const mintFace = Color(0xFF56E8A9);
-  static const mintDeep = Color(0xFF0E9C67);
+  static const mintFace = PoColor.primaryFace;
+  static const mintDeep = PoColor.primaryDeep;
 
-  static const gemFace = Color(0xFFBEA0FF);
-  static const gemDeep = Color(0xFF6B3FE0);
+  static const gemFace = PoColor.accentFace;
+  static const gemDeep = PoColor.accentDeep;
 
-  static const coralFace = Color(0xFFFF8095);
-  static const coralDeep = Color(0xFFD82F4F);
+  static const coralFace = Color(0xFFFF7D93);
+  static const coralDeep = PoColor.danger;
 
-  static const blueFace = Color(0xFF7FC0FF);
-  static const blueDeep = Color(0xFF1E6FD0);
+  static const blueFace = PoColor.infoFace;
+  static const blueDeep = PoColor.infoDeep;
 
-  /// Returns the darker companion used for bevels and button edges.
-  static Color deepen(Color face) => Color.lerp(face, Colors.black, 0.34)!;
+  /// Darker companion used for bevels and button edges.
+  static Color deepen(Color face) => PoColor.deepen(face, 0.34);
 
-  /// Returns the lighter companion used for top highlights.
-  static Color lighten(Color face) => Color.lerp(face, Colors.white, 0.42)!;
+  /// Lighter companion used for top highlights.
+  static Color lighten(Color face) => PoColor.lighten(face, 0.42);
 }
 
 abstract final class PoDepth {
-  /// Tight contact shadow plus a wide ambient one. Two layers is what makes an
-  /// element look like it is resting on the surface rather than pasted onto it.
-  static List<BoxShadow> resting({double strength = 1}) => [
-    BoxShadow(
-      color: PoDepthColors.abyss.withValues(alpha: 0.16 * strength),
-      blurRadius: 3 * strength,
-      offset: Offset(0, 1.5 * strength),
-    ),
-    BoxShadow(
-      color: PoDepthColors.abyss.withValues(alpha: 0.13 * strength),
-      blurRadius: 18 * strength,
-      offset: Offset(0, 8 * strength),
-    ),
-  ];
+  /// Two-layer resting shadow, aliased onto the system's elevation scale.
+  static List<BoxShadow> resting({double strength = 1}) =>
+      strength >= 1.3 ? PoElevate.e2 : PoElevate.e1;
 
   /// Coloured bloom used under primary actions and currency medallions.
-  static List<BoxShadow> glow(Color color, {double strength = 1}) => [
-    BoxShadow(
-      color: color.withValues(alpha: 0.42 * strength),
-      blurRadius: 16 * strength,
-      offset: Offset(0, 5 * strength),
-    ),
-  ];
+  static List<BoxShadow> glow(Color color, {double strength = 1}) =>
+      PoElevate.glow(color, strength: strength);
 }
 
-/// Compact currency formatting.
-///
-/// Tycoon economies reach seven figures quickly; rendering the raw integer both
-/// overflows the HUD and is harder to read at a glance than `2.4M`.
-String poShortNumber(num value) {
-  final negative = value < 0;
-  final magnitude = value.abs();
-  final (scaled, suffix) = switch (magnitude) {
-    >= 1000000000 => (magnitude / 1000000000, 'B'),
-    >= 1000000 => (magnitude / 1000000, 'M'),
-    >= 10000 => (magnitude / 1000, 'K'),
-    _ => (magnitude.toDouble(), ''),
-  };
-  final String body;
-  if (suffix.isEmpty) {
-    body = magnitude.round().toString();
-  } else {
-    // One decimal below 100 keeps precision where the player still notices it.
-    body = scaled < 100
-        ? scaled.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '')
-        : scaled.round().toString();
-  }
-  return '${negative ? '-' : ''}$body$suffix';
-}
+String poShortNumber(num value) => poShort(value);
 
 abstract final class PoNumerals {
-  /// Currency and score readouts. Tabular-ish spacing keeps digits from
-  /// jittering as values tick up.
-  static const display = TextStyle(
-    fontSize: 19,
-    fontWeight: FontWeight.w900,
-    height: 1,
-    letterSpacing: -0.4,
-    fontFeatures: [FontFeature.tabularFigures()],
-  );
-
-  static const chip = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w900,
-    height: 1,
-    letterSpacing: -0.2,
-    fontFeatures: [FontFeature.tabularFigures()],
-  );
-
-  static const caption = TextStyle(
-    fontSize: 9,
-    fontWeight: FontWeight.w800,
-    height: 1,
-    letterSpacing: 0.6,
-  );
+  static const display = PoText.numeral;
+  static const chip = PoText.numeralSm;
+  static const caption = PoText.overline;
 }
 
 /// A pressable control with real thickness.
@@ -293,9 +244,20 @@ class PoCurrencyChip extends StatelessWidget {
       child: Container(
         padding: EdgeInsetsDirectional.fromSTEB(4, 4, compact ? 9 : 11, 4),
         decoration: BoxDecoration(
-          color: PoDepthColors.glass,
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.white, face.withValues(alpha: 0.10)],
+          ),
           borderRadius: BorderRadius.circular(99),
-          border: Border.all(color: face.withValues(alpha: 0.42)),
+          border: Border.all(color: face.withValues(alpha: 0.45)),
+          boxShadow: [
+            BoxShadow(
+              color: PoDepthColors.abyss.withValues(alpha: 0.07),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -329,7 +291,7 @@ class PoCurrencyChip extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: PoNumerals.caption.copyWith(
-                      color: Colors.white.withValues(alpha: 0.62),
+                      color: PoDepthColors.abyss.withValues(alpha: 0.52),
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -338,7 +300,7 @@ class PoCurrencyChip extends StatelessWidget {
                   value,
                   textDirection: TextDirection.ltr,
                   style: PoNumerals.chip.copyWith(
-                    color: Colors.white,
+                    color: PoDepthColors.abyss,
                     fontSize: compact ? 13 : 14,
                   ),
                 ),
@@ -467,16 +429,8 @@ class _WorldLightPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Color.lerp(
-            Colors.white,
-            const Color(0xFF8FB0A0),
-            0.30 * warmth,
-          )!,
-          Color.lerp(
-            Colors.white,
-            const Color(0xFFE0B87E),
-            0.26 * warmth,
-          )!,
+          Color.lerp(Colors.white, const Color(0xFF8FB0A0), 0.30 * warmth)!,
+          Color.lerp(Colors.white, const Color(0xFFE0B87E), 0.26 * warmth)!,
         ],
       ).createShader(rect);
     canvas.drawRect(rect, grade);
