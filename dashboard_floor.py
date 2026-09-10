@@ -335,7 +335,8 @@ def bucket_counts(timestamps: Sequence[Any], buckets: int = 14,
 
 FLOOR_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900\
+&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
 
 :root{
   --bg:#04060a;
@@ -439,7 +440,8 @@ html,body{margin:0;padding:0;background:var(--bg);}
   background:linear-gradient(160deg,rgba(18,26,37,.9),rgba(10,15,22,.85));
   border:1px solid var(--line);
 }
-.kpi .k{font-size:9.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);font-family:var(--mono);font-weight:700;}
+.kpi .k{font-size:9.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim);
+  font-family:var(--mono);font-weight:700;}
 .kpi .v{font-size:23px;font-weight:800;font-family:var(--mono);margin-top:3px;letter-spacing:-.6px;
   line-height:1.1;position:relative;z-index:2;text-shadow:0 2px 8px rgba(4,6,10,.95);}
 .kpi .d{font-size:10.5px;color:var(--muted);margin-top:2px;position:relative;z-index:2;
@@ -529,7 +531,8 @@ html,body{margin:0;padding:0;background:var(--bg);}
 .acard .nm{font-size:10.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .acard .led{width:6px;height:6px;border-radius:50%;margin-inline-start:auto;flex:none;}
 .acard .led.on{animation:beat2 1.6s ease-out infinite;}
-@keyframes beat2{0%{box-shadow:0 0 0 0 currentColor;}70%{box-shadow:0 0 0 6px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+@keyframes beat2{0%{box-shadow:0 0 0 0 currentColor;}
+  70%{box-shadow:0 0 0 6px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
 .acard .sub{font-size:9px;color:var(--dim);font-family:var(--mono);margin-top:2px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .acard .mb{margin-top:4px;height:15px;display:block;width:100%;}
@@ -639,19 +642,19 @@ def _kpis(equity: float, equity_series: List[float], total_pnl: float,
     wr_cls = "pos" if win_rate >= 0.5 else ("neg" if win_rate and win_rate < 0.4 else "")
 
     tiles = [
-        _kpi_tile("הון כולל", fmt_usd(equity), 
+        _kpi_tile("הון כולל", fmt_usd(equity),
                   f'רווח פתוח <span class="num {un_cls}">{esc(fmt_signed(unrealized))}</span>',
                   cls="", series=equity_series, color="#35d6ff", hero=True),
-        _kpi_tile("רווח מצטבר", fmt_signed(total_pnl), 
+        _kpi_tile("רווח מצטבר", fmt_signed(total_pnl),
                   f'<span class="num {pnl_cls}">{esc(f"{total_pnl_pct * 100:+.2f}%")}</span> מההון ההתחלתי',
                   cls=pnl_cls, series=pnl_series,
                   color="#22e08a" if total_pnl >= 0 else "#ff4d6a"),
-        _kpi_tile("רווח 24 שעות", fmt_signed(pnl24), 
+        _kpi_tile("רווח 24 שעות", fmt_signed(pnl24),
                   f'{num(trades24)} עסקאות נסגרו', cls=p24_cls),
-        _kpi_tile("אחוז הצלחה", fmt_pct(win_rate), 
+        _kpi_tile("אחוז הצלחה", fmt_pct(win_rate),
                   f'Profit Factor <span class="num {pf_cls}">{profit_factor:.2f}</span>',
                   cls=wr_cls),
-        _kpi_tile("שארפ", f"{sharpe:.2f}", 
+        _kpi_tile("שארפ", f"{sharpe:.2f}",
                   f'ירידה מקס׳ <span class="num neg">{esc(fmt_pct(max_dd))}</span>',
                   cls="acc" if sharpe > 0 else ""),
     ]
@@ -928,7 +931,7 @@ def _activity_log(feed: List[Dict[str, Any]], trade_history: List[Dict[str, Any]
                 cls += " crit"
 
             if e["amount"] is None:
-                amt = f'<span class="amt" style="color:#54677a;">—</span>'
+                amt = '<span class="amt" style="color:#54677a;">—</span>'
             else:
                 amt_cls = "pos" if _f(e["amount"]) >= 0 else "neg"
                 amt = f'<span class="amt {amt_cls}">{esc(fmt_signed(e["amount"]))}</span>'
@@ -1012,7 +1015,7 @@ def _rail(summary: Dict[str, Dict[str, Any]], feed: List[Dict[str, Any]]) -> str
 def _consensus(decisions: List[Dict[str, Any]]) -> str:
     """ממוצע ההסכמה בהחלטות האחרונות + כמה אושרו מול נדחו."""
     if not decisions:
-        return f"""
+        return """
         <div class="panel cons">
           <div class="cap">קונצנזוס הנחיל</div>
           <div class="track"><div class="fill" style="width:0%;"></div></div>
@@ -1053,7 +1056,7 @@ def _equity(snapshots: List[Dict[str, Any]], trade_history: List[Dict[str, Any]]
     eq = [_f(s.get("equity")) for s in snapshots if s.get("equity") is not None]
 
     if len(eq) < 2:
-        return f"""
+        return """
         <div class="panel eq">
           <div class="eqhead"><div class="cap">היסטוריית הון</div></div>
           <div class="empty">צריך לפחות שני snapshots כדי לצייר עקומה.</div>
