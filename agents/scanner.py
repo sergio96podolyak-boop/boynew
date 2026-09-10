@@ -303,7 +303,8 @@ class MarketScanner:
             limit: Number of candles to fetch (default 200)
 
         Returns:
-            DataFrame with columns [open, high, low, close, volume] or None on failure
+            DataFrame with [open, high, low, close, volume] plus the order-flow
+            columns [taker_buy_quote, trade_count], or None on failure.
         """
         try:
             url = f"{BINANCE_FUTURES_BASE}/fapi/v1/klines"
@@ -314,7 +315,18 @@ class MarketScanner:
                 logger.warning(f"No OHLCV data for {symbol}")
                 return None
 
-            # Parse klines: [time, open, high, low, close, volume, ...]
+            # מבנה נר של Binance — 12 שדות:
+            #   [0] זמן פתיחה   [6] זמן סגירה
+            #   [1] open        [7] נפח בציטוט (quote)      <- משמש כ-volume
+            #   [2] high        [8] מספר עסקאות             <- זרימת פקודות
+            #   [3] low         [9] נפח קניית taker (בסיס)
+            #   [4] close       [10] נפח קניית taker (ציטוט) <- זרימת פקודות
+            #   [5] נפח בבסיס   [11] מוזנח
+            #
+            # שדות 8 ו-10 נזרקו קודם, והם המידע היחיד על *זרימת פקודות* שקיים
+            # היסטורית בלי לתחזק תמונות מספר הפקודות: היחס
+            # taker_buy_quote / volume הוא חלק הנפח שהגיע מקנייה אגרסיבית.
+            # ספר הפקודות החי לא ניתן לשחזור לאחור — זה כן.
             rows = []
             for candle in data:
                 try:
@@ -325,6 +337,8 @@ class MarketScanner:
                             "low": float(candle[3]),
                             "close": float(candle[4]),
                             "volume": float(candle[7]),  # quote asset volume
+                            "taker_buy_quote": float(candle[10]),
+                            "trade_count": float(candle[8]),
                         }
                     )
                 except (ValueError, IndexError) as e:

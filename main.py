@@ -223,9 +223,14 @@ def fetch_ohlcv(
         )
         df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
         df.set_index("open_time", inplace=True)
-        for col in ("open", "high", "low", "close", "volume"):
+        # taker_buy_quote ו-num_trades כבר מפורשים למעלה ואז נזרקו כאן.
+        # הם המידע היחיד על זרימת פקודות שקיים היסטורית — ראו את ההערה
+        # ב-scanner.fetch_ohlcv. שומרים אותם ומיישרים שמות לשני המסלולים.
+        keep = ["open", "high", "low", "close", "volume",
+                "taker_buy_quote", "num_trades"]
+        for col in keep:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df[["open", "high", "low", "close", "volume"]].dropna()
+        df = df[keep].dropna().rename(columns={"num_trades": "trade_count"})
         return df
     except Exception as exc:
         logger.exception("Error parsing OHLCV data for %s: %s", symbol, exc)

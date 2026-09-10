@@ -66,6 +66,15 @@ FEATURE_NAMES = [
     'pullback_pct',
     'volume_trend_3',
     'wick_trap_score',
+
+    # --- זרימת פקודות: מ-taker_buy_quote ו-trade_count שנזרקו עד עכשיו.
+    #     ראו את הבלוק המקביל ב-compute_features. ---
+    'taker_buy_ratio',
+    'taker_flow_delta',
+    'taker_flow_ma3',
+    'taker_flow_z',
+    'avg_trade_size_z',
+    'trade_count_z',
 ]
 
 
@@ -218,6 +227,58 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # If candle closed in lower half but had big upper wick → bull trap
     # If candle closed in upper half but had big lower wick → bear trap
     df['wick_trap_score'] = np.maximum(upper_wick, lower_wick) / full_range
+
+
+    # ========== זרימת פקודות (Order Flow) ==========
+    #
+    # 40 הפיצ'רים שמעליהם נגזרים כולם ממחיר ונפח של נרות — כלומר מה שכבר
+    # קרה. המחקר על מיקרו-מבנה של פרפטואלס בקריפטו מצביע דווקא על *חוסר
+    # האיזון בזרימת הפקודות* ככוח הניבוי בטווח קצר, וזה בדיוק מה שחסר כאן.
+    #
+    # ספר הפקודות החי לא ניתן לשחזור לאחור, ולכן אי אפשר לאמן עליו בלי
+    # לצבור תמונות בעצמנו במשך שבועות. אבל בכל נר של Binance כבר יש שני
+    # שדות שנותנים את אותו מידע בגרסה מצטברת, והם היו נזרקים:
+    #   taker_buy_quote — כמה מהנפח הגיע מקנייה אגרסיבית (מכה בהיצע)
+    #   trade_count     — כמה עסקאות הרכיבו את הנפח
+    #
+    # שניהם היסטוריים, חינם, וכבר נמשכים בכל סריקה.
+    if "taker_buy_quote" in df.columns and "volume" in df.columns:
+        vol = df["volume"].replace(0, pd.NA)
+
+        # 0.5 = מאוזן. מעל — קונים אגרסיביים שולטים; מתחת — מוכרים.
+        df["taker_buy_ratio"] = (df["taker_buy_quote"] / vol).astype(float)
+        df["taker_flow_delta"] = df["taker_buy_ratio"] - 0.5
+        df["taker_flow_ma3"] = df["taker_flow_delta"].rolling(3).mean()
+
+        # האם הלחץ הנוכחי חריג ביחס לעצמו — ולא סתם רועש
+        roll = df["taker_flow_delta"].rolling(20)
+        df["taker_flow_z"] = (
+            (df["taker_flow_delta"] - roll.mean()) / roll.std()
+        ).replace([float("inf"), float("-inf")], 0.0)
+    else:
+        for col in ("taker_buy_ratio", "taker_flow_delta",
+                    "taker_flow_ma3", "taker_flow_z"):
+            df[col] = 0.0 if col != "taker_buy_ratio" else 0.5
+
+    if "trade_count" in df.columns and "volume" in df.columns:
+        cnt = df["trade_count"].replace(0, pd.NA)
+
+        # גודל עסקה ממוצע: מבחין בין "הרבה קטנות" (ריטייל) לבין
+        # "מעט גדולות" (כסף גדול) — באותו נפח בדיוק.
+        avg_size = (df["volume"] / cnt).astype(float)
+        roll_s = avg_size.rolling(20)
+        df["avg_trade_size_z"] = (
+            (avg_size - roll_s.mean()) / roll_s.std()
+        ).replace([float("inf"), float("-inf")], 0.0)
+
+        # פרץ פעילות — קפיצה במספר העסקאות מקדימה לעיתים תנועה
+        roll_c = df["trade_count"].rolling(20)
+        df["trade_count_z"] = (
+            (df["trade_count"] - roll_c.mean()) / roll_c.std()
+        ).replace([float("inf"), float("-inf")], 0.0)
+    else:
+        df["avg_trade_size_z"] = 0.0
+        df["trade_count_z"] = 0.0
 
     return df
 
