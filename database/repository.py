@@ -604,6 +604,7 @@ class TradeRepository:
         Returns:
             dict with keys: total_trades, winning_trades, losing_trades,
             win_rate, total_pnl, avg_pnl, max_drawdown, sharpe_ratio,
+            sharpe_basis,
             gross_profit, gross_loss, profit_factor
         """
         conn = self._get_conn()
@@ -622,6 +623,7 @@ class TradeRepository:
                 "avg_pnl": 0.0,
                 "max_drawdown": 0.0,
                 "sharpe_ratio": 0.0,
+                "sharpe_basis": "insufficient_data",
                 "gross_profit": 0.0,
                 "gross_loss": 0.0,
                 "profit_factor": 0.0,
@@ -662,18 +664,57 @@ class TradeRepository:
             if dd > max_drawdown:
                 max_drawdown = dd
 
-        # Sharpe ratio (annualised, assuming hourly trades)
+        # ------------------------------------------------------------------
+        # Sharpe ratio
+        # ------------------------------------------------------------------
+        # The old code multiplied the per-trade Sharpe by sqrt(8760) —
+        # "annualise assuming one trade per hour". That assumption is wrong
+        # for this bot (an HFT loop that closes trades in minutes), and being
+        # a *constant* it was really just a fixed 93.6x multiplier: a real
+        # per-trade Sharpe of 0.27 was reported as 25.8. No strategy has a
+        # Sharpe of 25 — world-class funds run 2-3 — so the number was not
+        # merely imprecise, it was actively misleading on a decision metric.
+        #
+        # Now the annualisation factor comes from the *observed* trade
+        # frequency. And annualising from a couple of hours of trading is
+        # extrapolation, not measurement, so below a minimum span we report
+        # the honest per-trade figure and say so in `sharpe_basis`.
+        MIN_SPAN_SEC = 6 * 3600
+        SECONDS_PER_YEAR = 365.25 * 24 * 3600
+
+        sharpe = 0.0
+        sharpe_basis = "insufficient_data"
+
         if len(pnl_pcts) >= 2:
             import statistics
             mean_r = statistics.mean(pnl_pcts)
             std_r = statistics.stdev(pnl_pcts)
             if std_r > 0:
-                # Annualise assuming ~8760 hours per year
-                sharpe = (mean_r / std_r) * math.sqrt(8760)
-            else:
-                sharpe = 0.0
-        else:
-            sharpe = 0.0
+                per_trade = mean_r / std_r
+
+                # טווח הזמן בפועל בין העסקה הראשונה לאחרונה שנסגרו
+                stamps = []
+                for row in rows:
+                    ts = row["closed_at"] or row["opened_at"]
+                    if not ts:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(str(ts))
+                    except (TypeError, ValueError):
+                        continue
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    stamps.append(dt.timestamp())
+
+                span_sec = (max(stamps) - min(stamps)) if len(stamps) >= 2 else 0.0
+
+                if span_sec >= MIN_SPAN_SEC:
+                    trades_per_year = len(pnl_pcts) * (SECONDS_PER_YEAR / span_sec)
+                    sharpe = per_trade * math.sqrt(trades_per_year)
+                    sharpe_basis = "annualised"
+                else:
+                    sharpe = per_trade
+                    sharpe_basis = "per_trade"
 
         return {
             "total_trades": total_trades,
@@ -685,6 +726,7 @@ class TradeRepository:
             "max_drawdown": round(max_drawdown, 4),
             "max_drawdown_abs": round(max_drawdown_abs, 4),
             "sharpe_ratio": round(sharpe, 4),
+            "sharpe_basis": sharpe_basis,
             "gross_profit": round(gross_profit, 4),
             "gross_loss": round(gross_loss, 4),
             "profit_factor": round(profit_factor, 4),

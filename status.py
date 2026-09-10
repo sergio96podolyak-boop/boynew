@@ -47,7 +47,10 @@ def show_db(repo: TradeRepository) -> None:
             print(f"  Max drawdown  : {_fmt_money(stats['max_drawdown_abs'])} USDT")
         else:
             print(f"  Max drawdown  : {stats['max_drawdown'] * 100:.1f}%")
-        print(f"  Sharpe        : {stats['sharpe_ratio']}")
+        _sb = stats.get('sharpe_basis', '')
+        _sb_he = {"annualised": "שנתי", "per_trade": "לעסקה (טווח קצר מדי לשנתי)",
+                  "insufficient_data": "אין מספיק נתונים"}.get(_sb, _sb)
+        print(f"  Sharpe        : {stats['sharpe_ratio']}   ({_sb_he})")
 
         # Profit Factor הוא המספר שקובע אם האסטרטגיה שווה משהו: כמה דולר
         # נכנס על כל דולר שיצא. אחוז הצלחה לבדו מטעה — אפשר לנצח ב-80%
