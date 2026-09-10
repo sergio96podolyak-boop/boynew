@@ -12,7 +12,6 @@ from typing import Optional, Tuple, Dict, List
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -82,6 +81,153 @@ class TradingModel:
             subsample=0.8,
             random_state=42,
         )
+
+    # ------------------------------------------------------------------
+    # עזרי הערכה
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _walk_forward_folds(n_rows: int, n_splits: int = 4, min_train: int = 80):
+        """
+        חלונות walk-forward מתרחבים: מאמנים על העבר, בודקים על העתיד שאחריו.
+
+        לעולם לא מערבבים — בסדרת זמן, ערבוב היה נותן למודל להציץ קדימה
+        ולייצר דיוק מדומה. כל fold מאמן על [0:i) ובודק על [i:i+step).
+
+        מחזיר רשימת (train_idx, test_idx). ריקה אם אין מספיק שורות.
+        """
+        import numpy as np
+
+        if n_rows < min_train + 20:
+            return []
+        span = n_rows - min_train
+        step = max(20, span // n_splits)
+        folds = []
+        start = min_train
+        while start + step <= n_rows and len(folds) < n_splits:
+            folds.append((np.arange(0, start), np.arange(start, start + step)))
+            start += step
+        # שארית משמעותית מצטרפת ל-fold האחרון במקום להיזרק
+        if folds and start < n_rows and (n_rows - start) >= 10:
+            tr, te = folds[-1]
+            folds[-1] = (tr, np.arange(te[0], n_rows))
+        return folds
+
+    @staticmethod
+    def _class_weights(y):
+        """
+        משקל הפוך לשכיחות המחלקה.
+
+        היעד לא מאוזן — בחלון מגמתי מחלקה אחת יכולה לתפוס 70% מהשורות,
+        והמודל לומד פשוט לנחש אותה תמיד. משקלים מחזירים לכל מחלקה את אותה
+        חשיבות בפונקציית ההפסד.
+        """
+        import numpy as np
+
+        counts = np.bincount(y)
+        counts = np.where(counts == 0, 1, counts)
+        w = len(y) / (len(counts) * counts)
+        return w[y]
+
+    # ביטחון מינימלי שמעליו נחשבת תחזית "כזו שהיינו סוחרים עליה"
+    ACT_CONFIDENCE = 0.45
+    MIN_ACTIONABLE = 8
+
+    # --- כיול הציון ---
+    # הציון היה probability * reliability * 100 מול סף כניסה של 72-78.
+    # כדי לעבור אותו נדרשה אמינות >= 0.82 — אבל אמינות היא *יתרון מעל
+    # מקריות*, ובשוק נזיל יתרון אמיתי הוא 0.05-0.30. 0.82 פשוט לא קיים.
+    # התוצאה: הסף היה בלתי-אפשרי מתמטית, ו"Ranked 0 opportunities" הופיע
+    # בכל לולאה. ה-ML לא הזיז אף עסקה מעולם.
+    #
+    # התיקון ממפה יתרון לטווח 0..1 בעקומה רוויה, כך שסף 72 נשאר בעל
+    # משמעות: יתרון 0.20 עם הסתברות 0.85 נותן ציון ~74 (עובר בקושי),
+    # ורעש ביתרון 0.02 נותן ~18 (נדחה).
+    EDGE_FULL = 0.25     # יתרון שממנו הביטחון מלא
+    EDGE_FLOOR = 0.03    # מתחת לזה — רעש, אין אות
+
+    @classmethod
+    def _edge_multiplier(cls, edge: float) -> float:
+        """ממיר יתרון גולמי למכפיל ציון 0..1 (עקומה רוויה)."""
+        if edge <= cls.EDGE_FLOOR:
+            return 0.0
+        return float(min(1.0, (edge / cls.EDGE_FULL) ** 0.6))
+
+    def _fit_eval_fold(self, X_tr, y_tr, X_te, y_te):
+        """
+        מאמן על חלון אחד ומחזיר (דיוק, בסיס, יתרון) — או None אם ה-fold לא שמיש.
+
+        `יתרון` הוא המדד שקובע את האמינות, והוא **לא** דיוק כולל.
+
+        למה: הבוט לא סוחר על כל נר. הוא סוחר רק כשהמודל מכריז כיוון
+        בביטחון. לכן השאלה הרלוונטית היא "כשהמודל אומר לונג — כמה פעמים
+        הוא צודק, לעומת מה שהיה יוצא במקרה?" ולא "כמה נרות הוא סיווג נכון".
+
+        ההבדל מכריע כשמחלקה אחת שולטת. בחלון מגמתי שבו 70% מהנרות הם לונג,
+        מודל שתמיד מנחש לונג משיג 70% דיוק בלי שום יכולת — ומודל אמיתי עם
+        יתרון קטן ומדויק *נראה גרוע ממנו*. זו בדיוק הסיבה ש-78 מתוך 86
+        המודלים קיבלו אמינות 0.
+
+        היתרון נמדד כ-lift מעל שכיחות הבסיס:
+            יתרון = (דיוק ההכרזות בכיוון X - שכיחות X בחלון) / (1 - שכיחות X)
+        משוקלל לפי כמה הכרזות היו בכל כיוון. חיובי = יש ערך; אפס = מקריות.
+        """
+        import numpy as np
+
+        classes = np.unique(y_tr)
+        if len(classes) < 2:
+            return None
+
+        idx = {int(c): i for i, c in enumerate(classes.tolist())}
+        keep = np.isin(y_te, classes)
+        if keep.sum() < 10:
+            return None
+
+        y_tr_m = np.array([idx[int(v)] for v in y_tr], dtype=int)
+        y_te_m = np.array([idx[int(v)] for v in y_te[keep]], dtype=int)
+
+        try:
+            m = self._get_xgboost_model()
+            m.fit(X_tr, y_tr_m, sample_weight=self._class_weights(y_tr_m))
+            proba = m.predict_proba(X_te[keep])
+        except Exception as exc:
+            logger.debug("fold training failed (non-fatal): %s", exc)
+            return None
+
+        pred = proba.argmax(axis=1)
+        conf = proba.max(axis=1)
+        acc = float((pred == y_te_m).mean())
+
+        # בסיס לדיווח: "תמיד המחלקה הנפוצה באימון", נמדד על המבחן
+        majority = int(np.bincount(y_tr_m).argmax())
+        base = float((y_te_m == majority).mean())
+
+        # --- היתרון על ההכרזות שהיינו באמת סוחרים עליהן ---
+        # FLAT (התווית 1) אינה עסקה, ולכן אינה נספרת.
+        flat_idx = idx.get(1)
+        lift_num = 0.0
+        lift_den = 0
+        for cls_idx in range(len(classes)):
+            if cls_idx == flat_idx:
+                continue
+            sel = (pred == cls_idx) & (conf >= self.ACT_CONFIDENCE)
+            n = int(sel.sum())
+            if n == 0:
+                continue
+            precision = float((y_te_m[sel] == cls_idx).mean())
+            base_rate = float((y_te_m == cls_idx).mean())
+            if base_rate >= 1.0:
+                continue
+            lift_num += n * (precision - base_rate) / (1.0 - base_rate)
+            lift_den += n
+
+        if lift_den < self.MIN_ACTIONABLE:
+            # המודל כמעט לא מכריז כיוון בביטחון — אין ממה להסיק יתרון
+            edge = 0.0
+        else:
+            edge = lift_num / lift_den
+
+        return acc, base, float(edge)
 
     def train(
         self,
@@ -164,49 +310,59 @@ class TradingModel:
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X_clean)
 
-            # Train-test split
-            X_train, X_test, y_train_raw, y_test_raw = train_test_split(
-                X_scaled, y_clean, test_size=0.2, shuffle=False
-            )
-
-            train_classes = np.unique(y_train_raw)
-            if len(train_classes) < 2:
-                logger.warning(
-                    f"{symbol}: Single class in training split ({train_classes}), "
-                    "cannot train classifier"
+            # ----------------------------------------------------------------
+            # הערכה: walk-forward במקום חלוקה בודדת
+            # ----------------------------------------------------------------
+            # חלוקה של 80/20 על ~186 דגימות משאירה מבחן של ~37 שורות. דיוק
+            # שנמדד על 37 דגימות נע בערך ±8% רק מרעש, ולכן ה-reliability של
+            # אותו סימבול קפץ בין 0.00 ל-0.48 בין לולאה ללולאה בלי שקרה דבר.
+            # כמה חלונות עוקבים, ממוצעים, נותנים אומדן יציב בהרבה.
+            folds = self._walk_forward_folds(len(X_scaled), n_splits=4)
+            fold_acc, fold_base, fold_edge = [], [], []
+            for tr_idx, te_idx in folds:
+                res = self._fit_eval_fold(
+                    X_scaled[tr_idx], y_clean[tr_idx],
+                    X_scaled[te_idx], y_clean[te_idx],
                 )
-                return False
-            class_labels = [int(cls) for cls in train_classes.tolist()]
-            class_to_idx = {label: idx for idx, label in enumerate(class_labels)}
-            y_train = np.array([class_to_idx[int(label)] for label in y_train_raw], dtype=int)
+                if res is not None:
+                    fold_acc.append(res[0])
+                    fold_base.append(res[1])
+                    fold_edge.append(res[2])
 
-            test_known_mask = np.isin(y_test_raw, train_classes)
-            X_test_eval = X_test[test_known_mask]
-            y_test = np.array(
-                [class_to_idx[int(label)] for label in y_test_raw[test_known_mask]],
-                dtype=int,
-            )
-
-            # Create and train model
-            model = self._get_xgboost_model()
-            model.fit(X_train, y_train)
-
-            # Calculate accuracy
-            train_accuracy = model.score(X_train, y_train)
-            test_accuracy = model.score(X_test_eval, y_test) if len(y_test) > 0 else 0.0
-
-            # Reliability: how much better than the majority-class baseline is the
-            # model out-of-sample? A model that only matches "always predict the
-            # most common class" has NO edge → reliability ~0 → its confidence is
-            # later discounted to near-zero so it never triggers a trade.
-            if len(y_test) > 0:
-                baseline = float(np.bincount(y_test).max()) / float(len(y_test))
+            if fold_acc:
+                test_accuracy = float(np.mean(fold_acc))
+                baseline = float(np.mean(fold_base))
+                edge = float(np.mean(fold_edge))
+                n_folds = len(fold_acc)
             else:
-                baseline = 1.0
-            reliability = 0.0
-            if baseline < 1.0:
-                reliability = (test_accuracy - baseline) / (1.0 - baseline)
-            reliability = float(min(1.0, max(0.0, reliability)))
+                # אין מספיק נתונים לאפילו חלון אחד — אין אומדן, אין אמון
+                test_accuracy, baseline, edge, n_folds = 0.0, 1.0, 0.0, 0
+
+            # ----------------------------------------------------------------
+            # אמינות מול "חסר-מיומנות" אמיתי
+            # ----------------------------------------------------------------
+            # קודם הבסיס חושב כרוב של מחלקות ה-*מבחן* עצמו — ידע שאסטרטגיה
+            # אמיתית לא יכולה להחזיק מראש, והוא גם נע עם המגמה של החלון
+            # (חלון מגמתי -> בסיס 0.71, חלון דשדוש -> 0.50). זה לא מדד ליכולת
+            # אלא מדד לכמה החלון היה חד-צדדי.
+            #
+            # הבסיס הנכון: "תמיד לנחש את המחלקה שהייתה הנפוצה ביותר באימון",
+            # ולמדוד את זה על המבחן. את זה כן אפשר לעשות בזמן אמת, ולכן זה
+            # הרף שהמודל חייב לעבור. הוא מחושב בתוך כל fold ב-_fit_eval_fold.
+            reliability = float(min(1.0, max(0.0, edge)))
+
+            # ----------------------------------------------------------------
+            # המודל לייצור: מאומן על *כל* הנתונים
+            # ----------------------------------------------------------------
+            # ההערכה כבר נעשתה ביושר על חלונות עתידיים; אין סיבה לזרוק 20%
+            # מהנתונים מהמודל שבאמת יסחר.
+            class_labels = [int(c) for c in np.unique(y_clean).tolist()]
+            class_to_idx = {label: idx for idx, label in enumerate(class_labels)}
+            y_final = np.array([class_to_idx[int(v)] for v in y_clean], dtype=int)
+
+            model = self._get_xgboost_model()
+            model.fit(X_scaled, y_final, sample_weight=self._class_weights(y_final))
+            train_accuracy = float(model.score(X_scaled, y_final))
 
             # Store model and scaler
             self.models[symbol] = model
@@ -219,13 +375,17 @@ class TradingModel:
                 'reliability': reliability,
                 'n_samples': len(X_clean),
                 'n_features': len(feature_names),
+                'n_folds': n_folds,
+                'edge': round(edge, 4),
                 'unique_classes': len(unique_classes),
                 'class_labels': class_labels,
             }
 
             logger.info(
-                f"{symbol}: Model trained | Train: {train_accuracy:.3f} | Test: {test_accuracy:.3f} | "
-                f"Baseline: {baseline:.3f} | Reliability: {reliability:.2f} | Samples: {len(X_clean)}"
+                f"{symbol}: Model trained | Train: {train_accuracy:.3f} | "
+                f"CV-Test: {test_accuracy:.3f} | Baseline: {baseline:.3f} | "
+                f"Edge: {edge:+.3f} | Reliability: {reliability:.2f} | "
+                f"Samples: {len(X_clean)} | Folds: {n_folds}"
             )
             self._write_health_snapshot()
             return True
@@ -303,15 +463,17 @@ class TradingModel:
             # collapses to a near-zero score → it never crosses the entry
             # threshold → no trade. Only genuinely skilled models score high.
             reliability = float(self.training_history.get(symbol, {}).get('reliability', 0.0))
-            score = probability * reliability * 100.0
+            mult = self._edge_multiplier(reliability)
+            score = probability * mult * 100.0
 
-            # No demonstrated edge → don't even suggest a direction
-            if reliability < 0.1:
+            # אין יתרון מוכח -> לא מציעים כיוון בכלל
+            if mult <= 0.0:
                 direction = 'FLAT'
 
             logger.debug(
                 f"{symbol}: {direction} | Score: {score:.1f} "
-                f"(prob={probability:.2f} × reliability={reliability:.2f}) | Probs: {probabilities}"
+                f"(prob={probability:.2f} × edge={reliability:.3f} -> ×{mult:.2f}) | "
+                f"Probs: {probabilities}"
             )
             return (direction, score, probability)
 

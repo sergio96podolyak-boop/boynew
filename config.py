@@ -146,8 +146,13 @@ class TradingConfig:
     )
     hft_timeframe: str = field(default_factory=lambda: os.getenv("HFT_TIMEFRAME", "1m"))
     hft_fetch_limit: int = field(default_factory=lambda: _env_int("HFT_FETCH_LIMIT", "200"))
+    # 240 נרות נתנו ~186 דגימות אחרי ניקוי NaN — מול 40 פיצ'רים זה 4.6
+    # דגימות לפיצ'ר, יחס שמבטיח שינון (Train 1.000) במקום למידה.
+    # 480 נותן ~426 דגימות (~10.6 לפיצ'ר) ו**עולה אותו דבר**: Binance מתמחר
+    # klines לפי מדרגות, ו-100..499 הוא אותו משקל (2) כמו 240. מעל 500
+    # המשקל קופץ ל-5, ולכן 480 ולא יותר.
     min_ml_training_candles: int = field(
-        default_factory=lambda: _env_int("MIN_ML_TRAINING_CANDLES", "240")
+        default_factory=lambda: _env_int("MIN_ML_TRAINING_CANDLES", "480")
     )
     technical_fallback_signals: bool = field(
         default_factory=lambda: _env_bool("TECHNICAL_FALLBACK_SIGNALS", "true")
