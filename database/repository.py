@@ -51,7 +51,8 @@ class TradeRepository:
                 closed_at       TEXT,
                 close_reason    TEXT,
                 confidence      REAL,
-                strategy_signal TEXT
+                strategy_signal TEXT,
+                fee             REAL DEFAULT 0.0
             );
 
             CREATE TABLE IF NOT EXISTS signals (
@@ -126,6 +127,16 @@ class TradeRepository:
             CREATE INDEX IF NOT EXISTS idx_decision_audit_ts ON decision_audit(created_at);
             CREATE INDEX IF NOT EXISTS idx_decision_audit_symbol ON decision_audit(symbol);
         """)
+        # מיגרציה: DB שנוצר לפני שהעמלות נכנסו לחישוב לא מכיל את העמודה,
+        # ו-CREATE TABLE IF NOT EXISTS לא מוסיף עמודות לטבלה קיימת.
+        try:
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(trades)")}
+            if "fee" not in existing:
+                conn.execute("ALTER TABLE trades ADD COLUMN fee REAL DEFAULT 0.0")
+                logger.info("Migrated trades table: added `fee` column")
+        except sqlite3.Error as exc:
+            logger.warning("fee column migration skipped: %s", exc)
+
         conn.commit()
 
         # Migrate: add unrealized_pnl column if missing (existing DBs)

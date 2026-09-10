@@ -794,6 +794,22 @@ class ExecutionAgent:
         )
         return position
 
+    def _roundtrip_fee(self, entry_price: float, exit_price: float, qty: float) -> float:
+        """
+        עמלת taker על שני צדי העסקה — כניסה ויציאה.
+
+        למה זה קיים: ה-PnL חושב כ-(מחיר יציאה - מחיר כניסה) × כמות, בלי שום
+        ניכוי. בנייר זה הפך כל תוצאה לאופטימית בגובה העמלה, ובפרט הפך עסקאות
+        מפסידות ל"מנצחות": יציאת stale ב-+0.03% על נוטיונל של 12,000 נרשמה
+        כרווח של 0.74 USDT בזמן שהיא עלתה 12 USDT בעמלות.
+
+        Binance גובה על הנוטיונל בכל צד בנפרד, ולכן שני המחירים נספרים.
+        """
+        fee_pct = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
+        if fee_pct <= 0 or qty <= 0:
+            return 0.0
+        return (abs(entry_price) + abs(exit_price)) * qty * fee_pct
+
     def _paper_close_position(
         self, symbol: str, exit_price: float, reason: str
     ) -> Optional[Dict[str, Any]]:
@@ -808,19 +824,23 @@ class ExecutionAgent:
         side = pos["side"]
 
         if side == "LONG":
-            pnl = (exit_price - entry) * qty
+            gross = (exit_price - entry) * qty
         else:  # SHORT
-            pnl = (entry - exit_price) * qty
+            gross = (entry - exit_price) * qty
+
+        fee = self._roundtrip_fee(entry, exit_price, qty)
+        pnl = gross - fee
 
         pnl_pct = pnl / (entry * qty / self.config.leverage) if entry > 0 else 0.0
 
-        # Return margin + PnL to balance
+        # Return margin + net PnL to balance (fees leave the account for real)
         self._paper_balance += margin + pnl
 
         now = datetime.now(timezone.utc).isoformat()
         logger.info(
-            "[PAPER] Closed %s %s @ %.4f — PnL: %.4f USDT (%.2f%%) reason=%s",
-            side, symbol, exit_price, pnl, pnl_pct * 100, reason,
+            "[PAPER] Closed %s %s @ %.4f — PnL: %.4f USDT (%.2f%%) "
+            "gross=%.4f fee=%.4f reason=%s",
+            side, symbol, exit_price, pnl, pnl_pct * 100, gross, fee, reason,
         )
         return {
             "symbol": symbol,
@@ -830,6 +850,7 @@ class ExecutionAgent:
             "quantity": qty,
             "pnl": round(pnl, 6),
             "pnl_pct": round(pnl_pct, 6),
+            "fee": round(fee, 6),
             "closed_at": now,
             "close_reason": reason,
             "trade_id": pos.get("trade_id"),
@@ -1002,6 +1023,7 @@ class ExecutionAgent:
                     "exit_price": result["exit_price"],
                     "pnl": result["pnl"],
                     "pnl_pct": result["pnl_pct"],
+                    "fee": result.get("fee", 0.0),
                     "status": "closed",
                     "closed_at": result["closed_at"],
                     "close_reason": reason,
@@ -1077,9 +1099,12 @@ class ExecutionAgent:
         is_long = (side == "SELL")
 
         if is_long:
-            pnl = (exit_price - entry_price) * closed_qty
+            gross = (exit_price - entry_price) * closed_qty
         else:
-            pnl = (entry_price - exit_price) * closed_qty
+            gross = (entry_price - exit_price) * closed_qty
+
+        fee = self._roundtrip_fee(entry_price, exit_price, closed_qty)
+        pnl = gross - fee
 
         pnl_pct = (
             pnl / (entry_price * closed_qty / self.config.leverage)
@@ -1099,6 +1124,7 @@ class ExecutionAgent:
             "quantity": closed_qty,
             "pnl": round(pnl, 6),
             "pnl_pct": round(pnl_pct, 6),
+            "fee": round(fee, 6),
             "closed_at": datetime.now(timezone.utc).isoformat(),
             "close_reason": reason,
             "trade_id": trade_id,
@@ -1524,6 +1550,7 @@ class ExecutionAgent:
                     "exit_price": result["exit_price"],
                     "pnl": result["pnl"],
                     "pnl_pct": result["pnl_pct"],
+                    "fee": result.get("fee", 0.0),
                     "status": "closed",
                     "closed_at": result["closed_at"],
                     "close_reason": result.get("close_reason") or reason,
