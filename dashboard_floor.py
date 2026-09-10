@@ -579,7 +579,13 @@ def _ticker(config: Any, engine_live: bool, loop_no: int, uptime_sec: Optional[f
                 f'<b>{value}</b></div>')
 
     uptime_txt = dur_he(uptime_sec) if uptime_sec is not None else "—"
-    now_utc = datetime.now(timezone.utc).strftime("%H:%M:%S")
+
+    # שעון מקומי, לא UTC. הבוט רץ על המחשב של המשתמש/ת והשעון שלידו הוא
+    # השעון המקומי — הצגת UTC נראתה פשוט כשעה שגויה (פער של 3 שעות בישראל).
+    # התווית מציגה את אזור הזמן בפועל כדי שלא יהיה ספק.
+    now_local = datetime.now().astimezone()
+    now_str = now_local.strftime("%H:%M:%S")
+    tz_label = now_local.strftime("%Z") or now_local.strftime("%z")
 
     return f"""
     <div class="ticker">
@@ -594,7 +600,7 @@ def _ticker(config: Any, engine_live: bool, loop_no: int, uptime_sec: Optional[f
       {chip("דופק אחרון", esc(time_ago_he(last_beat)))}
       {chip("יקום", f"{universe:,}")}
       {chip("פוזיציות", f"{open_n}/{max_n}")}
-      <div class="tchip push"><span class="lbl">UTC</span><b>{now_utc}</b></div>
+      <div class="tchip push"><span class="lbl">{esc(tz_label)}</span><b>{now_str}</b></div>
     </div>
     """
 
