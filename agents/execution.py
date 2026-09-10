@@ -1075,6 +1075,20 @@ class ExecutionAgent:
 
             # Snap SL/TP to the actual fill and place exchange-side protective
             # orders so the position survives a bot outage.
+            # Same re-anchoring as the HFT path: SL/TP were derived from the
+            # signal's reference price, so a fill away from it shrinks the stop
+            # and stretches the target. Keep their distances, move their anchor.
+            if entry_price > 0 and filled_price > 0 and filled_price != entry_price:
+                ratio = filled_price / entry_price
+                sl_before, tp_before = sl_price, tp_price
+                sl_price, tp_price = sl_price * ratio, tp_price * ratio
+                logger.info(
+                    "%s: re-anchored SL/TP to fill %.6f (ref %.6f, %.4f%%): "
+                    "SL %.6f->%.6f TP %.6f->%.6f",
+                    symbol, filled_price, entry_price, (ratio - 1.0) * 100,
+                    sl_before, sl_price, tp_before, tp_price,
+                )
+
             sl_price, tp_price = self.refine_sl_tp_prices(
                 symbol, side, filled_price, sl_price, tp_price
             )
@@ -1576,6 +1590,24 @@ class ExecutionAgent:
                 symbol, self._last_slippage * 100, self._last_latency_ms,
                 signal_to_fill_ms, entry_price, filled_price,
             )
+
+            # SL/TP arrived as absolute price levels derived from the reference
+            # price the scanner ranked on. A fill away from that price silently
+            # rescales the risk/reward the risk manager approved: an adverse fill
+            # moves the stop closer and the target further, in the same direction.
+            # Re-anchor both to the price actually paid, keeping their original
+            # distances. Scaling by the ratio is direction-agnostic — for
+            # sl = entry*(1-d), sl*(filled/entry) == filled*(1-d).
+            if entry_price > 0 and filled_price > 0 and filled_price != entry_price:
+                ratio = filled_price / entry_price
+                sl_before, tp_before = sl, tp
+                sl, tp = sl * ratio, tp * ratio
+                logger.info(
+                    "HFT %s: re-anchored SL/TP to fill %.6f (ref %.6f, %.4f%%): "
+                    "SL %.6f->%.6f TP %.6f->%.6f",
+                    symbol, filled_price, entry_price, (ratio - 1.0) * 100,
+                    sl_before, sl, tp_before, tp,
+                )
 
             sl, tp = self.refine_sl_tp_prices(symbol, direction, filled_price, sl, tp)
             trade_dict["sl_price"] = sl
