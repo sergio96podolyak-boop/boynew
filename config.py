@@ -297,6 +297,29 @@ class TradingConfig:
     # round-trip costs by enough USDT and net reward/risk. If possible, sizing
     # may lift notional inside the existing risk/margin caps to meet the dollar
     # target; otherwise the trade is rejected.
+    # --- כניסה כ-maker ---
+    # Binance גובה 0.02% על maker מול 0.05% על taker. הבוט שלח MARKET בשני
+    # הצדדים, כלומר taker פעמיים = 0.10% הלוך-חזור. כניסה כ-LIMIT עם
+    # postOnly מורידה את זה ל-0.07% — חיסכון של 30% בעלות העסקה.
+    #
+    # המחיר: הזמנת maker **לא תמיד נסגרת**. אם המחיר בורח, נשארים בחוץ.
+    # זו הסיבה שברירת המחדל כבויה — זה שינוי התנהגות, לא רק תיקון.
+    # היציאה תמיד נשארת MARKET: סטופ שלא נסגר זו קטסטרופה.
+    maker_entry_enabled: bool = field(
+        default_factory=lambda: _env_bool("MAKER_ENTRY_ENABLED", "false")
+    )
+    estimated_maker_fee_pct: float = field(
+        default_factory=lambda: _env_float("ESTIMATED_MAKER_FEE_PCT", "0.0002")
+    )
+    maker_entry_timeout_sec: float = field(
+        default_factory=lambda: _env_float("MAKER_ENTRY_TIMEOUT_SEC", "8.0")
+    )
+    # אם ההזמנה לא נסגרה בזמן: לוותר על העסקה (ברירת מחדל) או לרדוף
+    # אחרי המחיר ב-MARKET. רדיפה = לשלם taker *וגם* להיכנס במחיר גרוע
+    # יותר מזה שדורג — הדרך הקלאסית לשחוק אסטרטגיה.
+    maker_entry_fallback_market: bool = field(
+        default_factory=lambda: _env_bool("MAKER_ENTRY_FALLBACK_MARKET", "false")
+    )
     fee_aware_sizing_enabled: bool = field(
         default_factory=lambda: _env_bool("FEE_AWARE_SIZING_ENABLED", "true")
     )

@@ -301,6 +301,107 @@ class ExecutionAgent:
             logger.exception("set_leverage failed for %s: %s", symbol, exc)
             return False
 
+    def place_entry_order(
+        self, symbol: str, side: str, quantity: float
+    ) -> Optional[Dict[str, Any]]:
+        """
+        נתב הכניסה: maker אם הופעל, אחרת MARKET כמו קודם.
+
+        קיים בנפרד מ-`place_market_order` כדי שהיציאות ימשיכו לעבור דרך
+        MARKET תמיד, בלי קשר להגדרה. יציאה שלא נסגרת היא סיכון בלתי מוגבל.
+        """
+        if bool(getattr(self.config, "maker_entry_enabled", False)):
+            order = self.place_maker_entry_order(symbol, side, quantity)
+            if order is not None:
+                return order
+            if not bool(getattr(self.config, "maker_entry_fallback_market", False)):
+                logger.info(
+                    "%s: maker entry unfilled — skipping trade "
+                    "(MAKER_ENTRY_FALLBACK_MARKET=false)", symbol,
+                )
+                return None
+            logger.info("%s: maker entry unfilled — falling back to MARKET", symbol)
+        return self.place_market_order(symbol, side, quantity)
+
+    def place_maker_entry_order(
+        self, symbol: str, side: str, quantity: float
+    ) -> Optional[Dict[str, Any]]:
+        """
+        כניסה כ-maker: LIMIT עם `timeInForce="GTX"` (post-only).
+
+        GTX נדחית מיד אם היא הייתה נסגרת כנגד הספר — כלומר היא *מבטיחה*
+        עמלת maker ולעולם לא תיפול בטעות ל-taker. המחיר נקבע על הצד שלנו
+        בספר (bid לקנייה, ask למכירה), כך שההזמנה ממתינה בתור.
+
+        מחזירה את ההזמנה רק אם התמלאה במלואה בתוך הזמן הקצוב. אחרת מבטלת
+        ומחזירה None — הקורא מחליט אם לוותר או לרדוף.
+
+        למה לא לרדוף כברירת מחדל: אם המחיר ברח מהלימיט, הסטאפ שדורג כבר
+        לא קיים. רדיפה משלמת taker *וגם* נכנסת גרוע יותר.
+        """
+        if self._client is None:
+            return None
+
+        rounded_qty = self._round_quantity(symbol, quantity)
+        if rounded_qty <= 0:
+            return None
+
+        # המחיר הטוב ביותר בצד שלנו — שם הזמנת maker ממתינה בתור
+        try:
+            book = self._client.futures_orderbook_ticker(symbol=symbol)
+            price = float(book["bidPrice"] if side == "BUY" else book["askPrice"])
+        except Exception as exc:
+            logger.warning("%s: book ticker failed (%s) — no maker entry", symbol, exc)
+            return None
+        if price <= 0:
+            return None
+
+        limit_price = self._round_price(symbol, price)
+        order_id = None
+        try:
+            order = self._client.futures_create_order(
+                symbol=symbol,
+                side=side,
+                type="LIMIT",
+                timeInForce="GTX",          # post-only
+                quantity=rounded_qty,
+                price=self._decimal_str(limit_price),
+            )
+            order_id = order.get("orderId")
+        except Exception as exc:
+            # -5022 = ההזמנה הייתה נסגרת מיד; זו התנהגות תקינה של GTX
+            logger.info("%s: maker entry rejected (%s)", symbol, exc)
+            return None
+
+        # המתנה למילוי
+        timeout = float(getattr(self.config, "maker_entry_timeout_sec", 8.0) or 8.0)
+        deadline = time.perf_counter() + timeout
+        while time.perf_counter() < deadline:
+            time.sleep(0.35)
+            try:
+                detail = self._client.futures_get_order(symbol=symbol, orderId=order_id)
+            except Exception as exc:
+                logger.debug("%s: maker order poll failed: %s", symbol, exc)
+                continue
+            status = str(detail.get("status") or "")
+            if status == "FILLED":
+                detail.setdefault("submittedQuantity", self._decimal_str(rounded_qty))
+                logger.info(
+                    "%s: maker entry FILLED @ %s (saved taker fee)",
+                    symbol, detail.get("avgPrice"),
+                )
+                return detail
+            if status in ("CANCELED", "EXPIRED", "REJECTED"):
+                logger.info("%s: maker entry %s", symbol, status)
+                return None
+
+        # לא התמלאה בזמן — מבטלים כדי לא להשאיר הזמנה תלויה בספר
+        try:
+            self._client.futures_cancel_order(symbol=symbol, orderId=order_id)
+        except Exception as exc:
+            logger.warning("%s: failed to cancel maker entry: %s", symbol, exc)
+        return None
+
     def place_market_order(
         self, symbol: str, side: str, quantity: float
     ) -> Optional[Dict[str, Any]]:
@@ -805,10 +906,22 @@ class ExecutionAgent:
 
         Binance גובה על הנוטיונל בכל צד בנפרד, ולכן שני המחירים נספרים.
         """
-        fee_pct = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
-        if fee_pct <= 0 or qty <= 0:
+        taker = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
+        if qty <= 0:
             return 0.0
-        return (abs(entry_price) + abs(exit_price)) * qty * fee_pct
+
+        # הכניסה עשויה להיות maker (LIMIT postOnly) אבל היציאה תמיד MARKET,
+        # ולכן שני הצדדים מתומחרים בנפרד ולא כ-taker כפול.
+        if bool(getattr(self.config, "maker_entry_enabled", False)):
+            entry_fee_pct = float(
+                getattr(self.config, "estimated_maker_fee_pct", taker) or taker
+            )
+        else:
+            entry_fee_pct = taker
+
+        if entry_fee_pct <= 0 and taker <= 0:
+            return 0.0
+        return abs(entry_price) * qty * entry_fee_pct + abs(exit_price) * qty * taker
 
     def _paper_close_position(
         self, symbol: str, exit_price: float, reason: str
@@ -946,7 +1059,7 @@ class ExecutionAgent:
             self.set_leverage(symbol, self.config.leverage)
             binance_side = "BUY" if side == "LONG" else "SELL"
 
-            order = self.place_market_order(symbol, binance_side, quantity)
+            order = self.place_entry_order(symbol, binance_side, quantity)
             if order is None:
                 return None
 
@@ -1429,7 +1542,7 @@ class ExecutionAgent:
             self.set_leverage(symbol, self.config.leverage)
             binance_side = "BUY" if direction == "LONG" else "SELL"
 
-            order = self.place_market_order(symbol, binance_side, quantity)
+            order = self.place_entry_order(symbol, binance_side, quantity)
             if order is None:
                 logger.error("HFT market order failed for %s", symbol)
                 return None

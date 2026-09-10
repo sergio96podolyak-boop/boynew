@@ -320,9 +320,20 @@ class RiskManagerAgent:
         return 0.0
 
     def estimated_roundtrip_cost_pct(self) -> float:
-        fee = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
+        """
+        עלות הלוך-חזור משוערת: עמלת כניסה + עמלת יציאה + באפר החלקה.
+
+        קודם זה היה `taker * 2` בהנחה ששני הצדדים taker. כשכניסת maker
+        מופעלת הכניסה זולה יותר (0.02% מול 0.05%), והשער שמסנן כניסות
+        חייב לדעת את זה — אחרת הוא פוסל עסקאות שכדאיות בפועל.
+        """
+        taker = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
         buffer = float(getattr(self.config, "profit_edge_buffer_pct", 0.0) or 0.0)
-        return max(0.0, fee * 2.0 + buffer)
+        if bool(getattr(self.config, "maker_entry_enabled", False)):
+            entry = float(getattr(self.config, "estimated_maker_fee_pct", taker) or taker)
+        else:
+            entry = taker
+        return max(0.0, entry + taker + buffer)
 
     def register_open_position(self, position: Position) -> None:
         self.open_positions[position.symbol] = position
