@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard_floor import render_floor_component
+from dashboard_market import render_market_component
 
 logger = logging.getLogger(__name__)
 
@@ -1738,6 +1739,21 @@ render_floor_component(
     stats24=_stats24,
     session_start=_session_start,
     universe=_universe,
+)
+
+# ---------------------------------------------------------------------------
+# פאנל שוק חי — נרות, ספר פקודות וסרט עסקאות ישירות מ-Binance אל הדפדפן,
+# עם קווי הכניסה/SL/TP של הבוט מצוירים מעליהם.
+#
+# הפאנל הזה מחזיק WebSocket חי. הוא שורד את הרענון של Streamlit רק כל עוד
+# ה-HTML שלו לא משתנה — ולכן הוא מקבל אך ורק מצב פוזיציות, בלי שעונים.
+# ראו את הדוקסטרינג של dashboard_market.
+# ---------------------------------------------------------------------------
+render_market_component(
+    config=config,
+    open_trades=open_trades,
+    trade_history=trade_history,
+    recent_signals=recent_signals,
 )
 
 # ---------------------------------------------------------------------------
