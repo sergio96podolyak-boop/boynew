@@ -603,7 +603,8 @@ class TradeRepository:
 
         Returns:
             dict with keys: total_trades, winning_trades, losing_trades,
-            win_rate, total_pnl, avg_pnl, max_drawdown, sharpe_ratio
+            win_rate, total_pnl, avg_pnl, max_drawdown, sharpe_ratio,
+            gross_profit, gross_loss, profit_factor
         """
         conn = self._get_conn()
         cursor = conn.execute(
@@ -621,6 +622,9 @@ class TradeRepository:
                 "avg_pnl": 0.0,
                 "max_drawdown": 0.0,
                 "sharpe_ratio": 0.0,
+                "gross_profit": 0.0,
+                "gross_loss": 0.0,
+                "profit_factor": 0.0,
             }
 
         pnls = [row["pnl"] for row in rows]
@@ -632,6 +636,15 @@ class TradeRepository:
         total_pnl = sum(pnls)
         avg_pnl = total_pnl / total_trades if total_trades > 0 else 0.0
         win_rate = winning / total_trades if total_trades > 0 else 0.0
+
+        # Profit factor over the full history — the dashboard needs it next to
+        # the lifetime win rate, so both numbers describe the same window.
+        gross_profit = sum(p for p in pnls if p > 0)
+        gross_loss = abs(sum(p for p in pnls if p <= 0))
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
+        else:
+            profit_factor = 2.0 if gross_profit > 0 else 0.0
 
         # Max drawdown from cumulative PnL
         cumulative = 0.0
@@ -672,6 +685,9 @@ class TradeRepository:
             "max_drawdown": round(max_drawdown, 4),
             "max_drawdown_abs": round(max_drawdown_abs, 4),
             "sharpe_ratio": round(sharpe, 4),
+            "gross_profit": round(gross_profit, 4),
+            "gross_loss": round(gross_loss, 4),
+            "profit_factor": round(profit_factor, 4),
         }
 
     def close(self) -> None:

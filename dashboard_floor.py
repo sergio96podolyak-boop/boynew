@@ -631,13 +631,30 @@ def _kpi_tile(label: str, value: str, detail: str, cls: str = "",
 
 
 def _kpis(equity: float, equity_series: List[float], total_pnl: float,
-          total_pnl_pct: float, pnl24: float, win_rate: float, trades24: int,
-          profit_factor: float, unrealized: float, pnl_series: List[float],
-          sharpe: float, max_dd: float) -> str:
-    """שורת המדדים הראשית — חמישה אריחים, כולם מנתוני אמת."""
+          total_pnl_pct: float, pnl24: float, win_rate24: float, trades24: int,
+          pf24: float, unrealized: float, pnl_series: List[float],
+          sharpe: float, max_dd: float, win_rate_all: float,
+          pf_all: float, trades_all: int) -> str:
+    """
+    שורת המדדים הראשית — חמישה אריחים, כולם מנתוני אמת.
+
+    אריח הדיוק מציג אחוז הצלחה ו-Profit Factor **מאותו טווח זמן**. אם היו
+    עסקאות ב-24 השעות האחרונות — שניהם מ-24 שעות; אחרת שניהם מכל ההיסטוריה,
+    והאריח אומר את זה במפורש. ערבוב של שני הטווחים באותו אריח נראה כמו
+    סתירה (42% הצלחה ליד PF אפס) ומטעה יותר משהוא מוסיף.
+    """
     pnl_cls = "pos" if total_pnl >= 0 else "neg"
     p24_cls = "pos" if pnl24 >= 0 else "neg"
     un_cls = "pos" if unrealized >= 0 else "neg"
+
+    # שני המספרים באריח הדיוק חייבים לבוא מאותו חלון זמן
+    if trades24 > 0:
+        win_rate, profit_factor, window = win_rate24, pf24, "24 שעות"
+        n_trades = trades24
+    else:
+        win_rate, profit_factor, window = win_rate_all, pf_all, "כל הזמן"
+        n_trades = trades_all
+
     pf_cls = "pos" if profit_factor >= 1.2 else ("neg" if 0 < profit_factor < 0.8 else "acc")
     wr_cls = "pos" if win_rate >= 0.5 else ("neg" if win_rate and win_rate < 0.4 else "")
 
@@ -651,8 +668,9 @@ def _kpis(equity: float, equity_series: List[float], total_pnl: float,
                   color="#22e08a" if total_pnl >= 0 else "#ff4d6a"),
         _kpi_tile("רווח 24 שעות", fmt_signed(pnl24),
                   f'{num(trades24)} עסקאות נסגרו', cls=p24_cls),
-        _kpi_tile("אחוז הצלחה", fmt_pct(win_rate),
-                  f'Profit Factor <span class="num {pf_cls}">{profit_factor:.2f}</span>',
+        _kpi_tile(f"אחוז הצלחה · {window}", fmt_pct(win_rate),
+                  f'PF <span class="num {pf_cls}">{profit_factor:.2f}</span>'
+                  f' · {num(n_trades)} עסקאות',
                   cls=wr_cls),
         _kpi_tile("שארפ", f"{sharpe:.2f}",
                   f'ירידה מקס׳ <span class="num neg">{esc(fmt_pct(max_dd))}</span>',
@@ -1180,15 +1198,18 @@ def render_trading_floor(
     equity_series = [_f(s.get("equity")) for s in snapshots][-60:]
     pnl_series = [_f(s.get("total_pnl")) for s in snapshots][-60:]
 
+    # 24 שעות אחרונות
     trades24 = _i(stats24.get("total_trades"))
     pnl24 = _f(stats24.get("total_pnl"))
-    win_rate = _f(stats24.get("win_rate")) or _f(stats.get("win_rate"))
-    gross_profit = _f(stats24.get("gross_profit"))
-    gross_loss = abs(_f(stats24.get("gross_loss")))
-    if gross_loss > 0:
-        profit_factor = gross_profit / gross_loss
-    else:
-        profit_factor = 2.0 if gross_profit > 0 else 0.0
+    win_rate24 = _f(stats24.get("win_rate"))
+    gp24 = _f(stats24.get("gross_profit"))
+    gl24 = abs(_f(stats24.get("gross_loss")))
+    pf24 = (gp24 / gl24) if gl24 > 0 else (2.0 if gp24 > 0 else 0.0)
+
+    # כל ההיסטוריה — משמש כשאין עסקאות ב-24 השעות האחרונות
+    trades_all = _i(stats.get("total_trades"))
+    win_rate_all = _f(stats.get("win_rate"))
+    pf_all = _f(stats.get("profit_factor"))
 
     sharpe = _f(stats.get("sharpe_ratio"))
     max_dd = clamp(_f(stats.get("max_drawdown")), 0.0, 1.0)
@@ -1200,8 +1221,9 @@ def render_trading_floor(
         '<div class="floor" dir="rtl">',
         _ticker(config, engine_live, loop_no, uptime, last_beat,
                 universe, len(open_trades), max_pos),
-        _kpis(equity, equity_series, total_pnl, total_pnl_pct, pnl24, win_rate,
-              trades24, profit_factor, unrealized, pnl_series, sharpe, max_dd),
+        _kpis(equity, equity_series, total_pnl, total_pnl_pct, pnl24, win_rate24,
+              trades24, pf24, unrealized, pnl_series, sharpe, max_dd,
+              win_rate_all, pf_all, trades_all),
         _pipeline(agent_summary),
         '<div class="mid">',
         _swarm(agent_summary, agent_feed, engine_live, len(open_trades)),
