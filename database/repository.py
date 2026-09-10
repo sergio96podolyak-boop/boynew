@@ -409,6 +409,24 @@ class TradeRepository:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_session_start(self) -> Optional[str]:
+        """
+        Timestamp of the newest System/boot report — the current run's start.
+
+        Powers the "uptime" figure on the trading-floor dashboard. Returns None
+        when the bot has never booted against this DB.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT timestamp FROM agent_activity
+            WHERE agent = 'System' AND action = 'boot'
+            ORDER BY id DESC LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        return row["timestamp"] if row else None
+
     def prune_agent_activity(self, keep: int = 3000) -> None:
         """Trim the agent_activity table to the most recent `keep` rows."""
         conn = self._get_conn()

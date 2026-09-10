@@ -18,6 +18,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard_floor import render_floor_component
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -1693,55 +1695,49 @@ def _perf_snapshot_24h() -> dict:
     return out
 
 
-_hero_snap = snapshots[-1] if snapshots else {}
-_hero_equity = _safe_float(_hero_snap.get("equity"), 0.0)
-_hero_unreal = _safe_float(_hero_snap.get("unrealized_pnl"), 0.0)
+# מכפיל הביצועים של 24 השעות עדיין משמש את סולם האגרסיביות בהמשך העמוד
 _perf24 = _perf_snapshot_24h()
-_engine_live_hero = any(_agent_is_live(r.get("timestamp", "")) for r in agent_summary.values())
-
-_mode_pill = (
-    '<span class="status-pill paper"><span class="led"></span>מסחר נייר</span>'
-    if config.paper_trading
-    else '<span class="status-pill live"><span class="led"></span>מסחר חי</span>'
-)
-_engine_pill = (
-    '<span class="status-pill live"><span class="led"></span>מנוע פעיל</span>'
-    if _engine_live_hero
-    else '<span class="status-pill dead"><span class="led"></span>מנוע מושבת</span>'
-)
 
 
-def _kpi(label: str, value: str, cls: str = "") -> str:
-    return (
-        f'<div class="kpi-chip"><div class="k">{label}</div>'
-        f'<div class="v {cls}">{value}</div></div>'
-    )
+# ---------------------------------------------------------------------------
+# רצפת המסחר — התצוגה הראשית. כל הנתונים אמיתיים, ישירות מה-DB.
+# ---------------------------------------------------------------------------
 
+# פיד רחב יותר מזה של הכרטיסים הקלאסיים — משמש להיסטוגרמות הפעילות בכל סוכן.
+try:
+    _floor_feed = repo.get_recent_agent_activity(limit=250)
+except Exception:
+    _floor_feed = agent_feed
 
-_pnl24_cls = "pos" if _perf24["pnl"] >= 0 else "neg"
-_pf_cls = "pos" if _perf24["pf"] >= 1.2 else ("neg" if _perf24["pf"] and _perf24["pf"] < 0.8 else "acc")
-st.markdown(
-    f"""
-    <div class="page-hero">
-      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; align-items:flex-start;">
-        <div>
-          <div class="kicker">BINANCE FUTURES · חדר מסחר</div>
-          <h1>מערכת מסחר חיה</h1>
-          <div class="sub">סוכנים חכמים · סריקה רב-שוקית · ניהול סיכון · הגנה בבורסה</div>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">{_mode_pill}{_engine_pill}</div>
-      </div>
-      <div class="kpi-strip">
-        {_kpi("הון כולל", fmt_usd(_hero_equity))}
-        {_kpi("רווח 24 שעות", fmt_usd(_perf24["pnl"]), _pnl24_cls)}
-        {_kpi("רווח פתוח", fmt_usd(_hero_unreal), "pos" if _hero_unreal >= 0 else "neg")}
-        {_kpi("Profit Factor", f"{_perf24['pf']:.2f}", _pf_cls)}
-        {_kpi("מכפיל ביצועים", f"×{_perf24['mult']:.2f}", "acc")}
-        {_kpi("פוזיציות", f"{len(open_trades)}/{config.hft_max_open_positions}")}
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+try:
+    _stats24 = repo.get_overall_recent_stats(hours_back=24)
+except Exception:
+    _stats24 = {}
+
+try:
+    _session_start = repo.get_session_start()
+except Exception:
+    _session_start = None
+
+# גודל היקום הנסרק: כמה סימבולים ייחודיים המערכת נגעה בהם לאחרונה
+_universe = len({
+    s.get("symbol") for s in recent_signals if s.get("symbol")
+} | {
+    t.get("symbol") for t in open_trades if t.get("symbol")
+})
+
+render_floor_component(
+    config=config,
+    snapshots=snapshots,
+    open_trades=open_trades,
+    trade_history=trade_history,
+    agent_summary=agent_summary,
+    agent_feed=_floor_feed,
+    recent_decisions=recent_decisions,
+    stats=stats,
+    stats24=_stats24,
+    session_start=_session_start,
+    universe=_universe,
 )
 
 # ---------------------------------------------------------------------------
