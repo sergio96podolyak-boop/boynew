@@ -49,6 +49,64 @@ def show_db(repo: TradeRepository) -> None:
             print(f"  Max drawdown  : {stats['max_drawdown'] * 100:.1f}%")
         print(f"  Sharpe        : {stats['sharpe_ratio']}")
 
+        # Profit Factor הוא המספר שקובע אם האסטרטגיה שווה משהו: כמה דולר
+        # נכנס על כל דולר שיצא. אחוז הצלחה לבדו מטעה — אפשר לנצח ב-80%
+        # מהעסקאות ועדיין להפסיד, אם ההפסדים גדולים מהרווחים.
+        pf = stats.get('profit_factor', 0.0)
+        gp = stats.get('gross_profit', 0.0)
+        gl = stats.get('gross_loss', 0.0)
+        print(f"  Profit Factor : {pf:.2f}   "
+              f"(רווח גולמי {_fmt_money(gp)} / הפסד גולמי {_fmt_money(gl)})")
+
+        # פסק דין מפורש, כדי שלא צריך לפרש את המספרים לבד
+        n = stats['total_trades']
+        if n < 30:
+            print(f"  ➜  {n} עסקאות בלבד — מעט מדי להסקת מסקנות. צריך 30+.")
+        elif pf >= 1.3:
+            print("  ➜  PF מעל 1.3 על מדגם סביר — יש כאן בסיס אמיתי.")
+        elif pf >= 1.0:
+            print("  ➜  PF סביב 1.0 — המערכת מאוזנת; העמלות אוכלות את היתרון.")
+        else:
+            print("  ➜  PF מתחת ל-1.0 — האסטרטגיה מפסידה. לא להפעיל בלייב.")
+
+    _hr("בריאות המודל")
+    # `יתרון` הוא lift מעל שכיחות הבסיס על ההכרזות שהיינו סוחרים עליהן.
+    # מודל מתחת לסף לא מייצר אות בכלל — ראו agents/model.py.
+    import json as _json
+    import os as _os
+    _hp = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                        "data", "model_health.json")
+    try:
+        with open(_hp, encoding="utf-8") as _fh:
+            _mh = _json.load(_fh)
+    except (OSError, ValueError):
+        _mh = {}
+
+    _agg = (_mh.get("aggregate") or {}) if isinstance(_mh, dict) else {}
+    _syms = (_mh.get("symbols") or {}) if isinstance(_mh, dict) else {}
+    if not _syms:
+        print("  עדיין לא אומן אף מודל. הנתונים יופיעו אחרי סבב הסריקה הראשון.")
+    else:
+        _trained = int(_agg.get("trained_symbols") or 0)
+        _healthy = int(_agg.get("healthy_symbols") or 0)
+        _avg = float(_agg.get("avg_reliability") or 0.0)
+        _ratio = (_healthy / _trained) if _trained else 0.0
+        print(f"  מודלים בעלי יתרון: {_healthy}/{_trained}  ({_ratio * 100:.0f}%)")
+        print(f"  יתרון ממוצע      : {_avg:+.3f}   (סף האות: 0.030)")
+
+        _ranked = sorted(
+            ((s, float((v or {}).get("reliability") or 0.0))
+             for s, v in _syms.items() if isinstance(v, dict)),
+            key=lambda t: -t[1],
+        )[:8]
+        if _ranked:
+            print("  היתרון הגבוה ביותר:")
+            for _s, _e in _ranked:
+                _mark = "✓" if _e > 0.03 else "·"
+                print(f"    {_mark} {_s:<14} {_e:+.3f}")
+        if _ratio < 0.10:
+            print("  ➜  כמעט אף מודל לא מוצא יתרון — הבעיה בפיצ'רים, לא בסיכון.")
+
     _hr("עסקאות פתוחות כרגע")
     open_trades = repo.get_open_trades()
     if not open_trades:
