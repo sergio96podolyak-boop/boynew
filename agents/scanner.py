@@ -741,15 +741,31 @@ class MarketScanner:
                     logger.debug(f"Failed to compute features for {symbol}")
                     continue
 
-                # Retrain model if needed
-                if self.model.should_retrain(symbol) or not self.model.is_trained(symbol):
+                label_horizon = int(getattr(self.config, "ml_label_horizon", 5) or 5)
+                label_threshold = float(
+                    getattr(self.config, "ml_label_threshold", 0.0005) or 0.0005
+                )
+
+                if getattr(self.config, "ml_pooled_model", False):
+                    # מודל מאוחד: הסימבול נכנס למאגר, והאימון קורה פעם
+                    # ב-ml_pooled_retrain_sec על כל היקום יחד — לא פה.
+                    self.model.stage(
+                        symbol, df_features, FEATURE_NAMES,
+                        horizon=label_horizon, threshold=label_threshold,
+                    )
+                    self.model.maybe_train_global(
+                        FEATURE_NAMES,
+                        min_symbols=int(getattr(self.config, "ml_pooled_min_symbols", 25)),
+                        max_rows=int(getattr(self.config, "ml_pooled_max_rows", 120000)),
+                        retrain_sec=float(getattr(self.config, "ml_pooled_retrain_sec", 900)),
+                        n_folds=int(getattr(self.config, "ml_pooled_folds", 4)),
+                        stale_sec=float(getattr(self.config, "ml_pooled_stale_sec", 3600)),
+                    )
+                elif self.model.should_retrain(symbol) or not self.model.is_trained(symbol):
                     logger.info(f"Retraining model for {symbol} with {len(df_features)} samples")
                     self.model.train(
                         symbol, df_features, FEATURE_NAMES,
-                        horizon=int(getattr(self.config, "ml_label_horizon", 5) or 5),
-                        threshold=float(
-                            getattr(self.config, "ml_label_threshold", 0.0005) or 0.0005
-                        ),
+                        horizon=label_horizon, threshold=label_threshold,
                     )
 
                 # Get ML prediction

@@ -163,6 +163,37 @@ class TradingConfig:
     min_ml_training_candles: int = field(
         default_factory=lambda: _env_int("MIN_ML_TRAINING_CANDLES", "480")
     )
+    # --- מודל מאוחד (ML_POOLED_MODEL) ---------------------------------
+    # מודל לכל סימבול מתאמן על ~426 שורות מול 46 פיצ'רים. נמדד: על סדרה עם
+    # יתרון אמיתי מוטמע הוא מזהה +0.039 — מול +0.020 שרעש טהור נותן, כלומר
+    # הוא לא מבחין ביניהם. אותו יתרון, במודל אחד על 14,250 שורות ועל
+    # סימבולים שלא נראו באימון: +0.357. זו לא בעיית כיול אלא חוסר נתונים.
+    # האיחוד נותן פי 100 דגימות לאותו מבנה, וגם חוסך אימון של 189 מודלים.
+    ml_pooled_model: bool = field(
+        default_factory=lambda: _env_bool("ML_POOLED_MODEL", "true")
+    )
+    # מתחת לזה אין טעם לאחד — עדיין אין מספיק נתונים
+    ml_pooled_min_symbols: int = field(
+        default_factory=lambda: _env_int("ML_POOLED_MIN_SYMBOLS", "25")
+    )
+    # תקרת שורות לאימון. 120k × 46 פיצ'רים מתאמן בשניות; היא נחלקת שווה
+    # בין הסימבולים, כך שיקום גדול לא מאט את הלולאה.
+    ml_pooled_max_rows: int = field(
+        default_factory=lambda: _env_int("ML_POOLED_MAX_ROWS", "120000")
+    )
+    # כל כמה זמן לאמן מחדש. קצר מדי = בזבוז; ארוך מדי = המודל מפגר אחרי השוק.
+    ml_pooled_retrain_sec: float = field(
+        default_factory=lambda: _env_float("ML_POOLED_RETRAIN_SEC", "900")
+    )
+    # מספר קבוצות ה-holdout לפי סימבול. כל סימבול נופל בדיוק באחת, ולכן
+    # לכולם יש יתרון שנמדד מחוץ למדגם.
+    ml_pooled_folds: int = field(
+        default_factory=lambda: _env_int("ML_POOLED_FOLDS", "4")
+    )
+    # סימבול שלא נסרק יותר מזה יוצא מהמאגר — לא מאמנים על נרות ישנים
+    ml_pooled_stale_sec: float = field(
+        default_factory=lambda: _env_float("ML_POOLED_STALE_SEC", "3600")
+    )
     technical_fallback_signals: bool = field(
         default_factory=lambda: _env_bool("TECHNICAL_FALLBACK_SIGNALS", "true")
     )

@@ -44,6 +44,9 @@ class TradingModel:
         self.scalers: Dict[str, StandardScaler] = {}  # Per-symbol scalers
         self.call_counts: Dict[str, int] = {}  # Track calls for retraining
         self.training_history: Dict[str, dict] = {}  # Track training metadata
+        # מאגר לאימון המאוחד: symbol -> (X, y, timestamp)
+        self._pool: Dict[str, tuple] = {}
+        self._global_trained_at: float = 0.0
         logger.info("TradingModel initialized")
 
     def _get_xgboost_model(self) -> object:
@@ -194,20 +197,29 @@ class TradingModel:
             logger.debug("fold training failed (non-fatal): %s", exc)
             return None
 
+        # בסיס לדיווח: "תמיד המחלקה הנפוצה באימון", נמדד על המבחן
+        majority = int(np.bincount(y_tr_m).argmax())
+        return self._score_predictions(proba, y_te_m, idx.get(1), majority, len(classes))
+
+    def _score_predictions(self, proba, y_te_m, flat_idx, majority, n_classes):
+        """
+        (דיוק, בסיס, יתרון) מתוך הסתברויות שכבר חושבו.
+
+        הופרד מ-`_fit_eval_fold` כדי שהמודל המאוחד יוכל לאמן **פעם אחת**
+        ואז למדוד יתרון לכל סימבול בנפרד, בלי לאמן מחדש 189 פעמים.
+        """
+        import numpy as np
+
         pred = proba.argmax(axis=1)
         conf = proba.max(axis=1)
         acc = float((pred == y_te_m).mean())
-
-        # בסיס לדיווח: "תמיד המחלקה הנפוצה באימון", נמדד על המבחן
-        majority = int(np.bincount(y_tr_m).argmax())
         base = float((y_te_m == majority).mean())
 
         # --- היתרון על ההכרזות שהיינו באמת סוחרים עליהן ---
         # FLAT (התווית 1) אינה עסקה, ולכן אינה נספרת.
-        flat_idx = idx.get(1)
         lift_num = 0.0
         lift_den = 0
-        for cls_idx in range(len(classes)):
+        for cls_idx in range(n_classes):
             if cls_idx == flat_idx:
                 continue
             sel = (pred == cls_idx) & (conf >= self.ACT_CONFIDENCE)
@@ -228,6 +240,68 @@ class TradingModel:
             edge = lift_num / lift_den
 
         return acc, base, float(edge)
+
+    def _build_xy(
+        self,
+        symbol: str,
+        df: pd.DataFrame,
+        feature_names: List[str],
+        horizon: int,
+        threshold: float,
+        quiet: bool = False,
+    ):
+        """
+        בונה (X, y) מנרות של סימבול אחד — או None אם אין מספיק נתונים נקיים.
+
+        מקור אמת יחיד לתוויות: גם המודל לכל-סימבול וגם המודל המאוחד עוברים
+        דרך כאן, כך ששינוי ב-`horizon`/`threshold` לא יכול להיות מיושם על
+        מסלול אחד בלבד.
+        """
+        warn = (lambda m: None) if quiet else logger.warning
+        # horizon=0 היה הופך את `iloc[:-horizon]` לחיתוך ריק — לא לשחרר את זה
+        horizon = max(1, int(horizon))
+        if df is None or len(df) < 100:
+            warn(f"{symbol}: Insufficient data for training (< 100 rows)")
+            return None
+
+        missing = [col for col in feature_names if col not in df.columns]
+        if missing:
+            warn(f"{symbol}: Missing features: {missing}")
+            return None
+
+        # Window the data (last 500 candles)
+        use_rows = min(len(df), 500)
+        df_window = df.iloc[-use_rows:].copy().reset_index(drop=True)
+        if len(df_window) < 100:
+            warn(f"{symbol}: Windowed data too small (< 100 rows)")
+            return None
+
+        # Build target: future_return over horizon
+        # Labels: 0=SHORT, 1=FLAT, 2=LONG (XGBoost requires non-negative int labels)
+        closes = df_window["close"].values
+        y = np.ones(len(df_window), dtype=int)  # default: FLAT=1
+        for i in range(len(df_window) - horizon):
+            future_return = (closes[i + horizon] - closes[i]) / closes[i]
+            if future_return > threshold:
+                y[i] = 2  # LONG
+            elif future_return < -threshold:
+                y[i] = 0  # SHORT
+
+        X = df_window[feature_names].iloc[:-horizon]
+        y_trimmed = y[:-horizon]
+
+        valid_mask = ~X.isna().any(axis=1)
+        nan_count = int((~valid_mask).sum())
+        if nan_count > 0:
+            warn(f"{symbol}: Found {nan_count} NaN rows, dropping")
+
+        X_clean = X[valid_mask].to_numpy(dtype=float)
+        y_clean = y_trimmed[valid_mask.values]
+
+        if len(X_clean) < 100:
+            warn(f"{symbol}: Insufficient data after NaN removal ({len(X_clean)} rows)")
+            return None
+        return X_clean, y_clean
 
     def train(
         self,
@@ -251,52 +325,10 @@ class TradingModel:
             bool: True if training successful, False otherwise
         """
         try:
-            # Validate input data
-            if df is None or len(df) < 100:
-                logger.warning(f"{symbol}: Insufficient data for training (< 100 rows)")
+            built = self._build_xy(symbol, df, feature_names, horizon, threshold)
+            if built is None:
                 return False
-
-            if not all(col in df.columns for col in feature_names):
-                missing = [col for col in feature_names if col not in df.columns]
-                logger.warning(f"{symbol}: Missing features: {missing}")
-                return False
-
-            # Window the data (last 500 candles)
-            max_lookback = 500
-            use_rows = min(len(df), max_lookback)
-            df_window = df.iloc[-use_rows:].copy().reset_index(drop=True)
-
-            if len(df_window) < 100:
-                logger.warning(f"{symbol}: Windowed data too small (< 100 rows)")
-                return False
-
-            # Build target: future_return over horizon
-            # Labels: 0=SHORT, 1=FLAT, 2=LONG (XGBoost requires non-negative int labels)
-            closes = df_window['close'].values
-            y = np.ones(len(df_window), dtype=int)  # default: FLAT=1
-            for i in range(len(df_window) - horizon):
-                future_return = (closes[i + horizon] - closes[i]) / closes[i]
-                if future_return > threshold:
-                    y[i] = 2  # LONG
-                elif future_return < -threshold:
-                    y[i] = 0  # SHORT
-
-            # Extract features and target, trim last horizon rows
-            X = df_window[feature_names].iloc[:-horizon].copy()
-            y_trimmed = y[:-horizon]
-
-            # Drop NaN rows from both X and y together
-            valid_mask = ~X.isna().any(axis=1)
-            nan_count = (~valid_mask).sum()
-            if nan_count > 0:
-                logger.warning(f"{symbol}: Found {nan_count} NaN rows, dropping")
-
-            X_clean = X[valid_mask].reset_index(drop=True)
-            y_clean = y_trimmed[valid_mask.values]
-
-            if len(X_clean) < 100:
-                logger.warning(f"{symbol}: Insufficient data after NaN removal ({len(X_clean)} rows)")
-                return False
+            X_clean, y_clean = built
 
             # Check for single class
             unique_classes = np.unique(y_clean)
@@ -394,6 +426,207 @@ class TradingModel:
             logger.error(f"{symbol}: Training failed - {type(e).__name__}: {str(e)}")
             return False
 
+    # ==================================================================
+    # מודל מאוחד — מודל אחד על כל היקום במקום מודל זעיר לכל סימבול
+    # ==================================================================
+    # מודל לכל סימבול מתאמן על ~426 שורות מול 46 פיצ'רים. נמדד: על סדרה
+    # שבה **הוטמע יתרון אמיתי**, המודל הזה מזהה ממנו +0.039 בממוצע —
+    # בזמן שרעש טהור נותן +0.020. כלומר הוא לא מבחין בין יתרון אמיתי
+    # לבין מקריות. אותו יתרון בדיוק, במודל אחד על 14,250 שורות, נמדד
+    # +0.357 — ועל סימבולים ש**לא נראו באימון**.
+    #
+    # זו לא בעיית כיול. 426 דגימות פשוט לא מספיקות כדי לזהות יתרון
+    # בגודל שקיים בשוק נזיל. איחוד היקום נותן פי 100 נתונים לאותו
+    # מבנה בדיוק — וגם חוסך את זמן האימון של 189 מודלים נפרדים.
+    GLOBAL_KEY = "__GLOBAL__"
+
+    def stage(
+        self,
+        symbol: str,
+        df: pd.DataFrame,
+        feature_names: List[str],
+        horizon: int = 5,
+        threshold: float = 0.0005,
+    ) -> bool:
+        """מוסיף סימבול למאגר שממנו יאומן המודל המאוחד."""
+        built = self._build_xy(symbol, df, feature_names, horizon, threshold, quiet=True)
+        if built is None:
+            return False
+        X, y = built
+        self._pool[symbol] = (X, np.asarray(y, dtype=int), time.time())
+        return True
+
+    def maybe_train_global(
+        self,
+        feature_names: List[str],
+        min_symbols: int = 25,
+        max_rows: int = 120000,
+        retrain_sec: float = 900.0,
+        n_folds: int = 4,
+        stale_sec: float = 3600.0,
+    ) -> bool:
+        """מאמן מחדש את המודל המאוחד רק כשהגיע הזמן. זול כשלא."""
+        if len(self._pool) < min_symbols:
+            return False
+        if (
+            self.GLOBAL_KEY in self.models
+            and (time.time() - self._global_trained_at) < retrain_sec
+        ):
+            return False
+        return self.train_global(
+            feature_names, max_rows=max_rows, n_folds=n_folds, stale_sec=stale_sec
+        )
+
+    def train_global(
+        self,
+        feature_names: List[str],
+        max_rows: int = 120000,
+        n_folds: int = 4,
+        stale_sec: float = 3600.0,
+    ) -> bool:
+        """
+        מאמן מודל אחד על כל הסימבולים במאגר, ומודד יתרון לכל סימבול בנפרד.
+
+        ההערכה היא **holdout לפי סימבול**: בכל סבב המודל מתאמן על חלק
+        מהסימבולים ונבחן על אלה שלא ראה. זה בדיוק מה שקורה בייצור — המודל
+        חוזה על סימבול שהתנהגותו האחרונה לא הייתה בסט האימון שלו — ולכן
+        היתרון שנמדד כך הוא הערכה כנה, ולא שינון.
+
+        כל סימבול נופל בדיוק בקבוצת-מבחן אחת, כך שלכולם יש יתרון מחוץ
+        למדגם. הוא נשמר ב-`training_history[symbol]['reliability']` ומשם
+        `predict` מכפיל בו את הציון — בדיוק כמו קודם.
+        """
+        try:
+            now = time.time()
+            if stale_sec > 0:
+                stale = [s for s, (_, _, ts) in self._pool.items() if now - ts > stale_sec]
+                for s in stale:
+                    self._pool.pop(s, None)
+
+            symbols = sorted(self._pool)
+            if len(symbols) < max(2, n_folds):
+                logger.warning(
+                    "Global model: only %d symbols staged — skipping", len(symbols)
+                )
+                return False
+
+            # תקרת שורות לסימבול, כדי שזמן האימון לא יתפוצץ עם יקום גדול
+            per_cap = max(120, int(max_rows // len(symbols)))
+            Xs, ys, spans = {}, {}, {}
+            for sym in symbols:
+                X, y, _ = self._pool[sym]
+                Xs[sym], ys[sym] = X[-per_cap:], y[-per_cap:]
+                spans[sym] = len(ys[sym])
+            total_rows = sum(spans.values())
+
+            t0 = time.time()
+            groups = [symbols[i::n_folds] for i in range(n_folds)]
+            groups = [g for g in groups if g]
+            sym_edge: Dict[str, float] = {}
+            fold_acc, fold_base = [], []
+
+            for group in groups:
+                train_syms = [s for s in symbols if s not in set(group)]
+                if not train_syms:
+                    continue
+                X_tr = np.vstack([Xs[s] for s in train_syms])
+                y_tr = np.concatenate([ys[s] for s in train_syms])
+
+                classes = np.unique(y_tr)
+                if len(classes) < 2:
+                    continue
+                idx = {int(c): i for i, c in enumerate(classes.tolist())}
+
+                scaler = StandardScaler()
+                X_tr_s = scaler.fit_transform(X_tr)
+                y_tr_m = np.array([idx[int(v)] for v in y_tr], dtype=int)
+
+                m = self._get_xgboost_model()
+                m.fit(X_tr_s, y_tr_m, sample_weight=self._class_weights(y_tr_m))
+                majority = int(np.bincount(y_tr_m).argmax())
+
+                for sym in group:
+                    keep = np.isin(ys[sym], classes)
+                    if keep.sum() < 20:
+                        sym_edge[sym] = 0.0
+                        continue
+                    y_te_m = np.array([idx[int(v)] for v in ys[sym][keep]], dtype=int)
+                    proba = m.predict_proba(scaler.transform(Xs[sym][keep]))
+                    acc, base, edge = self._score_predictions(
+                        proba, y_te_m, idx.get(1), majority, len(classes)
+                    )
+                    sym_edge[sym] = float(edge)
+                    fold_acc.append(acc)
+                    fold_base.append(base)
+
+            # --- המודל לייצור: על *כל* הנתונים, אחרי שההערכה נעשתה ---
+            X_all = np.vstack([Xs[s] for s in symbols])
+            y_all = np.concatenate([ys[s] for s in symbols])
+            class_labels = [int(c) for c in np.unique(y_all).tolist()]
+            if len(class_labels) < 2:
+                logger.warning("Global model: single class in pooled target — skipping")
+                return False
+            class_to_idx = {c: i for i, c in enumerate(class_labels)}
+
+            scaler = StandardScaler()
+            X_all_s = scaler.fit_transform(X_all)
+            y_all_m = np.array([class_to_idx[int(v)] for v in y_all], dtype=int)
+            model = self._get_xgboost_model()
+            model.fit(X_all_s, y_all_m, sample_weight=self._class_weights(y_all_m))
+
+            self.models[self.GLOBAL_KEY] = model
+            self.scalers[self.GLOBAL_KEY] = scaler
+            self._global_trained_at = time.time()
+
+            edges = np.array(list(sym_edge.values())) if sym_edge else np.zeros(1)
+            avg_edge = float(edges.mean())
+            test_accuracy = float(np.mean(fold_acc)) if fold_acc else 0.0
+            baseline = float(np.mean(fold_base)) if fold_base else 1.0
+
+            meta = {
+                "train_accuracy": float(model.score(X_all_s, y_all_m)),
+                "test_accuracy": test_accuracy,
+                "baseline": baseline,
+                "reliability": float(min(1.0, max(0.0, avg_edge))),
+                "n_samples": int(total_rows),
+                "n_features": len(feature_names),
+                "n_folds": len(groups),
+                "edge": round(avg_edge, 4),
+                "unique_classes": len(class_labels),
+                "class_labels": class_labels,
+                "pooled": True,
+                "pooled_symbols": len(symbols),
+            }
+            self.training_history[self.GLOBAL_KEY] = meta
+
+            # יתרון פרטני לכל סימבול — זה מה ש-predict מכפיל בו
+            for sym in symbols:
+                edge = float(sym_edge.get(sym, 0.0))
+                self.training_history[sym] = {
+                    **meta,
+                    "reliability": float(min(1.0, max(0.0, edge))),
+                    "edge": round(edge, 4),
+                    "n_samples": int(spans[sym]),
+                }
+                self.call_counts[sym] = 0
+
+            passing = int((edges > self.EDGE_FLOOR).sum())
+            logger.info(
+                "Global model trained | %d symbols, %d rows, %d folds, %.0fs | "
+                "CV-Test: %.3f | Baseline: %.3f | Edge avg: %+.3f | "
+                "above floor: %d/%d",
+                len(symbols), total_rows, len(groups), time.time() - t0,
+                test_accuracy, baseline, avg_edge, passing, len(symbols),
+            )
+            self._write_health_snapshot()
+            return True
+
+        except Exception as exc:
+            logger.error(
+                "Global model training failed - %s: %s", type(exc).__name__, exc
+            )
+            return False
+
     def predict(
         self,
         symbol: str,
@@ -415,10 +648,17 @@ class TradingModel:
                 - probability: 0-1 raw probability
         """
         try:
-            # Check if model is trained
+            # מודל הסימבול, ואם אין כזה — המודל המאוחד שאומן על כל היקום
+            model_key = symbol
             if symbol not in self.models or symbol not in self.scalers:
-                logger.debug(f"{symbol}: Model not trained, returning FLAT")
-                return ('FLAT', 0.0, 0.0)
+                if (
+                    self.GLOBAL_KEY in self.models
+                    and self.GLOBAL_KEY in self.scalers
+                ):
+                    model_key = self.GLOBAL_KEY
+                else:
+                    logger.debug(f"{symbol}: Model not trained, returning FLAT")
+                    return ('FLAT', 0.0, 0.0)
 
             # Increment call counter
             self.call_counts[symbol] = self.call_counts.get(symbol, 0) + 1
@@ -432,16 +672,17 @@ class TradingModel:
                 return ('FLAT', 0.0, 0.0)
 
             # Scale features
-            scaler = self.scalers[symbol]
+            scaler = self.scalers[model_key]
             feature_scaled = scaler.transform([feature_vector])
 
             # Get model prediction
-            model = self.models[symbol]
+            model = self.models[model_key]
             prediction = model.predict(feature_scaled)[0]
             probabilities = model.predict_proba(feature_scaled)[0]
-            class_labels = self.training_history.get(symbol, {}).get(
-                'class_labels',
-                [0, 1, 2],
+            class_labels = (
+                self.training_history.get(symbol, {}).get('class_labels')
+                or self.training_history.get(model_key, {}).get('class_labels')
+                or [0, 1, 2]
             )
 
             # Map prediction to direction (0=SHORT, 1=FLAT, 2=LONG)
@@ -462,7 +703,13 @@ class TradingModel:
             # An overfit model that prints 0.97 but has no edge (reliability ~0)
             # collapses to a near-zero score → it never crosses the entry
             # threshold → no trade. Only genuinely skilled models score high.
-            reliability = float(self.training_history.get(symbol, {}).get('reliability', 0.0))
+            # היתרון של הסימבול עצמו, שנמדד מחוץ למדגם. אם הוא לא נמדד
+            # (סימבול חדש שנכנס ליקום אחרי האימון האחרון) — היתרון הממוצע
+            # של המודל המאוחד, ולא 0: 0 היה משתיק אותו לגמרי עד האימון הבא.
+            _stats = self.training_history.get(symbol)
+            if not _stats:
+                _stats = self.training_history.get(model_key, {})
+            reliability = float(_stats.get('reliability', 0.0) or 0.0)
             mult = self._edge_multiplier(reliability)
             score = probability * mult * 100.0
 
@@ -484,8 +731,10 @@ class TradingModel:
             return ('FLAT', 0.0, 0.0)
 
     def is_trained(self, symbol: str) -> bool:
-        """Check if model is trained for symbol."""
-        return symbol in self.models and symbol in self.scalers
+        """האם אפשר לחזות לסימבול — ממודל פרטני או מהמודל המאוחד."""
+        if symbol in self.models and symbol in self.scalers:
+            return True
+        return self.GLOBAL_KEY in self.models and self.GLOBAL_KEY in self.scalers
 
     def should_retrain(self, symbol: str, interval: int = 100) -> bool:
         """
@@ -511,8 +760,10 @@ class TradingModel:
         return should_retrain
 
     def get_training_stats(self, symbol: str) -> Optional[dict]:
-        """Get training statistics for a symbol."""
-        return self.training_history.get(symbol)
+        """סטטיסטיקות אימון לסימבול, ואם אין — של המודל המאוחד."""
+        return self.training_history.get(symbol) or self.training_history.get(
+            self.GLOBAL_KEY
+        )
 
     def _write_health_snapshot(self) -> None:
         """Publish per-symbol model health for dashboard/research agents."""
@@ -521,6 +772,8 @@ class TradingModel:
             reliabilities = []
             healthy = 0
             for symbol, stats in self.training_history.items():
+                if symbol == self.GLOBAL_KEY:
+                    continue
                 reliability = float(stats.get("reliability", 0.0) or 0.0)
                 reliabilities.append(reliability)
                 if reliability >= 0.10:
@@ -549,6 +802,13 @@ class TradingModel:
                 },
                 "symbols": rows,
             }
+            g = self.training_history.get(self.GLOBAL_KEY)
+            if g:
+                payload["aggregate"]["pooled"] = True
+                payload["aggregate"]["pooled_symbols"] = int(g.get("pooled_symbols", 0) or 0)
+                payload["aggregate"]["pooled_rows"] = int(g.get("n_samples", 0) or 0)
+                payload["aggregate"]["pooled_edge"] = float(g.get("edge", 0.0) or 0.0)
+                payload["global"] = g
             os.makedirs(os.path.dirname(_MODEL_HEALTH_FILE), exist_ok=True)
             with open(_MODEL_HEALTH_FILE, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -561,6 +821,7 @@ class TradingModel:
         self.scalers.pop(symbol, None)
         self.call_counts.pop(symbol, None)
         self.training_history.pop(symbol, None)
+        self._pool.pop(symbol, None)
         self._write_health_snapshot()
         logger.info(f"{symbol}: Model reset")
 
@@ -570,5 +831,7 @@ class TradingModel:
         self.scalers.clear()
         self.call_counts.clear()
         self.training_history.clear()
+        self._pool.clear()
+        self._global_trained_at = 0.0
         self._write_health_snapshot()
         logger.info("All models reset")
