@@ -23,8 +23,8 @@ while [ $# -gt 0 ]; do
     --apply) APPLY=1 ;;
     --level) shift; LEVEL="${1:-conservative}" ;;
     --level=*) LEVEL="${1#--level=}" ;;
-    conservative|balanced|aggressive|max|swing|active|turbo) LEVEL="$1" ;;
-    *) echo "לא מכיר את הדגל: $1"; echo "שימוש: bash safe_settings.sh [--level conservative|balanced|aggressive|max|swing|active|turbo] [--apply]"; exit 1 ;;
+    conservative|balanced|aggressive|max|swing|active|turbo|unleashed) LEVEL="$1" ;;
+    *) echo "לא מכיר את הדגל: $1"; echo "שימוש: bash safe_settings.sh [--level conservative|balanced|aggressive|max|swing|active|turbo|unleashed] [--apply]"; exit 1 ;;
   esac
   shift
 done
@@ -37,6 +37,7 @@ case "$LEVEL" in
   swing)        LEV=10; FRAC=0.30; POS=2; DKILL=0.20; SKILL=0.40; SIZE_B=0.30; SIZE_H=0.40; SIZE_X=0.50 ;;
   active)       LEV=10; FRAC=0.22; POS=4; DKILL=0.20; SKILL=0.40; SIZE_B=0.22; SIZE_H=0.30; SIZE_X=0.38 ;;
   turbo)        LEV=20; FRAC=0.25; POS=4; DKILL=0.40; SKILL=0.70; SIZE_B=0.85; SIZE_H=0.95; SIZE_X=1.00 ;;
+  unleashed)    LEV=20; FRAC=0.18; POS=6; DKILL=0.60; SKILL=0.90; SIZE_B=0.85; SIZE_H=0.95; SIZE_X=1.00 ;;
   *) echo "רמה לא מוכרת: $LEVEL  (conservative | balanced | aggressive | max)"; exit 1 ;;
 esac
 
@@ -88,6 +89,49 @@ SETTINGS=(
 # ── active: יותר פוזיציות במקביל, טווח בינוני ─────────────────────
 # הפעילות מגיעה מריבוי פוזיציות ולא מכיווץ היעדים — יעד של 1.5%-5%
 # משאיר לעמלה 1.4%-4.7% מהרווח, לעומת 23% בסקאלפ של 0.3%.
+# ── unleashed: כל שער שניתן לפתוח — פתוח ──────────────────────────
+# זו הרמה האחרונה. אחריה לא נשאר שום פרמטר שמגביל כניסות.
+if [ "$LEVEL" = "unleashed" ]; then
+  SETTINGS+=(
+    "HFT_TIMEFRAME|3m|נר של 3 דקות"
+    "ML_LABEL_HORIZON|5|אופק התווית — 15 דקות"
+    "ML_LABEL_THRESHOLD|0.0025|0.25% ל-15 דקות"
+    "TECHNICAL_FALLBACK_SIGNALS|true|*** מקור האותות השני — היה כבוי ***"
+    "TECHNICAL_FALLBACK_MIN_SCORE|62|סף ה-fallback (היה 78)"
+    "TECHNICAL_FALLBACK_STRONG_MODE|false|בלי דרישת נפח מוגברת"
+    "BLOCK_WHEN_MODEL_UNHEALTHY|false|לא לחסום גם כשהמודל מוכרז לא בריא"
+    "CATALYST_NEGATIVE_BLOCK|false|לא לחסום על חדשות שליליות"
+    "BLOCK_ON_STALE_NEWS|false|לא לחסום על חדשות ישנות"
+    "REGIME_BLOCK_LONGS_DROP_PCT|0.50|חסימת משטר שוק — מנוטרלת"
+    "REGIME_BLOCK_SHORTS_RALLY_PCT|0.50|חסימת משטר שוק — מנוטרלת"
+    "MIN_ATR_PCT|0|בלי רצפת תנודתיות"
+    "MIN_SYMBOL_PRICE_USDT|0.005|גם מטבעות זולים מאוד"
+    "SL_MIN_PCT|0.005|סטופ מינימלי"
+    "SL_MAX_PCT|0.018|סטופ מרבי"
+    "TP_MIN_PCT|0.010|יעד מינימלי"
+    "TP_MAX_PCT|0.045|יעד מרבי"
+    "TP_SL_RATIO|2.2|יעד = פי 2.2 מהסטופ"
+    "MIN_TP_SL_RATIO|1.5|רצפת R:R — הדבר היחיד שנשאר"
+    "MIN_NET_REWARD_RISK|1.1|שער R:R נטו — כמעט פתוח"
+    "MIN_PROFIT_COST_RATIO|1.2|רווח פי 1.2 מהעמלה (היה 3.0)"
+    "MAX_RISK_PCT|0.12|12% מההון בסיכון לעסקה"
+    "MAX_SAME_DIRECTION_POSITIONS|5|5 מתוך 6 באותו כיוון"
+    "STALE_EXIT_SECONDS|1800|30 דקות"
+    "PROFIT_TAKE_PCT|0.015|לקיחת רווח ב-1.5%"
+    "PROFIT_TAKE_MIN_AGE_SECONDS|180|3 דקות מינימום"
+    "PROFIT_LOCK_TRIGGER_PCT|0.006|נעילת רווח ב-0.6%"
+    "PROFIT_LOCK_RETRACE_PCT|0.0025|נסיגה של 0.25%"
+    "PROFIT_LOCK_MIN_NET_PCT|0.0015|0.15% נטו"
+    "OPPOSITE_PRESSURE_PCT|0.006|לחץ נגדי — 0.6% (פחות יציאות מוקדמות)"
+    "SCORE_ENTRY|62|הסף הנמוך ביותר שהמערכת מאפשרת"
+    "SCAN_TOP_N|200|יקום מקסימלי"
+    "TREND_RUNNER_ENABLED|true|לתת למגמה לרוץ"
+    "HIGH_CONVICTION_SIZE_MULTIPLIER|1.25|הגדלה על ביטחון"
+    "CAPITAL_ALLOCATOR_SIZE_MULTIPLIER|1.25|הגדלה מהמקצה הון"
+    "LIVE_REQUIRED_MIN_EQUITY_USDT|12|רצפה מינימלית"
+  )
+fi
+
 # ── turbo: מקסימום מינוף, מקסימום פעילות, מקסימום סיכון ───────────
 if [ "$LEVEL" = "turbo" ]; then
   SETTINGS+=(
@@ -233,12 +277,14 @@ KILL=$(awk  -v e="$EQUITY" -v d="$DKILL" 'BEGIN{printf "%.2f", e*d}')
 SKILLD=$(awk -v e="$EQUITY" -v d="$SKILL" 'BEGIN{printf "%.2f", e*d}')
 PER1=$(awk -v n="$NOTIONAL" 'BEGIN{printf "%.2f", n*0.01}')
 # הפסד בסטופ טיפוסי של 1.5% מהנוטיונל
-if [ "$LEVEL" = "swing" ] || [ "$LEVEL" = "active" ] || [ "$LEVEL" = "turbo" ]; then
+case "$LEVEL" in swing|active|turbo|unleashed) _RP=1 ;; *) _RP=0 ;; esac
+if [ "$_RP" = "1" ]; then
   # risk parity: notional is capped at (equity x MAX_RISK_PCT)/sl_pct, so the
   # dollar risk per trade is the budget itself, whatever the stop width.
   RISKPCT=0.06
   [ "$LEVEL" = "active" ] && RISKPCT=0.04
   [ "$LEVEL" = "turbo" ]  && RISKPCT=0.10
+  [ "$LEVEL" = "unleashed" ] && RISKPCT=0.12
   STOP=$(awk -v e="$EQUITY" -v r="$RISKPCT" 'BEGIN{printf "%.2f", e*r}')
   STOP_LABEL="תקציב סיכון לעסקה   "
 else
@@ -285,6 +331,7 @@ _row max          20 0.35 2 0    0.25
 _row swing        10 0.30 2 0.06 0.30
 _row active       10 0.22 4 0.04 0.22
 _row turbo        20 0.25 4 0.10 0.85
+_row unleashed    20 0.18 6 0.12 0.85
 echo ""
 echo "     \"סטופים עד 0\" = כמה עסקאות מפסידות ברצף מוחקות את החשבון."
 echo "     גודל לא משנה אם המערכת רווחית — רק כמה מהר תדע."
