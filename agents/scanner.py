@@ -746,7 +746,10 @@ class MarketScanner:
                     logger.info(f"Retraining model for {symbol} with {len(df_features)} samples")
                     self.model.train(
                         symbol, df_features, FEATURE_NAMES,
-                        horizon=5, threshold=0.0005,  # 0.05% for 1m candles
+                        horizon=int(getattr(self.config, "ml_label_horizon", 5) or 5),
+                        threshold=float(
+                            getattr(self.config, "ml_label_threshold", 0.0005) or 0.0005
+                        ),
                     )
 
                 # Get ML prediction

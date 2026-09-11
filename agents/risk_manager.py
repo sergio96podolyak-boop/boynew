@@ -499,8 +499,35 @@ class RiskManagerAgent:
         tw = {"BASE": 0.85, "HIGH": 1.0, "EXTREME": 1.15}.get(tier, 1.0)
         scaled = atr_pct * tw
         # Apply dynamic SL/TP multipliers from trade history analysis
+        tp_sl_ratio = float(getattr(self.config, "tp_sl_ratio", 1.4) or 1.4)
         sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled * self._sl_multiplier))
-        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4 * self._tp_multiplier))
+        tp_pct = max(
+            self.config.tp_min_pct,
+            min(self.config.tp_max_pct, scaled * tp_sl_ratio * self._tp_multiplier),
+        )
+
+        # The ratio configured above is not the ratio that ships. Two things move
+        # SL and TP independently afterwards: TradeAnalyzer's history multipliers
+        # (a losing run widens stops *and* shortens targets — lowering reward:risk
+        # exactly when it should rise) and the min/max clamps. Enforce the floor
+        # last so the delivered ratio is the one the strategy was sized for.
+        min_ratio = float(getattr(self.config, "min_tp_sl_ratio", 0.0) or 0.0)
+        if min_ratio > 0 and sl_pct > 0 and tp_pct < sl_pct * min_ratio:
+            wanted_tp = sl_pct * min_ratio
+            if wanted_tp <= self.config.tp_max_pct:
+                tp_pct = wanted_tp
+            else:
+                # Target is capped, so tighten the stop instead of shipping a
+                # ratio the strategy never agreed to.
+                tp_pct = self.config.tp_max_pct
+                sl_pct = max(self.config.sl_min_pct, tp_pct / min_ratio)
+                if tp_pct < sl_pct * min_ratio - 1e-12:
+                    logger.warning(
+                        "%s: cannot reach min_tp_sl_ratio %.2f — TP_MAX_PCT %.4f "
+                        "and SL_MIN_PCT %.4f allow at most %.2f",
+                        symbol, min_ratio, self.config.tp_max_pct,
+                        self.config.sl_min_pct, tp_pct / sl_pct,
+                    )
 
         # Portfolio sizing: divide balance equally among max open positions
         max_pos = max(1, self.config.hft_max_open_positions)

@@ -145,6 +145,15 @@ class TradingConfig:
         default_factory=lambda: _env_float("DISCOVERY_SCORE_BONUS_MAX", "5")
     )
     hft_timeframe: str = field(default_factory=lambda: os.getenv("HFT_TIMEFRAME", "1m"))
+    # How the ML target is labelled. The threshold is a price move over `horizon`
+    # candles, so it only means the same thing at a fixed timeframe: 0.05% over 5
+    # candles is a real move at 1m and pure noise at 15m (5 candles = 75 minutes).
+    # Raise it with the timeframe or nearly every window is labelled directional
+    # and FLAT disappears from the training set.
+    ml_label_horizon: int = field(default_factory=lambda: _env_int("ML_LABEL_HORIZON", "5"))
+    ml_label_threshold: float = field(
+        default_factory=lambda: _env_float("ML_LABEL_THRESHOLD", "0.0005")
+    )
     hft_fetch_limit: int = field(default_factory=lambda: _env_int("HFT_FETCH_LIMIT", "200"))
     # 240 נרות נתנו ~186 דגימות אחרי ניקוי NaN — מול 40 פיצ'רים זה 4.6
     # דגימות לפיצ'ר, יחס שמבטיח שינון (Train 1.000) במקום למידה.
@@ -263,6 +272,13 @@ class TradingConfig:
     tp_max_pct: float = field(default_factory=lambda: _env_float("TP_MAX_PCT", "0.015"))
     sl_min_pct: float = field(default_factory=lambda: _env_float("SL_MIN_PCT", "0.003"))
     sl_max_pct: float = field(default_factory=lambda: _env_float("SL_MAX_PCT", "0.007"))
+    # Target width as a multiple of the stop, before clamps and history multipliers.
+    tp_sl_ratio: float = field(default_factory=lambda: _env_float("TP_SL_RATIO", "1.4"))
+    # Floor on the reward:risk that actually ships. TradeAnalyzer moves SL and TP
+    # independently (a losing run widens stops *and* shortens targets, which lowers
+    # the ratio exactly when it should rise), and the min/max clamps move them again.
+    # 0 disables the floor and keeps the old behaviour.
+    min_tp_sl_ratio: float = field(default_factory=lambda: _env_float("MIN_TP_SL_RATIO", "0"))
 
     hft_trailing_pct: float = field(default_factory=lambda: _env_float("HFT_TRAILING_PCT", "0.002"))
 

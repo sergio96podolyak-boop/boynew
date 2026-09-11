@@ -23,8 +23,8 @@ while [ $# -gt 0 ]; do
     --apply) APPLY=1 ;;
     --level) shift; LEVEL="${1:-conservative}" ;;
     --level=*) LEVEL="${1#--level=}" ;;
-    conservative|balanced|aggressive|max) LEVEL="$1" ;;
-    *) echo "לא מכיר את הדגל: $1"; echo "שימוש: bash safe_settings.sh [--level conservative|balanced|aggressive|max] [--apply]"; exit 1 ;;
+    conservative|balanced|aggressive|max|swing) LEVEL="$1" ;;
+    *) echo "לא מכיר את הדגל: $1"; echo "שימוש: bash safe_settings.sh [--level conservative|balanced|aggressive|max|swing] [--apply]"; exit 1 ;;
   esac
   shift
 done
@@ -34,6 +34,7 @@ case "$LEVEL" in
   balanced)     LEV=10; FRAC=0.15; POS=2; DKILL=0.10; SKILL=0.20; SIZE_B=0.12; SIZE_H=0.18; SIZE_X=0.25 ;;
   aggressive)   LEV=15; FRAC=0.25; POS=2; DKILL=0.15; SKILL=0.30; SIZE_B=0.18; SIZE_H=0.25; SIZE_X=0.35 ;;
   max)          LEV=20; FRAC=0.35; POS=2; DKILL=0.25; SKILL=0.50; SIZE_B=0.25; SIZE_H=0.35; SIZE_X=0.45 ;;
+  swing)        LEV=10; FRAC=0.30; POS=2; DKILL=0.20; SKILL=0.40; SIZE_B=0.30; SIZE_H=0.40; SIZE_X=0.50 ;;
   *) echo "רמה לא מוכרת: $LEVEL  (conservative | balanced | aggressive | max)"; exit 1 ;;
 esac
 
@@ -68,6 +69,35 @@ SETTINGS=(
   "MAKER_ENTRY_ENABLED|true|כניסה כ-maker — 0.10% -> 0.07%"
   "MAKER_ENTRY_FALLBACK_MARKET|false|לא לרדוף אחרי המחיר ב-MARKET"
 )
+
+# ── swing: מסחר מגמה במקום סקאלפ ──────────────────────────────────
+# עמלת סבב היא אחוז קבוע מהנוטיונל. יעד של 0.3% משאיר לה 23% מהרווח;
+# יעד של 4% משאיר לה 1.8%. זה כל ההבדל בין הסקאלפ ל-swing בחשבון קטן.
+if [ "$LEVEL" = "swing" ]; then
+  SETTINGS+=(
+    "HFT_TIMEFRAME|15m|נר של 15 דקות במקום דקה"
+    "ML_LABEL_HORIZON|4|אופק התווית — 4 נרות = שעה"
+    "ML_LABEL_THRESHOLD|0.006|0.6% לשעה; 0.05% ב-15m הוא רעש"
+    "SL_MIN_PCT|0.010|סטופ מינימלי — מרווח לנשימה"
+    "SL_MAX_PCT|0.035|סטופ מרבי"
+    "TP_MIN_PCT|0.025|יעד מינימלי"
+    "TP_MAX_PCT|0.090|יעד מרבי"
+    "TP_SL_RATIO|2.5|יעד = פי 2.5 מהסטופ"
+    "MIN_TP_SL_RATIO|2.0|רצפה — R:R לעולם לא מתחת ל-1:2"
+    "MIN_NET_REWARD_RISK|2.0|שער כניסה: רווח נטו לפחות פי 2 מהסיכון"
+    "MAX_RISK_PCT|0.06|6% מההון בסיכון לעסקה"
+    "STALE_EXIT_SECONDS|0|כיבוי יציאת אין-תנועה"
+    "PROFIT_TAKE_PCT|0.040|לקיחת רווח ב-4% תזוזת מחיר"
+    "PROFIT_TAKE_MIN_AGE_SECONDS|1800|לא לגעת בעסקה בחצי השעה הראשונה"
+    "PROFIT_LOCK_TRIGGER_PCT|0.020|נעילת רווח נדרכת ב-2%"
+    "PROFIT_LOCK_RETRACE_PCT|0.008|יוצאת אחרי נסיגה של 0.8%"
+    "PROFIT_LOCK_MIN_NET_PCT|0.005|רק אם נשאר 0.5% נטו"
+    "OPPOSITE_PRESSURE_PCT|0.010|לחץ נגדי — 1% במקום 0.2%"
+    "SCORE_ENTRY|82|סף כניסה גבוה יותר — פחות עסקאות"
+    "TREND_RUNNER_ENABLED|true|לתת למגמה לרוץ"
+    "SCAN_TOP_N|60|יקום ממוקד יותר"
+  )
+fi
 
 get_val() {
   grep -E "^[[:space:]]*${1}[[:space:]]*=" "$ENV_FILE" 2>/dev/null \
@@ -127,7 +157,15 @@ KILL=$(awk  -v e="$EQUITY" -v d="$DKILL" 'BEGIN{printf "%.2f", e*d}')
 SKILLD=$(awk -v e="$EQUITY" -v d="$SKILL" 'BEGIN{printf "%.2f", e*d}')
 PER1=$(awk -v n="$NOTIONAL" 'BEGIN{printf "%.2f", n*0.01}')
 # הפסד בסטופ טיפוסי של 1.5% מהנוטיונל
-STOP=$(awk -v n="$NOTIONAL" 'BEGIN{printf "%.2f", n*0.015}')
+if [ "$LEVEL" = "swing" ]; then
+  # risk parity: notional is capped at (equity x MAX_RISK_PCT)/sl_pct, so the
+  # dollar risk per trade is the budget itself, whatever the stop width.
+  STOP=$(awk -v e="$EQUITY" 'BEGIN{printf "%.2f", e*0.06}')
+  STOP_LABEL="תקציב סיכון (6% מההון)"
+else
+  STOP=$(awk -v n="$NOTIONAL" 'BEGIN{printf "%.2f", n*0.015}')
+  STOP_LABEL="הפסד בסטופ (1.5%)   "
+fi
 NSTOP=$(awk -v e="$EQUITY" -v s="$STOP" 'BEGIN{printf "%d", (s>0? e/s : 0)}')
 NKILL=$(awk -v k="$KILL" -v s="$STOP" 'BEGIN{printf "%.1f", (s>0? k/s : 0)}')
 MOVE=$(awk -v n="$NOTIONAL" -v g="$MIN_NET_PROFIT" 'BEGIN{printf "%.2f", 100*(g+n*0.0007)/n}')
@@ -140,7 +178,7 @@ printf "     תזוזה של 1%% שווה    : %s\$\n" "$PER1"
 printf "     עמלת סבב (maker)    : %s\$\n" "$FEE_M"
 printf "     שער כניסה דורש      : תזוזה של %s%%\n" "$MOVE"
 echo ""
-printf "     הפסד בסטופ (1.5%%)   : -%s\$\n" "$STOP"
+printf "     %s : -%s\$\n" "$STOP_LABEL" "$STOP"
 printf "     kill יומי נעצר ב-   : -%s\$   = %s סטופים\n" "$KILL" "$NKILL"
 printf "     kill סשן נעצר ב-    : -%s\$\n" "$SKILLD"
 printf "     סטופים עד אפס הון   : %s\n" "$NSTOP"
@@ -161,6 +199,7 @@ _row conservative 5  0.10 2
 _row balanced     10 0.15 2
 _row aggressive   15 0.25 2
 _row max          20 0.35 2
+_row swing        10 0.30 2
 echo ""
 echo "     \"סטופים עד 0\" = כמה עסקאות מפסידות ברצף מוחקות את החשבון."
 echo "     גודל לא משנה אם המערכת רווחית — רק כמה מהר תדע."
