@@ -32,9 +32,17 @@ echo ""
 echo "✅ מה רץ עכשיו:"
 echo "   קומיט:        $(git log --oneline -1)"
 echo "   dashboard.py: $(wc -l < dashboard.py | tr -d ' ') שורות"
-for f in dashboard_floor.py dashboard_market.py dashboard_ledger.py; do
+for f in dashboard_floor.py dashboard_market.py dashboard_ledger.py verify_model.py; do
   [ -f "$f" ] && echo "   $f ✓" || echo "   $f ❌ חסר!"
 done
+
+# המודל המאוחד — בלי זה מסלול ה-ML לא מסוגל לעבור את סף הכניסה בכלל
+if grep -q "def train_global" agents/model.py 2>/dev/null; then
+  echo "   מודל מאוחד:   ✓"
+else
+  echo "   מודל מאוחד:   ❌ חסר — המשיכה לא הגיעה"
+  exit 1
+fi
 
 # 4) בדיקה שהמקטעים הישנים באמת נעלמו
 if grep -q "מצב מסחר עכשיו" dashboard.py 2>/dev/null; then
