@@ -128,6 +128,7 @@ if [ "$LEVEL" = "unleashed" ]; then
     "DECISION_LIVE_MIN_CONSENSUS|0.50|בלייב היה 0.80 — השער האחרון"
     "DECISION_MIN_SCORE_AFTER_GUARDS|55|ציון אחרי קנסות הוועדה (היה 70)"
     "COMMITTEE_MIN_SIZE_MULTIPLIER|0.60|*** רצפת גודל — הוועדה כיווצה ל-0.18 ***"
+    "BAD_HOUR_BLOCK_ENABLED|false|*** חסימת שעה — חסמה את כל השעות שהבוט פעיל בהן ***"
     "MAX_ENTRIES_PER_HOUR|0|*** מכסת עסקאות לשעה — 0 = ללא הגבלה (היה 6) ***"
     "SYMBOL_REENTRY_COOLDOWN_SECONDS|0|בלי צינון בין עסקאות באותו סימבול (היה 600)"
     "MAX_SPREAD_PCT|0.010|מרווח מקסימלי 1% (היה 0.1% — פסל אלטים)"

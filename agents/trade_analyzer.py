@@ -114,6 +114,13 @@ class TradeAnalyzer:
         self._refresh_count = 0
         self._consecutive_losses = 0
         self._last_loss_ts: float = 0.0
+        # חסימת "שעה היסטורית חלשה". שעה נכנסת לרשימה כשיש לה פחות מ-30%
+        # הצלחה על 5+ עסקאות — אבל אם הבוט סוחר רק בשתיים-שלוש שעות ביום,
+        # אחוז ההצלחה הכללי שלו נזקף לשעות האלה והוא חוסם את עצמו לחלוטין.
+        # ברירת מחדל true (בלי שינוי התנהגות); false מבטל את החסימה.
+        self.bad_hour_block_enabled = os.getenv(
+            "BAD_HOUR_BLOCK_ENABLED", "true"
+        ).lower() in {"1", "true", "yes"}
         self.cooldown_enabled = os.getenv("SMART_COOLDOWN_ENABLED", "true").lower() in {
             "1",
             "true",
@@ -218,6 +225,8 @@ class TradeAnalyzer:
 
     def is_bad_hour(self) -> bool:
         """Check if current UTC hour is historically bad for trading."""
+        if not self.bad_hour_block_enabled:
+            return False
         current_hour = datetime.now(timezone.utc).hour
         return current_hour in self._insights.bad_hours_utc
 
