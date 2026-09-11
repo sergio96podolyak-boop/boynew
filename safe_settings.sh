@@ -23,8 +23,8 @@ while [ $# -gt 0 ]; do
     --apply) APPLY=1 ;;
     --level) shift; LEVEL="${1:-conservative}" ;;
     --level=*) LEVEL="${1#--level=}" ;;
-    conservative|balanced|aggressive|max|swing) LEVEL="$1" ;;
-    *) echo "לא מכיר את הדגל: $1"; echo "שימוש: bash safe_settings.sh [--level conservative|balanced|aggressive|max|swing] [--apply]"; exit 1 ;;
+    conservative|balanced|aggressive|max|swing|active) LEVEL="$1" ;;
+    *) echo "לא מכיר את הדגל: $1"; echo "שימוש: bash safe_settings.sh [--level conservative|balanced|aggressive|max|swing|active] [--apply]"; exit 1 ;;
   esac
   shift
 done
@@ -35,6 +35,7 @@ case "$LEVEL" in
   aggressive)   LEV=15; FRAC=0.25; POS=2; DKILL=0.15; SKILL=0.30; SIZE_B=0.18; SIZE_H=0.25; SIZE_X=0.35 ;;
   max)          LEV=20; FRAC=0.35; POS=2; DKILL=0.25; SKILL=0.50; SIZE_B=0.25; SIZE_H=0.35; SIZE_X=0.45 ;;
   swing)        LEV=10; FRAC=0.30; POS=2; DKILL=0.20; SKILL=0.40; SIZE_B=0.30; SIZE_H=0.40; SIZE_X=0.50 ;;
+  active)       LEV=10; FRAC=0.22; POS=4; DKILL=0.20; SKILL=0.40; SIZE_B=0.22; SIZE_H=0.30; SIZE_X=0.38 ;;
   *) echo "רמה לא מוכרת: $LEVEL  (conservative | balanced | aggressive | max)"; exit 1 ;;
 esac
 
@@ -73,8 +74,39 @@ SETTINGS=(
 # ── swing: מסחר מגמה במקום סקאלפ ──────────────────────────────────
 # עמלת סבב היא אחוז קבוע מהנוטיונל. יעד של 0.3% משאיר לה 23% מהרווח;
 # יעד של 4% משאיר לה 1.8%. זה כל ההבדל בין הסקאלפ ל-swing בחשבון קטן.
+# ── active: יותר פוזיציות במקביל, טווח בינוני ─────────────────────
+# הפעילות מגיעה מריבוי פוזיציות ולא מכיווץ היעדים — יעד של 1.5%-5%
+# משאיר לעמלה 1.4%-4.7% מהרווח, לעומת 23% בסקאלפ של 0.3%.
+if [ "$LEVEL" = "active" ]; then
+  SETTINGS+=(
+    "HFT_TIMEFRAME|5m|נר של 5 דקות"
+    "ML_LABEL_HORIZON|4|אופק התווית — 4 נרות = 20 דקות"
+    "ML_LABEL_THRESHOLD|0.003|0.3% ל-20 דקות"
+    "SL_MIN_PCT|0.006|סטופ מינימלי"
+    "SL_MAX_PCT|0.020|סטופ מרבי"
+    "TP_MIN_PCT|0.015|יעד מינימלי"
+    "TP_MAX_PCT|0.050|יעד מרבי"
+    "TP_SL_RATIO|2.5|יעד = פי 2.5 מהסטופ"
+    "MIN_TP_SL_RATIO|2.0|רצפה — R:R לעולם לא מתחת ל-1:2"
+    "MIN_NET_REWARD_RISK|1.6|שער כניסה מקל יותר מ-swing"
+    "MAX_RISK_PCT|0.04|4% לעסקה x4 פוזיציות = 16% חשיפה"
+    "MAX_SAME_DIRECTION_POSITIONS|3|מקס 3 מתוך 4 באותו כיוון"
+    "STALE_EXIT_SECONDS|2700|45 דקות במקום 15"
+    "PROFIT_TAKE_PCT|0.020|לקיחת רווח ב-2%"
+    "PROFIT_TAKE_MIN_AGE_SECONDS|600|10 דקות מינימום בעסקה"
+    "PROFIT_LOCK_TRIGGER_PCT|0.010|נעילת רווח נדרכת ב-1%"
+    "PROFIT_LOCK_RETRACE_PCT|0.004|יוצאת אחרי נסיגה של 0.4%"
+    "PROFIT_LOCK_MIN_NET_PCT|0.003|רק אם נשאר 0.3% נטו"
+    "OPPOSITE_PRESSURE_PCT|0.005|לחץ נגדי — 0.5%"
+    "SCORE_ENTRY|74|סף נמוך יותר — יותר כניסות"
+    "SCAN_TOP_N|100|יקום רחב — יותר הזדמנויות"
+    "TREND_RUNNER_ENABLED|true|לתת למגמה לרוץ"
+  )
+fi
+
 if [ "$LEVEL" = "swing" ]; then
   SETTINGS+=(
+    "MAX_SAME_DIRECTION_POSITIONS|2|שתיהן יכולות להיות באותו כיוון"
     "HFT_TIMEFRAME|15m|נר של 15 דקות במקום דקה"
     "ML_LABEL_HORIZON|4|אופק התווית — 4 נרות = שעה"
     "ML_LABEL_THRESHOLD|0.006|0.6% לשעה; 0.05% ב-15m הוא רעש"
@@ -157,11 +189,12 @@ KILL=$(awk  -v e="$EQUITY" -v d="$DKILL" 'BEGIN{printf "%.2f", e*d}')
 SKILLD=$(awk -v e="$EQUITY" -v d="$SKILL" 'BEGIN{printf "%.2f", e*d}')
 PER1=$(awk -v n="$NOTIONAL" 'BEGIN{printf "%.2f", n*0.01}')
 # הפסד בסטופ טיפוסי של 1.5% מהנוטיונל
-if [ "$LEVEL" = "swing" ]; then
+if [ "$LEVEL" = "swing" ] || [ "$LEVEL" = "active" ]; then
   # risk parity: notional is capped at (equity x MAX_RISK_PCT)/sl_pct, so the
   # dollar risk per trade is the budget itself, whatever the stop width.
-  STOP=$(awk -v e="$EQUITY" 'BEGIN{printf "%.2f", e*0.06}')
-  STOP_LABEL="תקציב סיכון (6% מההון)"
+  RISKPCT=0.06; [ "$LEVEL" = "active" ] && RISKPCT=0.04
+  STOP=$(awk -v e="$EQUITY" -v r="$RISKPCT" 'BEGIN{printf "%.2f", e*r}')
+  STOP_LABEL="תקציב סיכון לעסקה   "
 else
   STOP=$(awk -v n="$NOTIONAL" 'BEGIN{printf "%.2f", n*0.015}')
   STOP_LABEL="הפסד בסטופ (1.5%)   "
@@ -186,20 +219,24 @@ echo ""
 
 # ── השוואת כל הרמות ────────────────────────────────────────────────
 echo "  ── כל הרמות, על ${EQUITY}\$ ──"
-echo "     רמה            מינוף   נוטיונל    1% שווה   סטופ    סטופים עד 0"
+echo "     רמה            מינוף פוז'  נוטיונל    1% שווה  סיכון    עד אפס"
 echo "     ─────────────────────────────────────────────────────────────"
 _row() {
-  awk -v name="$1" -v lev="$2" -v frac="$3" -v pos="$4" -v e="$EQUITY" -v cur="$LEVEL" 'BEGIN{
-    n = e*frac*lev; st = n*0.015;
+  awk -v name="$1" -v lev="$2" -v frac="$3" -v pos="$4" -v risk="$5" -v e="$EQUITY" -v cur="$LEVEL" 'BEGIN{
+    n = e*frac*lev;
+    # swing/active size from a risk budget, so the dollar risk is the budget;
+    # the fixed-tier levels approximate it with a 1.5% stop on the notional.
+    st = (risk > 0) ? e*risk : n*0.015;
     mark = (name == cur) ? " <--" : "";
-    printf "     %-14s %3dx  %8.2f$  %7.2f$  %6.2f$   %8d%s\n", name, lev, n, n*0.01, st, (st>0? e/st : 0), mark;
+    printf "     %-14s %3dx %2d  %8.2f$  %7.2f$  %6.2f$   %6d%s\n", name, lev, pos, n, n*0.01, st, (st>0? e/st : 0), mark;
   }'
 }
-_row conservative 5  0.10 2
-_row balanced     10 0.15 2
-_row aggressive   15 0.25 2
-_row max          20 0.35 2
-_row swing        10 0.30 2
+_row conservative 5  0.10 2 0
+_row balanced     10 0.15 2 0
+_row aggressive   15 0.25 2 0
+_row max          20 0.35 2 0
+_row swing        10 0.30 2 0.06
+_row active       10 0.22 4 0.04
 echo ""
 echo "     \"סטופים עד 0\" = כמה עסקאות מפסידות ברצף מוחקות את החשבון."
 echo "     גודל לא משנה אם המערכת רווחית — רק כמה מהר תדע."

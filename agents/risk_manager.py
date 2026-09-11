@@ -442,6 +442,15 @@ class RiskManagerAgent:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Model unhealthy — predictions unreliable")
         if len(open_positions) >= self.config.hft_max_open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Max positions")
+        same_dir_cap = int(getattr(self.config, "max_same_direction_positions", 0) or 0)
+        if same_dir_cap > 0:
+            same_dir = sum(1 for p in open_positions.values() if p.side == direction)
+            if same_dir >= same_dir_cap:
+                return RiskDecision(
+                    False, 0.0, 0.0, 0.0,
+                    f"Max {direction} positions ({same_dir}/{same_dir_cap}) — "
+                    "correlated exposure",
+                )
         if symbol in open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Symbol occupied")
         if symbol in self._symbol_blacklist:

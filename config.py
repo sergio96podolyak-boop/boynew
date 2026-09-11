@@ -363,6 +363,13 @@ class TradingConfig:
     )
 
     hft_max_open_positions: int = field(default_factory=lambda: _env_int("HFT_MAX_OPEN_POSITIONS", "2"))
+    # Concurrent positions are only independent bets if they are not all the same
+    # way round. Crypto alts move together, so N longs opened at once behave like
+    # one position at N times the size — and stop out together. This caps how many
+    # of the open positions may share a direction. 0 = no cap (previous behaviour).
+    max_same_direction_positions: int = field(
+        default_factory=lambda: _env_int("MAX_SAME_DIRECTION_POSITIONS", "0")
+    )
 
     daily_max_drawdown_pct: float = field(
         default_factory=lambda: _env_float("DAILY_MAX_DRAWDOWN_PCT", "0.05")
