@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import html as _html
 import math
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -71,7 +72,11 @@ STAGES: List[Tuple[str, str, List[str]]] = [
 
 # כמה שניות בלי דיווח עד שסוכן נחשב "לא חי".
 # סריקה מלאה של היקום עם אימון מודל לכל סימבול יכולה לקחת דקה — לכן חלון נדיב.
-LIVE_WINDOW_SEC = 180
+# חלון ה"חי": סוכן ששתק יותר מזה נחשב ממתין. מחזור סריקה הוא ~1.3ש לסימבול
+# (אימון מודל), כלומר ב-SCAN_TOP_N=200 מחזור שלם אורך ~4.3 דקות — יותר מחלון
+# של 180ש. סוכן באמצע מחזור לא הספיק לדווח, והמנוע נקרא "מושבת" בזמן שהוא עובד.
+# 420ש מכסה 200 סימבולים עם מרווח. מעלים את SCAN_TOP_N — מעלים גם את זה.
+LIVE_WINDOW_SEC = int(os.getenv("DASHBOARD_LIVE_WINDOW_SEC", "420"))
 WORKING_WINDOW_SEC = 25
 
 STATUS_COLORS = {
