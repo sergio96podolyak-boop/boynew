@@ -205,7 +205,12 @@ class DecisionCommitteeAgent:
             vote("Portfolio", True, "no open exposure")
 
         # Score vote after all guards.
-        min_score = max(self.config.score_entry, self.config.decision_min_score_after_guards)
+        # היה `max(score_entry, decision_min_score_after_guards)` — וזה ביטל את
+        # הפרמטר: max לעולם לא יורד מתחת ל-score_entry. התוצאה הייתה שהסורק
+        # מסנן לפי score_entry, הוועדה מורידה נקודות בקנסות, ואז הציון המוקטן
+        # נמדד שוב מול אותו סף — כך שכל אות שקיבל קנס כלשהו נדחה אוטומטית.
+        # `decision_min_score_after_guards` הוא בדיוק הסף שאחרי הקנסות, לבדו.
+        min_score = float(self.config.decision_min_score_after_guards)
         score_pass = score >= min_score
         vote("ScoreGate", score_pass, f"adjusted {score:.1f} >= {min_score:.1f}")
 
