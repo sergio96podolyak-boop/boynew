@@ -1084,7 +1084,9 @@ class TradingSystem:
                         drawdown_pct=self.risk_agent.drawdown_pct,
                     )
                     if not committee.approved:
-                        logger.debug(
+                        # INFO ולא DEBUG: זו הסיבה הנפוצה ביותר ל"אין עסקאות",
+                        # והיא הייתה בלתי נראית ברמת הלוג המוגדרת.
+                        logger.info(
                             "%s: committee rejected — consensus=%.0f%% score=%.1f reasons=%s",
                             symbol,
                             committee.consensus * 100,
@@ -1123,11 +1125,18 @@ class TradingSystem:
                     )
 
                     if not decision.approved:
+                        # RiskDecision מגדיר `reason` — לא `rejection_reason`.
+                        # getattr על שם שלא קיים החזיר תמיד '' ונפל לטקסט הגנרי,
+                        # כלומר הסיבה האמיתית נזרקה בכל דחייה.
+                        reject_why = decision.reason or "מחוץ לכללי הסיכון"
                         self.monitor.report(
                             "RiskManager", "reject",
-                            f"{symbol} נדחה — {getattr(decision, 'rejection_reason', '') or 'מחוץ לכללי הסיכון'}",
+                            f"{symbol} נדחה — {reject_why}",
                             symbol=symbol, status="active",
                         )
+                        # ...והיא גם לא הגיעה ללוג בכלל: monitor.report כותב רק
+                        # לטבלת הדשבורד. בלי זה "אין עסקאות" הוא חסר הסבר בקובץ.
+                        logger.info("%s: risk rejected — %s", symbol, reject_why)
 
                     if decision.approved:
                         if "runner" in (decision.reason or ""):

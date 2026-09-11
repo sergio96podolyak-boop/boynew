@@ -366,6 +366,31 @@ notional     = min(notional, min(margin_cap, normal_cap * size_multiplier))
 > `HFT_MAX_OPEN_POSITIONS` מקטינה כל פוזיציה באותו יחס. כדי לשמור על גודל
 > בעת הוספת פוזיציות צריך להעלות את `SIZE_BASE_PCT` פי אותו מספר.
 
+## איפה באמת רואים למה עסקה נדחתה
+שלושה דברים הסתירו את סיבות הדחייה, וכולם תוקנו:
+
+**1. `getattr(decision, 'rejection_reason', '')` — שדה שלא קיים.** `RiskDecision`
+מגדיר `reason`. ה-`getattr` החזיר תמיד `''` ונפל לטקסט הגנרי "מחוץ לכללי
+הסיכון", כלומר **הסיבה האמיתית נזרקה בכל דחייה מאז ומתמיד** — גם בדשבורד.
+
+**2. `monitor.report` כותב רק ל-`agent_activity`, לא ללוגר.** דחיות מנהל
+הסיכון לא הגיעו ל-`trading_system.log` בכלל. נוסף `logger.info` לצידו.
+
+**3. דחיית הוועדה הייתה ב-`logger.debug`** מול `basicConfig(level=INFO)` קבוע
+— בלתי נראית לחלוטין. הועברה ל-`logger.info`, ו-`LOG_LEVEL` נוסף.
+
+**לשליפה ישירה מה-DB** (עובד גם בלי restart, וזו הדרך המהירה ביותר):
+```bash
+sqlite3 trading.db "SELECT substr(timestamp,12,8), agent, action, detail
+  FROM agent_activity WHERE agent IN ('RiskManager','Decision')
+  ORDER BY id DESC LIMIT 20;"
+```
+> ⚠️ **החותמות ב-`agent_activity` הן UTC.** `12:25:50` בשאילתה הוא `15:25:50`
+> בשעון ישראל. בלי זה נראה כאילו האירוע קרה לפני שלוש שעות.
+
+הפורמט שחוזר מראה גם את הסיבה המדויקת של הוועדה, למשל:
+`Decision|reject|ENAUSDT SHORT consensus=70% score=90.0 | ScoreGate: adjusted 90.0 >= 78.0`
+
 ## מפת השערים המלאה — כל נקודת דחייה במסלול הכניסה
 אות חייב לעבור **ארבע שכבות** לפני שהזמנה נשלחת. שערים שנראים כמו "כיול"
 יושבים בשכבות שונות, ולכן הורדת `SCORE_ENTRY` לבדה לא פותחת כלום.
