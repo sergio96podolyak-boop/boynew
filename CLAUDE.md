@@ -396,8 +396,21 @@ kill switch · `BLOCK_WHEN_MODEL_UNHEALTHY` · מקס פוזיציות ·
 **`DECISION_MIN_SCORE_AFTER_GUARDS=70` מול `SCORE_ENTRY=62`** — סתירה ישירה:
 אות שעבר את סף הכניסה ב-64 נדחה בוועדה לפני שהגיע למנהל הסיכון.
 
-> ⚠️ **דחיות נרשמות ב-`logger.debug`.** ברמת INFO הבוט נראה כאילו אינו מוצא
-> כלום. לאבחון: `grep -E "committee rejected|Entry budget|cooldown|filtered"`.
+> ⚠️ **דחיות נרשמות ב-`logger.debug`** — ו-`logging.basicConfig` היה קבוע על
+> `INFO`, כך ש**אף סיבת דחייה לא נכתבה לשום מקום**. `agents/model.py:18` מעלה
+> רק את הלוגר של עצמו ל-DEBUG, ולכן נראו שורות מודל אבל לא דחיות. עכשיו
+> `LOG_LEVEL` שולט (ברירת מחדל INFO):
+> ```bash
+> LOG_LEVEL=DEBUG bash start.sh --live
+> grep -E "committee rejected|Entry budget|cooldown|SKIPPED" trading_system.log | tail -25
+> ```
+> הבוט כותב ל-**`trading_system.log`** (`main.py:50`). `dashboard.log` הוא פלט
+> Streamlit בלבד ואין בו כלום מהלולאה.
+
+**איך נראית חסימה אחרי הדירוג בלוג:** `Ranked N opportunities` עם N>0 ואפס
+`HFT_OPEN` אחריו. אם N=0 — החסימה בסורק (שכבה 1); אם N>0 — בשכבות 2-4.
+נצפה בפועל: `Ranked 17 opportunities (filtered by score >= 62.0)` מול
+`Positions(0)`, כשהוועדה דרשה `DECISION_MIN_SCORE_AFTER_GUARDS=70`.
 
 ## `--level unleashed` — כל שער שניתן לפתוח, פתוח
 הרמה האחרונה. אחריה **לא נשאר פרמטר אחד במערכת שמגביל כניסות**.

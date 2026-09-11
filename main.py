@@ -42,8 +42,11 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Logging setup — must happen before any local imports
 # ---------------------------------------------------------------------------
+# רמת הלוג ניתנת לכיול. כל סיבות הדחייה בלולאה (ועדה, מתאם, מכסת שעה,
+# צינון, שערי עמלה) נרשמות ב-DEBUG, ולכן ב-INFO הבוט נראה כאילו אינו
+# מוצא כלום בלי שום הסבר. LOG_LEVEL=DEBUG חושף אותן.
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
