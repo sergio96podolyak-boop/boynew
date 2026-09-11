@@ -250,7 +250,10 @@ class DecisionCommitteeAgent:
                 f"score {score:.1f}, consensus {consensus:.0%}, max size {capital_max:.2f}x"
             )
 
-        size_mult = max(0.10, min(max_size_mult, size_mult))
+        size_floor = float(
+            getattr(self.config, "committee_min_size_multiplier", 0.10) or 0.10
+        )
+        size_mult = max(size_floor, min(max_size_mult, size_mult))
 
         decision = CommitteeDecision(
             approved=approved,

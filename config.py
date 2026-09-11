@@ -485,6 +485,13 @@ class TradingConfig:
     decision_live_min_consensus: float = field(
         default_factory=lambda: _env_float("DECISION_LIVE_MIN_CONSENSUS", "0.80")
     )
+    # הוועדה מכפילה שבעה מכפילי גודל (חדשות, קטליזטור, משטר, זרימה, הון,
+    # עקיף, funding) זה בזה. שבעה סוכנים שכל אחד "רק קצת זהיר" ב-0.85 נותנים
+    # 0.85^7 = 0.32, ונמדד בפועל 0.18 — כלומר פוזיציה בחמישית מהגודל שמנהל
+    # הסיכון אישר. הרצפה הייתה 0.10 קבועה בקוד; עכשיו היא ניתנת לכיול.
+    committee_min_size_multiplier: float = field(
+        default_factory=lambda: _env_float("COMMITTEE_MIN_SIZE_MULTIPLIER", "0.10")
+    )
     decision_min_score_after_guards: float = field(
         default_factory=lambda: _env_float("DECISION_MIN_SCORE_AFTER_GUARDS", "70")
     )
