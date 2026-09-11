@@ -366,10 +366,43 @@ notional     = min(notional, min(margin_cap, normal_cap * size_multiplier))
 > `HFT_MAX_OPEN_POSITIONS` מקטינה כל פוזיציה באותו יחס. כדי לשמור על גודל
 > בעת הוספת פוזיציות צריך להעלות את `SIZE_BASE_PCT` פי אותו מספר.
 
+## מפת השערים המלאה — כל נקודת דחייה במסלול הכניסה
+אות חייב לעבור **ארבע שכבות** לפני שהזמנה נשלחת. שערים שנראים כמו "כיול"
+יושבים בשכבות שונות, ולכן הורדת `SCORE_ENTRY` לבדה לא פותחת כלום.
+
+**שכבה 1 — `scanner.scan_and_rank`** (לפני שהאות בכלל קיים):
+רשימה שחורה מהיסטוריה · נתונים חסרים · `score < effective_score_entry` ·
+`MAX_SPREAD_PCT` (0.1% — פוסל רוב האלטים) · `MIN_ATR_PCT` · `wick_trap_score > 0.7` ·
+נר מנוגד לכיוון · ציון מתואם אחרי קנסות
+
+**שכבה 2 — הלולאה ב-`main.py`:**
+`is_bad_hour()` (`:1000`) · ועדת ההחלטה (`:1084`) · `check_correlation()` (`:1096`)
+
+**שכבה 3 — `risk_manager.evaluate`:**
+kill switch · `BLOCK_WHEN_MODEL_UNHEALTHY` · מקס פוזיציות ·
+`MAX_SAME_DIRECTION_POSITIONS` · סימבול תפוס · רשימה שחורה · ציון ·
+`Hour ... historically loses` · **`SYMBOL_REENTRY_COOLDOWN_SECONDS`** ·
+**`MAX_ENTRIES_PER_HOUR`** · `TP edge <= est_cost` · `MIN_EXPECTED_NET_PROFIT_USDT` ·
+`MIN_PROFIT_COST_RATIO` · `MIN_NET_REWARD_RISK` · כמות אפס אחרי תקרות
+
+**שכבה 4 — לפני השליחה:** עיגול כמות מול פילטרי Binance · `live_guard.pre_trade_check`
+(מרג'ין פנוי, רצפת הון)
+
+### שני השערים שהסבירו "אין עסקאות"
+
+**`MAX_ENTRIES_PER_HOUR=6`** — מכסה **קשיחה** של שש כניסות בשעה, בלי קשר לכמה
+אותות נמצאו. `0` מבטל (`if max_hourly > 0` ב-`risk_manager.py:488`).
+
+**`DECISION_MIN_SCORE_AFTER_GUARDS=70` מול `SCORE_ENTRY=62`** — סתירה ישירה:
+אות שעבר את סף הכניסה ב-64 נדחה בוועדה לפני שהגיע למנהל הסיכון.
+
+> ⚠️ **דחיות נרשמות ב-`logger.debug`.** ברמת INFO הבוט נראה כאילו אינו מוצא
+> כלום. לאבחון: `grep -E "committee rejected|Entry budget|cooldown|filtered"`.
+
 ## `--level unleashed` — כל שער שניתן לפתוח, פתוח
 הרמה האחרונה. אחריה **לא נשאר פרמטר אחד במערכת שמגביל כניסות**.
 
-**חמישה שערים שהיו סגורים ואף אחד מהם לא היה קשור לגודל פוזיציה:**
+**66 הגדרות, בכל ארבע השכבות.** עיקרי השערים שנפתחו:
 
 | שער | היה | ב-unleashed |
 |---|---|---|
