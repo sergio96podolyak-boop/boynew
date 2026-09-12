@@ -38,7 +38,10 @@ case "$LEVEL" in
   active)       LEV=10; FRAC=0.22; POS=4; DKILL=0.20; SKILL=0.40; SIZE_B=0.22; SIZE_H=0.30; SIZE_X=0.38 ;;
   turbo)        LEV=20; FRAC=0.25; POS=4; DKILL=0.40; SKILL=0.70; SIZE_B=0.85; SIZE_H=0.95; SIZE_X=1.00 ;;
   unleashed)    LEV=20; FRAC=0.18; POS=6; DKILL=0.60; SKILL=0.90; SIZE_B=0.85; SIZE_H=0.95; SIZE_X=1.00 ;;
-  *) echo "רמה לא מוכרת: $LEVEL  (conservative | balanced | aggressive | max)"; exit 1 ;;
+  # maxdollars — נגזרת מ-backtest.py על 80 סימבולים אמיתיים, לא מניחוש.
+  # שתי פוזיציות בלבד (פרוסה גדולה = נוטיונל גדול) במקסימום מינוף ומרג'ין.
+  maxdollars)   LEV=20; FRAC=0.45; POS=2; DKILL=0.50; SKILL=0.80; SIZE_B=1.00; SIZE_H=1.00; SIZE_X=1.00 ;;
+  *) echo "רמה לא מוכרת: $LEVEL"; echo "  conservative | balanced | aggressive | max | swing | active | turbo | unleashed | maxdollars"; exit 1 ;;
 esac
 
 # ── ההון בחשבון ───────────────────────────────────────────────────
@@ -232,6 +235,70 @@ if [ "$LEVEL" = "swing" ]; then
   )
 fi
 
+# ──────────────────────────────────────────────────────────────────
+# maxdollars — התצורה היחידה שנגזרה ממדידה ולא מהערכה
+# ──────────────────────────────────────────────────────────────────
+# `backtest.py` מדד שלושה טווחים על 80 סימבולים אמיתיים, מחוץ למדגם.
+# התא עם ה-PF הטוב ביותר שיש לו מדגם בר-הסקה:
+#
+#   טווח 5m, סף ציון 45 | 419 עסקאות | הצלחה 51.1% | R:R 1.04 | PF 1.09
+#
+# **שני הדברים שהתצורה הזאת עושה אחרת מכל הרמות האחרות:**
+#
+# 1. `TECHNICAL_FALLBACK_SIGNALS=false`. ה-backtest מדד את מסלול ה-ML
+#    בלבד (PF 1.09). ה-fallback הטכני נמדד גם הוא — על החשבון החי:
+#    **105 עסקאות, PF 0.68.** זה המקור שייצר את כל ההפסדים, כי מסלול
+#    ה-ML לא יכול היה לסחור בכלל (ציון מקסימלי 61.0 מול סף 62). כאן
+#    נסחר רק המסלול שנמדד חיובי.
+#
+# 2. `SCORE_ENTRY=45` ולא 62+. הציון הוא `probability × edge_mult × 100`,
+#    ובמודל של שלוש מחלקות הוא לא מגיע מעל ~58. סף 62 הוא **אפס עסקאות
+#    לנצח**. 45 הוא האחוזון ה-95 של מה שהמודל באמת מייצר.
+#    `DECISION_MIN_SCORE_AFTER_GUARDS` מורד ל-40 — אחרת הוועדה חוסמת
+#    את כל מה שעבר את 45.
+#
+# **המחיר, במספרים, על 35$:** נוטיונל 315$ לפוזיציה. עסקה מנצחת ~4.30$,
+# מפסידה ~4.12$, תוחלת +0.17$ לעסקה. סטיית התקן לעסקה היא 4.18$ —
+# כלומר **~70 עסקאות של תנודתיות עד אפס**. היתרון דורש ~2,200 עסקאות
+# כדי להיות מובהק סטטיסטית. החשבון ימות לפני, בסיכוי גבוה. זו הרמה
+# היחידה שבה זה נכתב במפורש כי זה הצפוי, לא סיכון שולי.
+if [ "$LEVEL" = "maxdollars" ]; then
+  SETTINGS+=(
+    "TECHNICAL_FALLBACK_SIGNALS|false|רק מסלול ה-ML — הטכני נמדד ב-PF 0.68"
+    "SCORE_ENTRY|45|האחוזון ה-95 של הציון שהמודל מייצר; 62 היה בלתי-אפשרי"
+    "DECISION_MIN_SCORE_AFTER_GUARDS|40|מתחת ל-SCORE_ENTRY, אחרת הוועדה חוסמת"
+    "DECISION_LIVE_MIN_CONSENSUS|0.50|בלייב במקום 0.80"
+    "COMMITTEE_MIN_SIZE_MULTIPLIER|0.90|הוועדה לא מכווצת את הגודל שנמדד"
+    "ML_POOLED_MODEL|true|מודל מאוחד — בלעדיו הציון לא מגיע ל-45 בכלל"
+    "HFT_TIMEFRAME|5m|הטווח עם ה-PF הטוב ביותר שנמדד"
+    "ML_LABEL_HORIZON|4|אופק התווית — 4 נרות = 20 דקות"
+    "ML_LABEL_THRESHOLD|0.003|0.3% ל-20 דקות"
+    "SL_MIN_PCT|0.006|סטופ מינימלי"
+    "SL_MAX_PCT|0.020|סטופ מרבי"
+    "TP_MIN_PCT|0.015|יעד מינימלי"
+    "TP_MAX_PCT|0.050|יעד מרבי"
+    "TP_SL_RATIO|2.5|יעד = פי 2.5 מהסטופ"
+    "MIN_TP_SL_RATIO|2.0|רצפה — R:R לעולם לא מתחת ל-1:2"
+    "MAX_RISK_PCT|0.15|risk parity לא יחתוך את הנוטיונל של 315$"
+    "MAX_SAME_DIRECTION_POSITIONS|2|שתיהן יכולות להיות באותו כיוון"
+    "MAX_ENTRIES_PER_HOUR|0|בלי מכסה שעתית"
+    "SYMBOL_REENTRY_COOLDOWN_SECONDS|60|צינון מינימלי"
+    "STALE_EXIT_SECONDS|2700|45 דקות"
+    "PROFIT_LOCK_TRIGGER_PCT|0.010|נעילת רווח נדרכת ב-1%"
+    "PROFIT_LOCK_RETRACE_PCT|0.004|יוצאת אחרי נסיגה של 0.4%"
+    "PROFIT_LOCK_MIN_NET_PCT|0.003|רק אם נשאר 0.3% נטו"
+    "MIN_PROFIT_COST_RATIO|2.0|רווח צפוי לפחות פי 2 מהעמלה"
+    "MIN_NET_REWARD_RISK|1.5|רווח נטו לפחות פי 1.5 מהסיכון"
+    "BLOCK_WHEN_MODEL_UNHEALTHY|false|לא לחסום על בריאות המודל"
+    "CATALYST_NEGATIVE_BLOCK|false|קטליזטור שלילי לא חוסם"
+    "MAX_SPREAD_PCT|0.005|0.5% — לא לפסול אלטים"
+    "MIN_ATR_PCT|0|בלי רצפת תנודתיות"
+    "SCAN_TOP_N|80|אותו יקום שנמדד ב-backtest"
+    "BAD_HOUR_BLOCK_ENABLED|false|בלי חסימת שעות מהיסטוריה"
+    "TREND_RUNNER_ENABLED|true|לתת למגמה לרוץ"
+  )
+fi
+
 get_val() {
   grep -E "^[[:space:]]*${1}[[:space:]]*=" "$ENV_FILE" 2>/dev/null \
     | tail -n 1 | sed -E "s/^[^=]*=[[:space:]]*//; s/[[:space:]]*(#.*)?$//"
@@ -346,6 +413,7 @@ _row swing        10 0.30 2 0.06 0.30
 _row active       10 0.22 4 0.04 0.22
 _row turbo        20 0.25 4 0.10 0.85
 _row unleashed    20 0.18 6 0.12 0.85
+_row maxdollars   20 0.45 2 0.15 1.00
 echo ""
 echo "     \"סטופים עד 0\" = כמה עסקאות מפסידות ברצף מוחקות את החשבון."
 echo "     גודל לא משנה אם המערכת רווחית — רק כמה מהר תדע."
