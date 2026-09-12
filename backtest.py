@@ -170,6 +170,11 @@ def main() -> int:
     ap.add_argument("--candles", type=int, default=1500, help="מקסימום 1500 לבקשה")
     ap.add_argument("--equity", type=float, default=0.0, help="0 = לפי .env")
     ap.add_argument("--train-frac", type=float, default=0.60)
+    # אוספים עסקאות בסף **נמוך** ואז סורקים כלפי מעלה. אחרת אי אפשר לדעת
+    # אם הסף המוגדר גבוה מדי: הוא פשוט מחזיר אפס עסקאות, ואפס עסקאות לא
+    # מבדיל בין "אין יתרון" לבין "הסף לא מכויל לסקאלה של הציון".
+    ap.add_argument("--collect-score", type=float, default=20.0,
+                    help="סף האיסוף. הטבלה בסוף סורקת ממנו ומעלה.")
     args = ap.parse_args()
 
     cfg = TradingConfig()
@@ -244,7 +249,10 @@ def main() -> int:
     labels = g.get("class_labels", [0, 1, 2])
     dir_map = {0: "SHORT", 1: "FLAT", 2: "LONG"}
 
+    collect_at = min(float(args.collect_score), float(cfg.score_entry))
+    print(f"    (אוסף מציון {collect_at:.0f} ומעלה — הטבלה בסוף סורקת את הספים)")
     trades = []
+    all_scores = []
     for s, f in frames.items():
         rel = float((model.get_training_stats(s) or {}).get("reliability", 0.0) or 0.0)
         mult = TradingModel._edge_multiplier(rel)
@@ -267,7 +275,9 @@ def main() -> int:
             lab = int(labels[j]) if j < len(labels) else j
             direction = dir_map.get(lab, "FLAT")
             score = float(p[j]) * mult * 100.0
-            if direction == "FLAT" or score < cfg.score_entry:
+            if direction != "FLAT":
+                all_scores.append(score)
+            if direction == "FLAT" or score < collect_at:
                 continue
 
             entry = float(test["close"].iloc[bar])
@@ -296,8 +306,20 @@ def main() -> int:
             })
             busy_until = bar + held
 
+    if all_scores:
+        a = np.array(all_scores)
+        print("\n  התפלגות הציון על הכרזות כיוון (מה שהמודל באמת מייצר):")
+        qs = [50, 75, 90, 95, 99, 99.9]
+        print("    " + "  ".join(f"p{q}={np.percentile(a, q):.1f}" for q in qs)
+              + f"  max={a.max():.1f}")
+        over = float((a >= cfg.score_entry).mean())
+        print(f"    עוברים SCORE_ENTRY={cfg.score_entry:.0f}: {over:.3%} "
+              f"({int((a >= cfg.score_entry).sum()):,} מתוך {len(a):,})")
+        if a.max() < cfg.score_entry:
+            print("    ⚠️  הסף **מעל המקסימום שהמודל מייצר** — הוא לא בר-השגה.")
+
     if not trades:
-        print("\n  אפס עסקאות. הסף חוסם הכול — הורד את SCORE_ENTRY או בדוק את היתרון.")
+        print("\n  אפס עסקאות גם בסף האיסוף. אין הכרזות כיוון בכלל.")
         return 1
 
     # ---------- תוצאות ----------
@@ -330,28 +352,71 @@ def main() -> int:
         print(f"    {why:<16} {len(grp):4d} | {grp.net_usd.sum():+7.2f}$ | "
               f"ממוצע {grp.net_usd.mean():+.3f}$")
 
-    print("\n  רגישות לסף הכניסה:")
-    print(f"    {'סף':>5} {'עסקאות':>8} {'הצלחה':>8} {'PF':>7} {'נטו $':>9}")
-    for th in (cfg.score_entry, 65, 70, 75, 80, 85):
-        sub = t[t.score >= th]
-        if len(sub) < 10:
-            print(f"    {th:>5.0f} {len(sub):>8d}  — מדגם קטן מדי")
+    print("\n  רגישות לסף הכניסה — כאן נמצא הסף הנכון:")
+    print(f"    {'סף':>5} {'עסקאות':>8} {'הצלחה':>8} {'R:R':>6} {'PF':>7} {'נטו $':>9}")
+    grid = sorted({round(collect_at), 25, 30, 35, 40, 45, 50, 55, 60,
+                   round(cfg.score_entry), 65, 70, 75})
+    best = None
+    for th in grid:
+        if th < collect_at:
             continue
-        sw = sub[sub.net_usd > 0]
-        sl_ = sub[sub.net_usd <= 0]
-        spf = sw.net_usd.sum() / max(-sl_.net_usd.sum(), 1e-9)
+        sub = t[t.score >= th]
+        mark = " <-- SCORE_ENTRY" if abs(th - cfg.score_entry) < 0.5 else ""
+        if len(sub) < 20:
+            print(f"    {th:>5.0f} {len(sub):>8d}  — מדגם קטן מדי{mark}")
+            continue
+        sw, sl_ = sub[sub.net_usd > 0], sub[sub.net_usd <= 0]
+        gl_ = -sl_.net_usd.sum()
+        spf = sw.net_usd.sum() / gl_ if gl_ > 0 else float("inf")
+        srr = (sw.net_usd.mean() / -sl_.net_usd.mean()) if len(sl_) else float("inf")
         print(f"    {th:>5.0f} {len(sub):>8d} {len(sw)/len(sub):>7.1%} "
-              f"{spf:>7.2f} {sub.net_usd.sum():>+9.2f}")
+              f"{srr:>6.2f} {spf:>7.2f} {sub.net_usd.sum():>+9.2f}{mark}")
+        # 50 עסקאות לפחות. בחירת סף לפי 24 עסקאות היא בדיוק ההתאמה-לרעש
+        # שה-backtest הזה אמור למנוע — הסף ה"מנצח" יתחלף בכל מדגם.
+        if len(sub) >= 50 and np.isfinite(spf) and (
+                best is None or sub.net_usd.sum() > best[2]):
+            best = (th, spf, sub.net_usd.sum(), len(sub))
+
+    if best:
+        th, bpf, bnet, bn = best
+        print(f"\n  הסף הטוב ביותר עם מדגם בר-הסקה: {th:.0f} "
+              f"({bn} עסקאות, PF {bpf:.2f}, {bnet:+.2f}$)")
+        if abs(th - cfg.score_entry) >= 5:
+            print(f"  SCORE_ENTRY={cfg.score_entry:.0f} מחמיץ אותו. "
+                  f"ב-.env:  SCORE_ENTRY={th:.0f}")
+    else:
+        print("\n  אין אף סף עם 50 עסקאות ומעלה — כל שורה בטבלה היא רעש.")
+
+    # --- פסק הדין נמדד על הסף **המוגדר**, לא על סף האיסוף ---
+    at_entry = t[t.score >= cfg.score_entry]
+    if len(at_entry) >= 50:
+        w2, l2 = at_entry[at_entry.net_usd > 0], at_entry[at_entry.net_usd <= 0]
+        gl2 = -l2.net_usd.sum()
+        pf = w2.net_usd.sum() / gl2 if gl2 > 0 else float("inf")
+        n_verdict = len(at_entry)
+        scope = f"SCORE_ENTRY={cfg.score_entry:.0f}"
+    else:
+        pf, n_verdict = None, len(at_entry)
+        scope = f"SCORE_ENTRY={cfg.score_entry:.0f}"
 
     print("\n" + "=" * 68)
-    if pf >= 1.20 and len(t) >= 100:
-        print("  פסק דין: תוחלת חיובית משמעותית. שווה להריץ בלייב.")
+    if pf is None:
+        print(f"  פסק דין: **לא ניתן להסיק** — רק {n_verdict} עסקאות עברו את "
+              f"{scope}.")
+        print("  זה לא אומר שאין יתרון; זה אומר שהסף חוסם כמעט הכול, ולכן")
+        print("  אי אפשר לדעת ממנו כלום. תסתכל בהתפלגות הציון ובטבלת הספים")
+        print("  למעלה — שם רואים לאיזה סף המודל בכלל מגיע.")
+    elif pf >= 1.20 and n_verdict >= 100:
+        print(f"  פסק דין: תוחלת חיובית משמעותית ב-{scope} "
+              f"(PF {pf:.2f} על {n_verdict} עסקאות). שווה להריץ בלייב.")
     elif pf >= 1.05:
-        print("  פסק דין: תוחלת חיובית גבולית. לא מספיק כדי לסמוך על זה.")
+        print(f"  פסק דין: תוחלת חיובית גבולית ({pf:.2f}). "
+              "לא מספיק כדי לסמוך על זה.")
     elif pf >= 0.95:
-        print("  פסק דין: אפס תוחלת — העמלות יאכלו את החשבון לאט.")
+        print(f"  פסק דין: אפס תוחלת ({pf:.2f}) — העמלות יאכלו את החשבון לאט.")
     else:
-        print("  פסק דין: תוחלת שלילית. הרצה בלייב תפסיד כסף בהתמדה.")
+        print(f"  פסק דין: תוחלת שלילית ({pf:.2f}). "
+              "הרצה בלייב תפסיד כסף בהתמדה.")
         print("  זה לא בעיית כיול — אין לאסטרטגיה יתרון על הנתונים האלה.")
     print("=" * 68)
     return 0
