@@ -145,9 +145,54 @@ class TradingConfig:
         default_factory=lambda: _env_float("DISCOVERY_SCORE_BONUS_MAX", "5")
     )
     hft_timeframe: str = field(default_factory=lambda: os.getenv("HFT_TIMEFRAME", "1m"))
+    # How the ML target is labelled. The threshold is a price move over `horizon`
+    # candles, so it only means the same thing at a fixed timeframe: 0.05% over 5
+    # candles is a real move at 1m and pure noise at 15m (5 candles = 75 minutes).
+    # Raise it with the timeframe or nearly every window is labelled directional
+    # and FLAT disappears from the training set.
+    ml_label_horizon: int = field(default_factory=lambda: _env_int("ML_LABEL_HORIZON", "5"))
+    ml_label_threshold: float = field(
+        default_factory=lambda: _env_float("ML_LABEL_THRESHOLD", "0.0005")
+    )
     hft_fetch_limit: int = field(default_factory=lambda: _env_int("HFT_FETCH_LIMIT", "200"))
+    # 240 נרות נתנו ~186 דגימות אחרי ניקוי NaN — מול 40 פיצ'רים זה 4.6
+    # דגימות לפיצ'ר, יחס שמבטיח שינון (Train 1.000) במקום למידה.
+    # 480 נותן ~426 דגימות (~10.6 לפיצ'ר) ו**עולה אותו דבר**: Binance מתמחר
+    # klines לפי מדרגות, ו-100..499 הוא אותו משקל (2) כמו 240. מעל 500
+    # המשקל קופץ ל-5, ולכן 480 ולא יותר.
     min_ml_training_candles: int = field(
-        default_factory=lambda: _env_int("MIN_ML_TRAINING_CANDLES", "240")
+        default_factory=lambda: _env_int("MIN_ML_TRAINING_CANDLES", "480")
+    )
+    # --- מודל מאוחד (ML_POOLED_MODEL) ---------------------------------
+    # מודל לכל סימבול מתאמן על ~426 שורות מול 46 פיצ'רים. נמדד: על סדרה עם
+    # יתרון אמיתי מוטמע הוא מזהה +0.039 — מול +0.020 שרעש טהור נותן, כלומר
+    # הוא לא מבחין ביניהם. אותו יתרון, במודל אחד על 14,250 שורות ועל
+    # סימבולים שלא נראו באימון: +0.357. זו לא בעיית כיול אלא חוסר נתונים.
+    # האיחוד נותן פי 100 דגימות לאותו מבנה, וגם חוסך אימון של 189 מודלים.
+    ml_pooled_model: bool = field(
+        default_factory=lambda: _env_bool("ML_POOLED_MODEL", "true")
+    )
+    # מתחת לזה אין טעם לאחד — עדיין אין מספיק נתונים
+    ml_pooled_min_symbols: int = field(
+        default_factory=lambda: _env_int("ML_POOLED_MIN_SYMBOLS", "25")
+    )
+    # תקרת שורות לאימון. 120k × 46 פיצ'רים מתאמן בשניות; היא נחלקת שווה
+    # בין הסימבולים, כך שיקום גדול לא מאט את הלולאה.
+    ml_pooled_max_rows: int = field(
+        default_factory=lambda: _env_int("ML_POOLED_MAX_ROWS", "120000")
+    )
+    # כל כמה זמן לאמן מחדש. קצר מדי = בזבוז; ארוך מדי = המודל מפגר אחרי השוק.
+    ml_pooled_retrain_sec: float = field(
+        default_factory=lambda: _env_float("ML_POOLED_RETRAIN_SEC", "900")
+    )
+    # מספר קבוצות ה-holdout לפי סימבול. כל סימבול נופל בדיוק באחת, ולכן
+    # לכולם יש יתרון שנמדד מחוץ למדגם.
+    ml_pooled_folds: int = field(
+        default_factory=lambda: _env_int("ML_POOLED_FOLDS", "4")
+    )
+    # סימבול שלא נסרק יותר מזה יוצא מהמאגר — לא מאמנים על נרות ישנים
+    ml_pooled_stale_sec: float = field(
+        default_factory=lambda: _env_float("ML_POOLED_STALE_SEC", "3600")
     )
     technical_fallback_signals: bool = field(
         default_factory=lambda: _env_bool("TECHNICAL_FALLBACK_SIGNALS", "true")
@@ -258,6 +303,13 @@ class TradingConfig:
     tp_max_pct: float = field(default_factory=lambda: _env_float("TP_MAX_PCT", "0.015"))
     sl_min_pct: float = field(default_factory=lambda: _env_float("SL_MIN_PCT", "0.003"))
     sl_max_pct: float = field(default_factory=lambda: _env_float("SL_MAX_PCT", "0.007"))
+    # Target width as a multiple of the stop, before clamps and history multipliers.
+    tp_sl_ratio: float = field(default_factory=lambda: _env_float("TP_SL_RATIO", "1.4"))
+    # Floor on the reward:risk that actually ships. TradeAnalyzer moves SL and TP
+    # independently (a losing run widens stops *and* shortens targets, which lowers
+    # the ratio exactly when it should rise), and the min/max clamps move them again.
+    # 0 disables the floor and keeps the old behaviour.
+    min_tp_sl_ratio: float = field(default_factory=lambda: _env_float("MIN_TP_SL_RATIO", "0"))
 
     hft_trailing_pct: float = field(default_factory=lambda: _env_float("HFT_TRAILING_PCT", "0.002"))
 
@@ -292,6 +344,29 @@ class TradingConfig:
     # round-trip costs by enough USDT and net reward/risk. If possible, sizing
     # may lift notional inside the existing risk/margin caps to meet the dollar
     # target; otherwise the trade is rejected.
+    # --- כניסה כ-maker ---
+    # Binance גובה 0.02% על maker מול 0.05% על taker. הבוט שלח MARKET בשני
+    # הצדדים, כלומר taker פעמיים = 0.10% הלוך-חזור. כניסה כ-LIMIT עם
+    # postOnly מורידה את זה ל-0.07% — חיסכון של 30% בעלות העסקה.
+    #
+    # המחיר: הזמנת maker **לא תמיד נסגרת**. אם המחיר בורח, נשארים בחוץ.
+    # זו הסיבה שברירת המחדל כבויה — זה שינוי התנהגות, לא רק תיקון.
+    # היציאה תמיד נשארת MARKET: סטופ שלא נסגר זו קטסטרופה.
+    maker_entry_enabled: bool = field(
+        default_factory=lambda: _env_bool("MAKER_ENTRY_ENABLED", "false")
+    )
+    estimated_maker_fee_pct: float = field(
+        default_factory=lambda: _env_float("ESTIMATED_MAKER_FEE_PCT", "0.0002")
+    )
+    maker_entry_timeout_sec: float = field(
+        default_factory=lambda: _env_float("MAKER_ENTRY_TIMEOUT_SEC", "8.0")
+    )
+    # אם ההזמנה לא נסגרה בזמן: לוותר על העסקה (ברירת מחדל) או לרדוף
+    # אחרי המחיר ב-MARKET. רדיפה = לשלם taker *וגם* להיכנס במחיר גרוע
+    # יותר מזה שדורג — הדרך הקלאסית לשחוק אסטרטגיה.
+    maker_entry_fallback_market: bool = field(
+        default_factory=lambda: _env_bool("MAKER_ENTRY_FALLBACK_MARKET", "false")
+    )
     fee_aware_sizing_enabled: bool = field(
         default_factory=lambda: _env_bool("FEE_AWARE_SIZING_ENABLED", "true")
     )
@@ -319,6 +394,13 @@ class TradingConfig:
     )
 
     hft_max_open_positions: int = field(default_factory=lambda: _env_int("HFT_MAX_OPEN_POSITIONS", "2"))
+    # Concurrent positions are only independent bets if they are not all the same
+    # way round. Crypto alts move together, so N longs opened at once behave like
+    # one position at N times the size — and stop out together. This caps how many
+    # of the open positions may share a direction. 0 = no cap (previous behaviour).
+    max_same_direction_positions: int = field(
+        default_factory=lambda: _env_int("MAX_SAME_DIRECTION_POSITIONS", "0")
+    )
 
     daily_max_drawdown_pct: float = field(
         default_factory=lambda: _env_float("DAILY_MAX_DRAWDOWN_PCT", "0.05")
@@ -433,6 +515,13 @@ class TradingConfig:
     )
     decision_live_min_consensus: float = field(
         default_factory=lambda: _env_float("DECISION_LIVE_MIN_CONSENSUS", "0.80")
+    )
+    # הוועדה מכפילה שבעה מכפילי גודל (חדשות, קטליזטור, משטר, זרימה, הון,
+    # עקיף, funding) זה בזה. שבעה סוכנים שכל אחד "רק קצת זהיר" ב-0.85 נותנים
+    # 0.85^7 = 0.32, ונמדד בפועל 0.18 — כלומר פוזיציה בחמישית מהגודל שמנהל
+    # הסיכון אישר. הרצפה הייתה 0.10 קבועה בקוד; עכשיו היא ניתנת לכיול.
+    committee_min_size_multiplier: float = field(
+        default_factory=lambda: _env_float("COMMITTEE_MIN_SIZE_MULTIPLIER", "0.10")
     )
     decision_min_score_after_guards: float = field(
         default_factory=lambda: _env_float("DECISION_MIN_SCORE_AFTER_GUARDS", "70")
