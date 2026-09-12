@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 import urllib.parse
@@ -41,6 +42,42 @@ from config import TradingConfig  # noqa: E402
 
 BASE = "https://fapi.binance.com"
 logging.basicConfig(level=logging.WARNING, format="%(message)s")
+
+# סטים להשוואת **טווחים**, זהים ל-safe_settings.sh. הטווח הוא הדבר היחיד
+# שמזיז את ה-PF: העמלה היא אחוז קבוע מהנוטיונל, והיעד גדל עם הטווח. גודל
+# הפוזיציה, לעומת זאת, מכפיל רווח והפסד באותו יחס ולכן **לא משנה PF בכלל**.
+#
+# `SCORE_ENTRY` לא נכלל כאן בכוונה: הוא נקבע מטבלת הספים שבסוף ההרצה, לא
+# מניחוש מוקדם. `--score-entry` דורס אותו כשרוצים למדוד פסק דין בסף מסוים.
+LEVELS = {
+    "3m": {   # unleashed — מה שרץ עכשיו
+        "HFT_TIMEFRAME": "3m", "ML_LABEL_HORIZON": "5", "ML_LABEL_THRESHOLD": "0.0025",
+        "SL_MIN_PCT": "0.005", "SL_MAX_PCT": "0.018",
+        "TP_MIN_PCT": "0.010", "TP_MAX_PCT": "0.045",
+        "TP_SL_RATIO": "2.2", "MIN_TP_SL_RATIO": "1.5",
+        "STALE_EXIT_SECONDS": "1800",
+        "PROFIT_LOCK_TRIGGER_PCT": "0.012", "PROFIT_LOCK_RETRACE_PCT": "0.005",
+        "PROFIT_LOCK_MIN_NET_PCT": "0.004",
+    },
+    "5m": {   # active
+        "HFT_TIMEFRAME": "5m", "ML_LABEL_HORIZON": "4", "ML_LABEL_THRESHOLD": "0.003",
+        "SL_MIN_PCT": "0.006", "SL_MAX_PCT": "0.020",
+        "TP_MIN_PCT": "0.015", "TP_MAX_PCT": "0.050",
+        "TP_SL_RATIO": "2.5", "MIN_TP_SL_RATIO": "2.0",
+        "STALE_EXIT_SECONDS": "2700",
+        "PROFIT_LOCK_TRIGGER_PCT": "0.010", "PROFIT_LOCK_RETRACE_PCT": "0.004",
+        "PROFIT_LOCK_MIN_NET_PCT": "0.003",
+    },
+    "15m": {  # swing
+        "HFT_TIMEFRAME": "15m", "ML_LABEL_HORIZON": "4", "ML_LABEL_THRESHOLD": "0.006",
+        "SL_MIN_PCT": "0.010", "SL_MAX_PCT": "0.035",
+        "TP_MIN_PCT": "0.025", "TP_MAX_PCT": "0.090",
+        "TP_SL_RATIO": "2.5", "MIN_TP_SL_RATIO": "2.0",
+        "STALE_EXIT_SECONDS": "0",
+        "PROFIT_LOCK_TRIGGER_PCT": "0.020", "PROFIT_LOCK_RETRACE_PCT": "0.008",
+        "PROFIT_LOCK_MIN_NET_PCT": "0.005",
+    },
+}
 
 
 # ----------------------------------------------------------------------
@@ -175,7 +212,19 @@ def main() -> int:
     # מבדיל בין "אין יתרון" לבין "הסף לא מכויל לסקאלה של הציון".
     ap.add_argument("--collect-score", type=float, default=20.0,
                     help="סף האיסוף. הטבלה בסוף סורקת ממנו ומעלה.")
+    ap.add_argument("--level", choices=sorted(LEVELS),
+                    help="טווח נר וסט יציאות להשוואה — 3m / 5m / 15m")
+    ap.add_argument("--score-entry", type=float, default=0.0,
+                    help="דורס SCORE_ENTRY (פסק הדין נמדד עליו)")
     args = ap.parse_args()
+
+    # הדריסות נכנסות ל-os.environ *לפני* בניית TradingConfig, כי
+    # `field(default_factory=...)` קורא ל-os.getenv ברגע היצירה.
+    # `load_dotenv()` לא דורס משתנים קיימים, ולכן זה גובר על .env.
+    if args.level:
+        os.environ.update(LEVELS[args.level])
+    if args.score_entry > 0:
+        os.environ["SCORE_ENTRY"] = str(args.score_entry)
 
     cfg = TradingConfig()
     equity = args.equity or 38.0
@@ -189,7 +238,10 @@ def main() -> int:
     print("=" * 68)
     print("  BACKTEST — נתוני שוק אמיתיים, מחוץ למדגם")
     print("=" * 68)
-    print(f"  טווח נרות      : {cfg.hft_timeframe}")
+    print(f"  טווח נרות      : {cfg.hft_timeframe}"
+          + (f"   (--level {args.level})" if args.level else ""))
+    print(f"  תוויות ML      : אופק {cfg.ml_label_horizon} נרות, "
+          f"סף {cfg.ml_label_threshold:.3%}")
     print(f"  סף כניסה       : {cfg.score_entry}")
     print(f"  SL / TP        : {cfg.sl_min_pct:.3%}-{cfg.sl_max_pct:.3%} / "
           f"{cfg.tp_min_pct:.3%}-{cfg.tp_max_pct:.3%}  (יחס {cfg.tp_sl_ratio})")
