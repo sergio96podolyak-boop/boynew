@@ -685,19 +685,44 @@ class TradingModel:
                 or [0, 1, 2]
             )
 
-            # Map prediction to direction (0=SHORT, 1=FLAT, 2=LONG)
+            # ----------------------------------------------------------------
+            # הציון חייב למדוד **הכרעה כיוונית**, לא ביטחון כללי
+            # ----------------------------------------------------------------
+            # קודם: `direction = argmax(probabilities)` ו-
+            # `probability = max(probabilities)` — שניהם על **כל** המחלקות,
+            # כולל FLAT. התוצאה, מלוג לייב אמיתי:
+            #
+            #   WLFIUSDT: FLAT | Score: 45.9 | Probs: [0.12 0.75 0.13]
+            #   TRXUSDT:  FLAT | Score: 47.2 | Probs: [0.09 0.77 0.14]
+            #   FETUSDT:  LONG | Score: 24.1 | Probs: [0.28 0.33 0.39]
+            #
+            # נר שהמודל בטוח לגביו ש**אין תזוזה** קיבל 47, ונר כיווני אמיתי
+            # קיבל 24 — כי 0.39 היא הסתברות גולמית מול FLAT ששולט. הסף
+            # סינן בדיוק הפוך ממה שהתכוון, והלוג הדפיס "filtered by score"
+            # על שורות שנפלו כי הן FLAT.
+            #
+            # הבוט לא סוחר על "תהיה תזוזה" — הוא סוחר על **לאן**. לכן הציון
+            # הוא ההסתברות של הכיוון החזק **מותנית בכך שיש תזוזה**:
+            #
+            #     P(LONG | לא FLAT) = P(LONG) / (P(LONG) + P(SHORT))
+            #
+            # 0.5 = מטבע הוגן (אין אות), 1.0 = הכרעה מלאה. זה בדיוק השאלה
+            # שעליה נפתחת עסקה, ו-FLAT כבר לא מזייף ציון גבוה.
             direction_map = {0: 'SHORT', 1: 'FLAT', 2: 'LONG'}
-            pred_idx = int(prediction)
-            pred_label = (
-                int(class_labels[pred_idx])
-                if 0 <= pred_idx < len(class_labels)
-                else pred_idx
-            )
-            direction = direction_map.get(pred_label, 'FLAT')
+            labels = [int(c) for c in class_labels]
+            dir_positions = [
+                i for i, lab in enumerate(labels)
+                if lab != 1 and i < len(probabilities)
+            ]
+            dir_mass = sum(float(probabilities[i]) for i in dir_positions)
 
-            # Get probability for predicted class
-            class_idx = np.argmax(probabilities)
-            probability = float(probabilities[class_idx])
+            if not dir_positions or dir_mass <= 0:
+                # המודל לא מכיר אף מחלקה כיוונית — אין על מה לסחור
+                direction, probability = 'FLAT', 0.0
+            else:
+                best = max(dir_positions, key=lambda i: float(probabilities[i]))
+                probability = float(probabilities[best]) / dir_mass
+                direction = direction_map.get(labels[best], 'FLAT')
 
             # Discount the score by the model's real out-of-sample reliability.
             # An overfit model that prints 0.97 but has no edge (reliability ~0)
@@ -719,8 +744,8 @@ class TradingModel:
 
             logger.debug(
                 f"{symbol}: {direction} | Score: {score:.1f} "
-                f"(prob={probability:.2f} × edge={reliability:.3f} -> ×{mult:.2f}) | "
-                f"Probs: {probabilities}"
+                f"(dir_conf={probability:.2f} × edge={reliability:.3f} -> ×{mult:.2f}"
+                f", dir_mass={dir_mass:.2f}) | Probs: {probabilities}"
             )
             return (direction, score, probability)
 

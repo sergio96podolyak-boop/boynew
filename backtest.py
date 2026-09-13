@@ -322,11 +322,17 @@ def main() -> int:
         for row, bar in enumerate(idx_map):
             if bar <= busy_until or bar + 5 >= len(test):
                 continue
+            # אותה נוסחה בדיוק כמו `model.predict`: הכרעה כיוונית מותנית
+            # בכך שיש תזוזה. `argmax` על כל המחלקות היה נותן ציון גבוה
+            # לנר שהמודל בטוח לגביו ש**אין** תזוזה — ראו את ההערה שם.
             p = proba[row]
-            j = int(p.argmax())
-            lab = int(labels[j]) if j < len(labels) else j
-            direction = dir_map.get(lab, "FLAT")
-            score = float(p[j]) * mult * 100.0
+            dir_pos = [i for i, lab in enumerate(labels) if int(lab) != 1]
+            mass = sum(float(p[i]) for i in dir_pos if i < len(p))
+            if not dir_pos or mass <= 0:
+                continue
+            b = max(dir_pos, key=lambda i: float(p[i]))
+            direction = dir_map.get(int(labels[b]), "FLAT")
+            score = (float(p[b]) / mass) * mult * 100.0
             if direction != "FLAT":
                 all_scores.append(score)
             if direction == "FLAT" or score < collect_at:
