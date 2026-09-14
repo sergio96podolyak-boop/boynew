@@ -320,6 +320,7 @@ if [ "$LEVEL" = "maxdollars" ]; then
     "MIN_ATR_PCT|0|בלי רצפת תנודתיות"
     "SCAN_TOP_N|80|אותו יקום שנמדד ב-backtest"
     "BAD_HOUR_BLOCK_ENABLED|false|בלי חסימת שעות מהיסטוריה"
+    "ADAPTIVE_SCORE_ENTRY_ENABLED|false|הסף לא עולה אחרי הפסדים — במדידה PF יורד ככל שהסף עולה"
     "TREND_RUNNER_ENABLED|true|לתת למגמה לרוץ"
   )
 fi

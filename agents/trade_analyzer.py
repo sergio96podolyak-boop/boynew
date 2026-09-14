@@ -121,6 +121,12 @@ class TradeAnalyzer:
         self.bad_hour_block_enabled = os.getenv(
             "BAD_HOUR_BLOCK_ENABLED", "true"
         ).lower() in {"1", "true", "yes"}
+        # העלאת סף הכניסה אחרי רצף מפסיד. ברירת מחדל true (בלי שינוי
+        # התנהגות); false משאיר את הסף על `SCORE_ENTRY` תמיד — נדרש כשהסף
+        # נגזר מטבלת ספים שבה PF **יורד** ככל שהסף עולה.
+        self.adaptive_score_entry_enabled = os.getenv(
+            "ADAPTIVE_SCORE_ENTRY_ENABLED", "true"
+        ).lower() in {"1", "true", "yes", "on"}
         self.cooldown_enabled = os.getenv("SMART_COOLDOWN_ENABLED", "true").lower() in {
             "1",
             "true",
@@ -273,35 +279,61 @@ class TradeAnalyzer:
             #
             # עכשיו הכול **יחסי ל-base**: ±20 תקרה, ±10 רצפה. אותה כוונה
             # (למנוע ריצה חופשית), נכונה בכל סקאלה.
-            wr = ins.recent_win_rate
-            hi = self.base_score_entry + 20.0
-            lo = max(0.0, self.base_score_entry - 10.0)
-            if wr < 0.35:
-                ins.adjusted_score_entry = min(hi, self.base_score_entry + 15)
-                logger.warning(
-                    "TradeAnalyzer: win_rate=%.1f%% — VERY LOW, raising score to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            elif wr < 0.45:
-                ins.adjusted_score_entry = min(hi, self.base_score_entry + 10)
-                logger.warning(
-                    "TradeAnalyzer: win_rate=%.1f%% — LOW, raising score to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            elif wr < 0.50:
-                ins.adjusted_score_entry = min(hi, self.base_score_entry + 5)
-                logger.info(
-                    "TradeAnalyzer: win_rate=%.1f%% — below target, score raised to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            elif wr > 0.60 and total_trades >= 20:
-                ins.adjusted_score_entry = max(lo, self.base_score_entry - 3)
-                logger.info(
-                    "TradeAnalyzer: win_rate=%.1f%% — GOOD, score relaxed to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            else:
+            # ----------------------------------------------------------
+            # ההעלאה אחרי הפסדים **סותרת את המדידה** במודל הזה.
+            # טבלת הספים ב-backtest.py, 15m, מחוץ למדגם:
+            #
+            #     סף 20 -> PF 1.08   |   סף 40 -> PF 1.02
+            #     סף 55 -> PF 0.86   |   סף 60 -> PF 0.82
+            #
+            # ה-PF **יורד** ככל שהסף עולה — המודל מזהה שתהיה תזוזה, אבל
+            # ההכרעה על הכיוון לא משתפרת עם הביטחון. כלומר "להחמיר אחרי
+            # רצף מפסיד" מזיז את הייצור הרחק מהתצורה שנמדדה כטובה ביותר,
+            # בדיוק לכיוון שנמדד כגרוע יותר.
+            #
+            # הדגל כבוי = ההתנהגות הישנה נשמרת (ברירת מחדל true), ולכן
+            # הוא לא משנה אף רמה קיימת. `maxdollars` מכבה אותו כי הסף
+            # שלה נגזר מהטבלה הזאת.
+            #
+            # ⚠️ הכיבוי חייב לקרות **כאן ולא אצל הצרכנים**: את הסף קוראים
+            # שלושה מקומות נפרדים — הסורק דרך `get_effective_score_entry`,
+            # ו-`risk_manager._adaptive_score_entry` שנקבע פעמיים ב-main.py.
+            # דגל שנאכף אצל אחד מהם משאיר את השאר פתוחים, וזו בדיוק הטעות
+            # של `BAD_HOUR_BLOCK_ENABLED` שהשתיקה את הבוט.
+            # ----------------------------------------------------------
+            if not self.adaptive_score_entry_enabled:
                 ins.adjusted_score_entry = self.base_score_entry
+                wr = ins.recent_win_rate
+            else:
+                wr = ins.recent_win_rate
+                hi = self.base_score_entry + 20.0
+                lo = max(0.0, self.base_score_entry - 10.0)
+                if wr < 0.35:
+                    ins.adjusted_score_entry = min(hi, self.base_score_entry + 15)
+                    logger.warning(
+                        "TradeAnalyzer: win_rate=%.1f%% — VERY LOW, raising score to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                elif wr < 0.45:
+                    ins.adjusted_score_entry = min(hi, self.base_score_entry + 10)
+                    logger.warning(
+                        "TradeAnalyzer: win_rate=%.1f%% — LOW, raising score to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                elif wr < 0.50:
+                    ins.adjusted_score_entry = min(hi, self.base_score_entry + 5)
+                    logger.info(
+                        "TradeAnalyzer: win_rate=%.1f%% — below target, score raised to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                elif wr > 0.60 and total_trades >= 20:
+                    ins.adjusted_score_entry = max(lo, self.base_score_entry - 3)
+                    logger.info(
+                        "TradeAnalyzer: win_rate=%.1f%% — GOOD, score relaxed to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                else:
+                    ins.adjusted_score_entry = self.base_score_entry
 
             # 3. Per-symbol analysis: blacklist + score adjustments
             symbol_stats = self.repo.get_symbol_stats(
