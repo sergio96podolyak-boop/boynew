@@ -36,3 +36,12 @@ pomarket_agent/
 
 # Gradle build output
 market_bloom/android/build/
+
+# Runtime state written by the bot on every loop. These were tracked, so every
+# run dirtied the tree and every `git pull` aborted with "local changes would be
+# overwritten". They are all regenerated automatically — nothing to preserve.
+data/model_health.json
+data/catalyst_radar.json
+data/flow_state.json
+data/strategy_lab.json
+data/live_bot.lock

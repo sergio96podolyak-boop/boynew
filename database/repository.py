@@ -51,7 +51,8 @@ class TradeRepository:
                 closed_at       TEXT,
                 close_reason    TEXT,
                 confidence      REAL,
-                strategy_signal TEXT
+                strategy_signal TEXT,
+                fee             REAL DEFAULT 0.0
             );
 
             CREATE TABLE IF NOT EXISTS signals (
@@ -126,6 +127,16 @@ class TradeRepository:
             CREATE INDEX IF NOT EXISTS idx_decision_audit_ts ON decision_audit(created_at);
             CREATE INDEX IF NOT EXISTS idx_decision_audit_symbol ON decision_audit(symbol);
         """)
+        # מיגרציה: DB שנוצר לפני שהעמלות נכנסו לחישוב לא מכיל את העמודה,
+        # ו-CREATE TABLE IF NOT EXISTS לא מוסיף עמודות לטבלה קיימת.
+        try:
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(trades)")}
+            if "fee" not in existing:
+                conn.execute("ALTER TABLE trades ADD COLUMN fee REAL DEFAULT 0.0")
+                logger.info("Migrated trades table: added `fee` column")
+        except sqlite3.Error as exc:
+            logger.warning("fee column migration skipped: %s", exc)
+
         conn.commit()
 
         # Migrate: add unrealized_pnl column if missing (existing DBs)
@@ -409,6 +420,24 @@ class TradeRepository:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_session_start(self) -> Optional[str]:
+        """
+        Timestamp of the newest System/boot report — the current run's start.
+
+        Powers the "uptime" figure on the trading-floor dashboard. Returns None
+        when the bot has never booted against this DB.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT timestamp FROM agent_activity
+            WHERE agent = 'System' AND action = 'boot'
+            ORDER BY id DESC LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        return row["timestamp"] if row else None
+
     def prune_agent_activity(self, keep: int = 3000) -> None:
         """Trim the agent_activity table to the most recent `keep` rows."""
         conn = self._get_conn()
@@ -585,7 +614,9 @@ class TradeRepository:
 
         Returns:
             dict with keys: total_trades, winning_trades, losing_trades,
-            win_rate, total_pnl, avg_pnl, max_drawdown, sharpe_ratio
+            win_rate, total_pnl, avg_pnl, max_drawdown, sharpe_ratio,
+            sharpe_basis,
+            gross_profit, gross_loss, profit_factor
         """
         conn = self._get_conn()
         cursor = conn.execute(
@@ -603,6 +634,10 @@ class TradeRepository:
                 "avg_pnl": 0.0,
                 "max_drawdown": 0.0,
                 "sharpe_ratio": 0.0,
+                "sharpe_basis": "insufficient_data",
+                "gross_profit": 0.0,
+                "gross_loss": 0.0,
+                "profit_factor": 0.0,
             }
 
         pnls = [row["pnl"] for row in rows]
@@ -614,6 +649,15 @@ class TradeRepository:
         total_pnl = sum(pnls)
         avg_pnl = total_pnl / total_trades if total_trades > 0 else 0.0
         win_rate = winning / total_trades if total_trades > 0 else 0.0
+
+        # Profit factor over the full history — the dashboard needs it next to
+        # the lifetime win rate, so both numbers describe the same window.
+        gross_profit = sum(p for p in pnls if p > 0)
+        gross_loss = abs(sum(p for p in pnls if p <= 0))
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
+        else:
+            profit_factor = 2.0 if gross_profit > 0 else 0.0
 
         # Max drawdown from cumulative PnL
         cumulative = 0.0
@@ -631,18 +675,57 @@ class TradeRepository:
             if dd > max_drawdown:
                 max_drawdown = dd
 
-        # Sharpe ratio (annualised, assuming hourly trades)
+        # ------------------------------------------------------------------
+        # Sharpe ratio
+        # ------------------------------------------------------------------
+        # The old code multiplied the per-trade Sharpe by sqrt(8760) —
+        # "annualise assuming one trade per hour". That assumption is wrong
+        # for this bot (an HFT loop that closes trades in minutes), and being
+        # a *constant* it was really just a fixed 93.6x multiplier: a real
+        # per-trade Sharpe of 0.27 was reported as 25.8. No strategy has a
+        # Sharpe of 25 — world-class funds run 2-3 — so the number was not
+        # merely imprecise, it was actively misleading on a decision metric.
+        #
+        # Now the annualisation factor comes from the *observed* trade
+        # frequency. And annualising from a couple of hours of trading is
+        # extrapolation, not measurement, so below a minimum span we report
+        # the honest per-trade figure and say so in `sharpe_basis`.
+        MIN_SPAN_SEC = 6 * 3600
+        SECONDS_PER_YEAR = 365.25 * 24 * 3600
+
+        sharpe = 0.0
+        sharpe_basis = "insufficient_data"
+
         if len(pnl_pcts) >= 2:
             import statistics
             mean_r = statistics.mean(pnl_pcts)
             std_r = statistics.stdev(pnl_pcts)
             if std_r > 0:
-                # Annualise assuming ~8760 hours per year
-                sharpe = (mean_r / std_r) * math.sqrt(8760)
-            else:
-                sharpe = 0.0
-        else:
-            sharpe = 0.0
+                per_trade = mean_r / std_r
+
+                # טווח הזמן בפועל בין העסקה הראשונה לאחרונה שנסגרו
+                stamps = []
+                for row in rows:
+                    ts = row["closed_at"] or row["opened_at"]
+                    if not ts:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(str(ts))
+                    except (TypeError, ValueError):
+                        continue
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    stamps.append(dt.timestamp())
+
+                span_sec = (max(stamps) - min(stamps)) if len(stamps) >= 2 else 0.0
+
+                if span_sec >= MIN_SPAN_SEC:
+                    trades_per_year = len(pnl_pcts) * (SECONDS_PER_YEAR / span_sec)
+                    sharpe = per_trade * math.sqrt(trades_per_year)
+                    sharpe_basis = "annualised"
+                else:
+                    sharpe = per_trade
+                    sharpe_basis = "per_trade"
 
         return {
             "total_trades": total_trades,
@@ -654,6 +737,10 @@ class TradeRepository:
             "max_drawdown": round(max_drawdown, 4),
             "max_drawdown_abs": round(max_drawdown_abs, 4),
             "sharpe_ratio": round(sharpe, 4),
+            "sharpe_basis": sharpe_basis,
+            "gross_profit": round(gross_profit, 4),
+            "gross_loss": round(gross_loss, 4),
+            "profit_factor": round(profit_factor, 4),
         }
 
     def close(self) -> None:

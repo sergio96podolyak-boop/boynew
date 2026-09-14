@@ -320,9 +320,20 @@ class RiskManagerAgent:
         return 0.0
 
     def estimated_roundtrip_cost_pct(self) -> float:
-        fee = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
+        """
+        עלות הלוך-חזור משוערת: עמלת כניסה + עמלת יציאה + באפר החלקה.
+
+        קודם זה היה `taker * 2` בהנחה ששני הצדדים taker. כשכניסת maker
+        מופעלת הכניסה זולה יותר (0.02% מול 0.05%), והשער שמסנן כניסות
+        חייב לדעת את זה — אחרת הוא פוסל עסקאות שכדאיות בפועל.
+        """
+        taker = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
         buffer = float(getattr(self.config, "profit_edge_buffer_pct", 0.0) or 0.0)
-        return max(0.0, fee * 2.0 + buffer)
+        if bool(getattr(self.config, "maker_entry_enabled", False)):
+            entry = float(getattr(self.config, "estimated_maker_fee_pct", taker) or taker)
+        else:
+            entry = taker
+        return max(0.0, entry + taker + buffer)
 
     def register_open_position(self, position: Position) -> None:
         self.open_positions[position.symbol] = position
@@ -431,6 +442,15 @@ class RiskManagerAgent:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Model unhealthy — predictions unreliable")
         if len(open_positions) >= self.config.hft_max_open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Max positions")
+        same_dir_cap = int(getattr(self.config, "max_same_direction_positions", 0) or 0)
+        if same_dir_cap > 0:
+            same_dir = sum(1 for p in open_positions.values() if p.side == direction)
+            if same_dir >= same_dir_cap:
+                return RiskDecision(
+                    False, 0.0, 0.0, 0.0,
+                    f"Max {direction} positions ({same_dir}/{same_dir_cap}) — "
+                    "correlated exposure",
+                )
         if symbol in open_positions:
             return RiskDecision(False, 0.0, 0.0, 0.0, "Symbol occupied")
         if symbol in self._symbol_blacklist:
@@ -488,8 +508,35 @@ class RiskManagerAgent:
         tw = {"BASE": 0.85, "HIGH": 1.0, "EXTREME": 1.15}.get(tier, 1.0)
         scaled = atr_pct * tw
         # Apply dynamic SL/TP multipliers from trade history analysis
+        tp_sl_ratio = float(getattr(self.config, "tp_sl_ratio", 1.4) or 1.4)
         sl_pct = max(self.config.sl_min_pct, min(self.config.sl_max_pct, scaled * self._sl_multiplier))
-        tp_pct = max(self.config.tp_min_pct, min(self.config.tp_max_pct, scaled * 1.4 * self._tp_multiplier))
+        tp_pct = max(
+            self.config.tp_min_pct,
+            min(self.config.tp_max_pct, scaled * tp_sl_ratio * self._tp_multiplier),
+        )
+
+        # The ratio configured above is not the ratio that ships. Two things move
+        # SL and TP independently afterwards: TradeAnalyzer's history multipliers
+        # (a losing run widens stops *and* shortens targets — lowering reward:risk
+        # exactly when it should rise) and the min/max clamps. Enforce the floor
+        # last so the delivered ratio is the one the strategy was sized for.
+        min_ratio = float(getattr(self.config, "min_tp_sl_ratio", 0.0) or 0.0)
+        if min_ratio > 0 and sl_pct > 0 and tp_pct < sl_pct * min_ratio:
+            wanted_tp = sl_pct * min_ratio
+            if wanted_tp <= self.config.tp_max_pct:
+                tp_pct = wanted_tp
+            else:
+                # Target is capped, so tighten the stop instead of shipping a
+                # ratio the strategy never agreed to.
+                tp_pct = self.config.tp_max_pct
+                sl_pct = max(self.config.sl_min_pct, tp_pct / min_ratio)
+                if tp_pct < sl_pct * min_ratio - 1e-12:
+                    logger.warning(
+                        "%s: cannot reach min_tp_sl_ratio %.2f — TP_MAX_PCT %.4f "
+                        "and SL_MIN_PCT %.4f allow at most %.2f",
+                        symbol, min_ratio, self.config.tp_max_pct,
+                        self.config.sl_min_pct, tp_pct / sl_pct,
+                    )
 
         # Portfolio sizing: divide balance equally among max open positions
         max_pos = max(1, self.config.hft_max_open_positions)

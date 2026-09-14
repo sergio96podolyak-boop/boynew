@@ -114,6 +114,19 @@ class TradeAnalyzer:
         self._refresh_count = 0
         self._consecutive_losses = 0
         self._last_loss_ts: float = 0.0
+        # חסימת "שעה היסטורית חלשה". שעה נכנסת לרשימה כשיש לה פחות מ-30%
+        # הצלחה על 5+ עסקאות — אבל אם הבוט סוחר רק בשתיים-שלוש שעות ביום,
+        # אחוז ההצלחה הכללי שלו נזקף לשעות האלה והוא חוסם את עצמו לחלוטין.
+        # ברירת מחדל true (בלי שינוי התנהגות); false מבטל את החסימה.
+        self.bad_hour_block_enabled = os.getenv(
+            "BAD_HOUR_BLOCK_ENABLED", "true"
+        ).lower() in {"1", "true", "yes"}
+        # העלאת סף הכניסה אחרי רצף מפסיד. ברירת מחדל true (בלי שינוי
+        # התנהגות); false משאיר את הסף על `SCORE_ENTRY` תמיד — נדרש כשהסף
+        # נגזר מטבלת ספים שבה PF **יורד** ככל שהסף עולה.
+        self.adaptive_score_entry_enabled = os.getenv(
+            "ADAPTIVE_SCORE_ENTRY_ENABLED", "true"
+        ).lower() in {"1", "true", "yes", "on"}
         self.cooldown_enabled = os.getenv("SMART_COOLDOWN_ENABLED", "true").lower() in {
             "1",
             "true",
@@ -218,6 +231,8 @@ class TradeAnalyzer:
 
     def is_bad_hour(self) -> bool:
         """Check if current UTC hour is historically bad for trading."""
+        if not self.bad_hour_block_enabled:
+            return False
         current_hour = datetime.now(timezone.utc).hour
         return current_hour in self._insights.bad_hours_utc
 
@@ -252,33 +267,73 @@ class TradeAnalyzer:
                 return ins
 
             # 2. Adaptive score threshold based on win rate
-            wr = ins.recent_win_rate
-            if wr < 0.35:
-                ins.adjusted_score_entry = min(95.0, self.base_score_entry + 15)
-                logger.warning(
-                    "TradeAnalyzer: win_rate=%.1f%% — VERY LOW, raising score to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            elif wr < 0.45:
-                ins.adjusted_score_entry = min(92.0, self.base_score_entry + 10)
-                logger.warning(
-                    "TradeAnalyzer: win_rate=%.1f%% — LOW, raising score to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            elif wr < 0.50:
-                ins.adjusted_score_entry = min(88.0, self.base_score_entry + 5)
-                logger.info(
-                    "TradeAnalyzer: win_rate=%.1f%% — below target, score raised to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            elif wr > 0.60 and total_trades >= 20:
-                ins.adjusted_score_entry = max(65.0, self.base_score_entry - 3)
-                logger.info(
-                    "TradeAnalyzer: win_rate=%.1f%% — GOOD, score relaxed to %.0f",
-                    wr * 100, ins.adjusted_score_entry,
-                )
-            else:
+            #
+            # התקרות והרצפה כאן היו **מספרים מוחלטים** (95/92/88/65) שנכתבו
+            # כשה-base היה 72-78. הציון הוא `probability × edge_mult × 100`,
+            # ובמודל של שלוש מחלקות הוא לא עובר ~61 — כך שכל המספרים האלה
+            # מעל התקרה שהמודל מייצר.
+            #
+            # הרצפה הייתה הגרועה מביניהם: `max(65.0, base - 3)` עם base=40
+            # מחזיר **65**, כלומר הענף שאמור *להרפות* את הסף אחרי ביצועים
+            # טובים העלה אותו ב-25 נקודות והשתיק את הבוט לגמרי.
+            #
+            # עכשיו הכול **יחסי ל-base**: ±20 תקרה, ±10 רצפה. אותה כוונה
+            # (למנוע ריצה חופשית), נכונה בכל סקאלה.
+            # ----------------------------------------------------------
+            # ההעלאה אחרי הפסדים **סותרת את המדידה** במודל הזה.
+            # טבלת הספים ב-backtest.py, 15m, מחוץ למדגם:
+            #
+            #     סף 20 -> PF 1.08   |   סף 40 -> PF 1.02
+            #     סף 55 -> PF 0.86   |   סף 60 -> PF 0.82
+            #
+            # ה-PF **יורד** ככל שהסף עולה — המודל מזהה שתהיה תזוזה, אבל
+            # ההכרעה על הכיוון לא משתפרת עם הביטחון. כלומר "להחמיר אחרי
+            # רצף מפסיד" מזיז את הייצור הרחק מהתצורה שנמדדה כטובה ביותר,
+            # בדיוק לכיוון שנמדד כגרוע יותר.
+            #
+            # הדגל כבוי = ההתנהגות הישנה נשמרת (ברירת מחדל true), ולכן
+            # הוא לא משנה אף רמה קיימת. `maxdollars` מכבה אותו כי הסף
+            # שלה נגזר מהטבלה הזאת.
+            #
+            # ⚠️ הכיבוי חייב לקרות **כאן ולא אצל הצרכנים**: את הסף קוראים
+            # שלושה מקומות נפרדים — הסורק דרך `get_effective_score_entry`,
+            # ו-`risk_manager._adaptive_score_entry` שנקבע פעמיים ב-main.py.
+            # דגל שנאכף אצל אחד מהם משאיר את השאר פתוחים, וזו בדיוק הטעות
+            # של `BAD_HOUR_BLOCK_ENABLED` שהשתיקה את הבוט.
+            # ----------------------------------------------------------
+            if not self.adaptive_score_entry_enabled:
                 ins.adjusted_score_entry = self.base_score_entry
+                wr = ins.recent_win_rate
+            else:
+                wr = ins.recent_win_rate
+                hi = self.base_score_entry + 20.0
+                lo = max(0.0, self.base_score_entry - 10.0)
+                if wr < 0.35:
+                    ins.adjusted_score_entry = min(hi, self.base_score_entry + 15)
+                    logger.warning(
+                        "TradeAnalyzer: win_rate=%.1f%% — VERY LOW, raising score to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                elif wr < 0.45:
+                    ins.adjusted_score_entry = min(hi, self.base_score_entry + 10)
+                    logger.warning(
+                        "TradeAnalyzer: win_rate=%.1f%% — LOW, raising score to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                elif wr < 0.50:
+                    ins.adjusted_score_entry = min(hi, self.base_score_entry + 5)
+                    logger.info(
+                        "TradeAnalyzer: win_rate=%.1f%% — below target, score raised to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                elif wr > 0.60 and total_trades >= 20:
+                    ins.adjusted_score_entry = max(lo, self.base_score_entry - 3)
+                    logger.info(
+                        "TradeAnalyzer: win_rate=%.1f%% — GOOD, score relaxed to %.0f",
+                        wr * 100, ins.adjusted_score_entry,
+                    )
+                else:
+                    ins.adjusted_score_entry = self.base_score_entry
 
             # 3. Per-symbol analysis: blacklist + score adjustments
             symbol_stats = self.repo.get_symbol_stats(
@@ -576,6 +631,15 @@ class TradeAnalyzer:
             # Two tiers: very bad on few trades, or consistently weak on many —
             # hours like 33% wr across 27+ trades were slipping through.
             if (wr < 0.30 and n >= 5 and pnl < 0) or (wr <= 0.35 and n >= 8 and pnl < 0):
+                # הדגל נאכף **כאן**, במקור, ולא אצל הצרכנים. יש שני שערי
+                # שעה נפרדים: `is_bad_hour()` ב-main.py, ובדיקה שנייה
+                # ב-`risk_manager.evaluate` שקוראת את `_bad_hours_utc`
+                # ישירות. כשהדגל נאכף רק בראשון, השני המשיך לחסום הכול —
+                # נצפה בלייב: "Hour 21 UTC historically loses" על כל
+                # סימבול, אפס עסקאות. קבוצה ריקה מנטרלת את שניהם ביחד,
+                # ואי אפשר שיתפצלו שוב.
+                if not self.bad_hour_block_enabled:
+                    continue
                 ins.bad_hours_utc.add(hour)
                 logger.info(
                     "TradeAnalyzer: hour %02d UTC is BAD (wr=%.0f%%, pnl=%.4f, n=%d)",

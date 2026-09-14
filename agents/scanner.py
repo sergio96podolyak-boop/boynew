@@ -303,7 +303,8 @@ class MarketScanner:
             limit: Number of candles to fetch (default 200)
 
         Returns:
-            DataFrame with columns [open, high, low, close, volume] or None on failure
+            DataFrame with [open, high, low, close, volume] plus the order-flow
+            columns [taker_buy_quote, trade_count], or None on failure.
         """
         try:
             url = f"{BINANCE_FUTURES_BASE}/fapi/v1/klines"
@@ -314,7 +315,18 @@ class MarketScanner:
                 logger.warning(f"No OHLCV data for {symbol}")
                 return None
 
-            # Parse klines: [time, open, high, low, close, volume, ...]
+            # מבנה נר של Binance — 12 שדות:
+            #   [0] זמן פתיחה   [6] זמן סגירה
+            #   [1] open        [7] נפח בציטוט (quote)      <- משמש כ-volume
+            #   [2] high        [8] מספר עסקאות             <- זרימת פקודות
+            #   [3] low         [9] נפח קניית taker (בסיס)
+            #   [4] close       [10] נפח קניית taker (ציטוט) <- זרימת פקודות
+            #   [5] נפח בבסיס   [11] מוזנח
+            #
+            # שדות 8 ו-10 נזרקו קודם, והם המידע היחיד על *זרימת פקודות* שקיים
+            # היסטורית בלי לתחזק תמונות מספר הפקודות: היחס
+            # taker_buy_quote / volume הוא חלק הנפח שהגיע מקנייה אגרסיבית.
+            # ספר הפקודות החי לא ניתן לשחזור לאחור — זה כן.
             rows = []
             for candle in data:
                 try:
@@ -325,6 +337,8 @@ class MarketScanner:
                             "low": float(candle[3]),
                             "close": float(candle[4]),
                             "volume": float(candle[7]),  # quote asset volume
+                            "taker_buy_quote": float(candle[10]),
+                            "trade_count": float(candle[8]),
                         }
                     )
                 except (ValueError, IndexError) as e:
@@ -727,12 +741,31 @@ class MarketScanner:
                     logger.debug(f"Failed to compute features for {symbol}")
                     continue
 
-                # Retrain model if needed
-                if self.model.should_retrain(symbol) or not self.model.is_trained(symbol):
+                label_horizon = int(getattr(self.config, "ml_label_horizon", 5) or 5)
+                label_threshold = float(
+                    getattr(self.config, "ml_label_threshold", 0.0005) or 0.0005
+                )
+
+                if getattr(self.config, "ml_pooled_model", False):
+                    # מודל מאוחד: הסימבול נכנס למאגר, והאימון קורה פעם
+                    # ב-ml_pooled_retrain_sec על כל היקום יחד — לא פה.
+                    self.model.stage(
+                        symbol, df_features, FEATURE_NAMES,
+                        horizon=label_horizon, threshold=label_threshold,
+                    )
+                    self.model.maybe_train_global(
+                        FEATURE_NAMES,
+                        min_symbols=int(getattr(self.config, "ml_pooled_min_symbols", 25)),
+                        max_rows=int(getattr(self.config, "ml_pooled_max_rows", 120000)),
+                        retrain_sec=float(getattr(self.config, "ml_pooled_retrain_sec", 900)),
+                        n_folds=int(getattr(self.config, "ml_pooled_folds", 4)),
+                        stale_sec=float(getattr(self.config, "ml_pooled_stale_sec", 3600)),
+                    )
+                elif self.model.should_retrain(symbol) or not self.model.is_trained(symbol):
                     logger.info(f"Retraining model for {symbol} with {len(df_features)} samples")
                     self.model.train(
                         symbol, df_features, FEATURE_NAMES,
-                        horizon=5, threshold=0.0005,  # 0.05% for 1m candles
+                        horizon=label_horizon, threshold=label_threshold,
                     )
 
                 # Get ML prediction

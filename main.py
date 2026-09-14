@@ -42,8 +42,11 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Logging setup — must happen before any local imports
 # ---------------------------------------------------------------------------
+# רמת הלוג ניתנת לכיול. כל סיבות הדחייה בלולאה (ועדה, מתאם, מכסת שעה,
+# צינון, שערי עמלה) נרשמות ב-DEBUG, ולכן ב-INFO הבוט נראה כאילו אינו
+# מוצא כלום בלי שום הסבר. LOG_LEVEL=DEBUG חושף אותן.
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -223,9 +226,14 @@ def fetch_ohlcv(
         )
         df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
         df.set_index("open_time", inplace=True)
-        for col in ("open", "high", "low", "close", "volume"):
+        # taker_buy_quote ו-num_trades כבר מפורשים למעלה ואז נזרקו כאן.
+        # הם המידע היחיד על זרימת פקודות שקיים היסטורית — ראו את ההערה
+        # ב-scanner.fetch_ohlcv. שומרים אותם ומיישרים שמות לשני המסלולים.
+        keep = ["open", "high", "low", "close", "volume",
+                "taker_buy_quote", "num_trades"]
+        for col in keep:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df[["open", "high", "low", "close", "volume"]].dropna()
+        df = df[keep].dropna().rename(columns={"num_trades": "trade_count"})
         return df
     except Exception as exc:
         logger.exception("Error parsing OHLCV data for %s: %s", symbol, exc)
@@ -403,6 +411,7 @@ class TradingSystem:
                                 "status": "closed",
                                 "pnl": result.get("pnl"),
                                 "pnl_pct": result.get("pnl_pct"),
+                                "fee": result.get("fee", 0.0),
                                 "closed_at": result.get("closed_at"),
                                 "close_reason": result.get("close_reason"),
                             },
@@ -1075,7 +1084,9 @@ class TradingSystem:
                         drawdown_pct=self.risk_agent.drawdown_pct,
                     )
                     if not committee.approved:
-                        logger.debug(
+                        # INFO ולא DEBUG: זו הסיבה הנפוצה ביותר ל"אין עסקאות",
+                        # והיא הייתה בלתי נראית ברמת הלוג המוגדרת.
+                        logger.info(
                             "%s: committee rejected — consensus=%.0f%% score=%.1f reasons=%s",
                             symbol,
                             committee.consensus * 100,
@@ -1114,11 +1125,18 @@ class TradingSystem:
                     )
 
                     if not decision.approved:
+                        # RiskDecision מגדיר `reason` — לא `rejection_reason`.
+                        # getattr על שם שלא קיים החזיר תמיד '' ונפל לטקסט הגנרי,
+                        # כלומר הסיבה האמיתית נזרקה בכל דחייה.
+                        reject_why = decision.reason or "מחוץ לכללי הסיכון"
                         self.monitor.report(
                             "RiskManager", "reject",
-                            f"{symbol} נדחה — {getattr(decision, 'rejection_reason', '') or 'מחוץ לכללי הסיכון'}",
+                            f"{symbol} נדחה — {reject_why}",
                             symbol=symbol, status="active",
                         )
+                        # ...והיא גם לא הגיעה ללוג בכלל: monitor.report כותב רק
+                        # לטבלת הדשבורד. בלי זה "אין עסקאות" הוא חסר הסבר בקובץ.
+                        logger.info("%s: risk rejected — %s", symbol, reject_why)
 
                     if decision.approved:
                         if "runner" in (decision.reason or ""):
@@ -1842,6 +1860,7 @@ class TradingSystem:
                             "status": "closed",
                             "pnl": result.get("pnl"),
                             "pnl_pct": result.get("pnl_pct"),
+                            "fee": result.get("fee", 0.0),
                             "closed_at": result.get("closed_at"),
                             "close_reason": result.get("close_reason"),
                         },

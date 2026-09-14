@@ -66,7 +66,37 @@ FEATURE_NAMES = [
     'pullback_pct',
     'volume_trend_3',
     'wick_trap_score',
+
+    # --- זרימת פקודות: מ-taker_buy_quote ו-trade_count שנזרקו עד עכשיו.
+    #     ראו את הבלוק המקביל ב-compute_features. ---
+    'taker_buy_ratio',
+    'taker_flow_delta',
+    'taker_flow_ma3',
+    'taker_flow_z',
+    'avg_trade_size_z',
+    'trade_count_z',
 ]
+
+
+def _z_safe(series: pd.Series) -> pd.Series:
+    """
+    z-score שלא מייצר NaN או inf לעולם — 0.0 = "אין חריגה".
+
+    חלוקה ב-`rolling.std()` נשברת בשני מקרים, ושניהם קורים בנתוני אמת:
+    שונות אפס עם מונה אפס נותנת **NaN** (0/0), ושונות אפס עם מונה שונה
+    מאפס נותנת **inf**. `replace([inf,-inf])` תפס רק את השני.
+
+    זה לא היה קוסמטי: `model.train` (דרך `_build_xy`) זורק כל שורה שיש בה
+    NaN, ולכן z בודד עם שונות אפס מוחק שורה שלמה על 45 פיצ'רים תקינים
+    לצידו. במדידה על סדרה עם זרימה שטוחה: 541 מתוך 600 השורות נזרקו,
+    וסט האימון ירד ל-41 שורות. CLAUDE.md דורש במפורש שהפיצ'רים האלה
+    יתפרקו לערך ניטרלי ולא ל-NaN — זה מה שאוכף את זה.
+    """
+    return (
+        series.replace([np.inf, -np.inf], 0.0)
+        .fillna(0.0)
+        .astype(float)
+    )
 
 
 def compute_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -218,6 +248,70 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # If candle closed in lower half but had big upper wick → bull trap
     # If candle closed in upper half but had big lower wick → bear trap
     df['wick_trap_score'] = np.maximum(upper_wick, lower_wick) / full_range
+
+
+    # ========== זרימת פקודות (Order Flow) ==========
+    #
+    # 40 הפיצ'רים שמעליהם נגזרים כולם ממחיר ונפח של נרות — כלומר מה שכבר
+    # קרה. המחקר על מיקרו-מבנה של פרפטואלס בקריפטו מצביע דווקא על *חוסר
+    # האיזון בזרימת הפקודות* ככוח הניבוי בטווח קצר, וזה בדיוק מה שחסר כאן.
+    #
+    # ספר הפקודות החי לא ניתן לשחזור לאחור, ולכן אי אפשר לאמן עליו בלי
+    # לצבור תמונות בעצמנו במשך שבועות. אבל בכל נר של Binance כבר יש שני
+    # שדות שנותנים את אותו מידע בגרסה מצטברת, והם היו נזרקים:
+    #   taker_buy_quote — כמה מהנפח הגיע מקנייה אגרסיבית (מכה בהיצע)
+    #   trade_count     — כמה עסקאות הרכיבו את הנפח
+    #
+    # שניהם היסטוריים, חינם, וכבר נמשכים בכל סריקה.
+    if "taker_buy_quote" in df.columns and "volume" in df.columns:
+        # np.nan ולא pd.NA: `replace(0, pd.NA)` על עמודת float64 מחזיר dtype
+        # object שמכיל NAType, ואז `.astype(float)` זורק
+        # `TypeError: float() argument must be ... not 'NAType'`. זה קרה בכל
+        # סימבול שהיה בו נר אחד בנפח 0 — והחריגה נתפסה בלולאת הסריקה,
+        # כלומר הסימבול נשמט מהיקום כולו בשקט. np.nan הוא float ולכן
+        # ה-dtype נשמר, והשורה מקבלת את ערך הניטרליות למטה.
+        vol = df["volume"].replace(0, np.nan)
+
+        # 0.5 = מאוזן. מעל — קונים אגרסיביים שולטים; מתחת — מוכרים.
+        # נר בנפח 0 מקבל 0.5 (ניטרלי) ולא NaN — `model.train` זורק שורות
+        # עם NaN, וזה היה חותך את סט האימון.
+        df["taker_buy_ratio"] = (
+            (df["taker_buy_quote"] / vol).fillna(0.5).astype(float)
+        )
+        df["taker_flow_delta"] = df["taker_buy_ratio"] - 0.5
+        df["taker_flow_ma3"] = df["taker_flow_delta"].rolling(3).mean()
+
+        # האם הלחץ הנוכחי חריג ביחס לעצמו — ולא סתם רועש
+        roll = df["taker_flow_delta"].rolling(20)
+        df["taker_flow_z"] = _z_safe(
+            (df["taker_flow_delta"] - roll.mean()) / roll.std()
+        )
+    else:
+        for col in ("taker_buy_ratio", "taker_flow_delta",
+                    "taker_flow_ma3", "taker_flow_z"):
+            df[col] = 0.0 if col != "taker_buy_ratio" else 0.5
+
+    if "trade_count" in df.columns and "volume" in df.columns:
+        cnt = df["trade_count"].replace(0, np.nan)   # ראו את ההערה על vol למעלה
+
+        # גודל עסקה ממוצע: מבחין בין "הרבה קטנות" (ריטייל) לבין
+        # "מעט גדולות" (כסף גדול) — באותו נפח בדיוק.
+        # נר בלי עסקאות: ממלאים בחציון, כדי שה-z לא ייבנה על חור.
+        avg_size = (df["volume"] / cnt).astype(float)
+        avg_size = avg_size.fillna(avg_size.median())
+        roll_s = avg_size.rolling(20)
+        df["avg_trade_size_z"] = _z_safe(
+            (avg_size - roll_s.mean()) / roll_s.std()
+        )
+
+        # פרץ פעילות — קפיצה במספר העסקאות מקדימה לעיתים תנועה
+        roll_c = df["trade_count"].rolling(20)
+        df["trade_count_z"] = _z_safe(
+            (df["trade_count"] - roll_c.mean()) / roll_c.std()
+        )
+    else:
+        df["avg_trade_size_z"] = 0.0
+        df["trade_count_z"] = 0.0
 
     return df
 

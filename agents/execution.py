@@ -301,6 +301,107 @@ class ExecutionAgent:
             logger.exception("set_leverage failed for %s: %s", symbol, exc)
             return False
 
+    def place_entry_order(
+        self, symbol: str, side: str, quantity: float
+    ) -> Optional[Dict[str, Any]]:
+        """
+        נתב הכניסה: maker אם הופעל, אחרת MARKET כמו קודם.
+
+        קיים בנפרד מ-`place_market_order` כדי שהיציאות ימשיכו לעבור דרך
+        MARKET תמיד, בלי קשר להגדרה. יציאה שלא נסגרת היא סיכון בלתי מוגבל.
+        """
+        if bool(getattr(self.config, "maker_entry_enabled", False)):
+            order = self.place_maker_entry_order(symbol, side, quantity)
+            if order is not None:
+                return order
+            if not bool(getattr(self.config, "maker_entry_fallback_market", False)):
+                logger.info(
+                    "%s: maker entry unfilled — skipping trade "
+                    "(MAKER_ENTRY_FALLBACK_MARKET=false)", symbol,
+                )
+                return None
+            logger.info("%s: maker entry unfilled — falling back to MARKET", symbol)
+        return self.place_market_order(symbol, side, quantity)
+
+    def place_maker_entry_order(
+        self, symbol: str, side: str, quantity: float
+    ) -> Optional[Dict[str, Any]]:
+        """
+        כניסה כ-maker: LIMIT עם `timeInForce="GTX"` (post-only).
+
+        GTX נדחית מיד אם היא הייתה נסגרת כנגד הספר — כלומר היא *מבטיחה*
+        עמלת maker ולעולם לא תיפול בטעות ל-taker. המחיר נקבע על הצד שלנו
+        בספר (bid לקנייה, ask למכירה), כך שההזמנה ממתינה בתור.
+
+        מחזירה את ההזמנה רק אם התמלאה במלואה בתוך הזמן הקצוב. אחרת מבטלת
+        ומחזירה None — הקורא מחליט אם לוותר או לרדוף.
+
+        למה לא לרדוף כברירת מחדל: אם המחיר ברח מהלימיט, הסטאפ שדורג כבר
+        לא קיים. רדיפה משלמת taker *וגם* נכנסת גרוע יותר.
+        """
+        if self._client is None:
+            return None
+
+        rounded_qty = self._round_quantity(symbol, quantity)
+        if rounded_qty <= 0:
+            return None
+
+        # המחיר הטוב ביותר בצד שלנו — שם הזמנת maker ממתינה בתור
+        try:
+            book = self._client.futures_orderbook_ticker(symbol=symbol)
+            price = float(book["bidPrice"] if side == "BUY" else book["askPrice"])
+        except Exception as exc:
+            logger.warning("%s: book ticker failed (%s) — no maker entry", symbol, exc)
+            return None
+        if price <= 0:
+            return None
+
+        limit_price = self._round_price(symbol, price)
+        order_id = None
+        try:
+            order = self._client.futures_create_order(
+                symbol=symbol,
+                side=side,
+                type="LIMIT",
+                timeInForce="GTX",          # post-only
+                quantity=rounded_qty,
+                price=self._decimal_str(limit_price),
+            )
+            order_id = order.get("orderId")
+        except Exception as exc:
+            # -5022 = ההזמנה הייתה נסגרת מיד; זו התנהגות תקינה של GTX
+            logger.info("%s: maker entry rejected (%s)", symbol, exc)
+            return None
+
+        # המתנה למילוי
+        timeout = float(getattr(self.config, "maker_entry_timeout_sec", 8.0) or 8.0)
+        deadline = time.perf_counter() + timeout
+        while time.perf_counter() < deadline:
+            time.sleep(0.35)
+            try:
+                detail = self._client.futures_get_order(symbol=symbol, orderId=order_id)
+            except Exception as exc:
+                logger.debug("%s: maker order poll failed: %s", symbol, exc)
+                continue
+            status = str(detail.get("status") or "")
+            if status == "FILLED":
+                detail.setdefault("submittedQuantity", self._decimal_str(rounded_qty))
+                logger.info(
+                    "%s: maker entry FILLED @ %s (saved taker fee)",
+                    symbol, detail.get("avgPrice"),
+                )
+                return detail
+            if status in ("CANCELED", "EXPIRED", "REJECTED"):
+                logger.info("%s: maker entry %s", symbol, status)
+                return None
+
+        # לא התמלאה בזמן — מבטלים כדי לא להשאיר הזמנה תלויה בספר
+        try:
+            self._client.futures_cancel_order(symbol=symbol, orderId=order_id)
+        except Exception as exc:
+            logger.warning("%s: failed to cancel maker entry: %s", symbol, exc)
+        return None
+
     def place_market_order(
         self, symbol: str, side: str, quantity: float
     ) -> Optional[Dict[str, Any]]:
@@ -794,6 +895,34 @@ class ExecutionAgent:
         )
         return position
 
+    def _roundtrip_fee(self, entry_price: float, exit_price: float, qty: float) -> float:
+        """
+        עמלת taker על שני צדי העסקה — כניסה ויציאה.
+
+        למה זה קיים: ה-PnL חושב כ-(מחיר יציאה - מחיר כניסה) × כמות, בלי שום
+        ניכוי. בנייר זה הפך כל תוצאה לאופטימית בגובה העמלה, ובפרט הפך עסקאות
+        מפסידות ל"מנצחות": יציאת stale ב-+0.03% על נוטיונל של 12,000 נרשמה
+        כרווח של 0.74 USDT בזמן שהיא עלתה 12 USDT בעמלות.
+
+        Binance גובה על הנוטיונל בכל צד בנפרד, ולכן שני המחירים נספרים.
+        """
+        taker = float(getattr(self.config, "estimated_taker_fee_pct", 0.0) or 0.0)
+        if qty <= 0:
+            return 0.0
+
+        # הכניסה עשויה להיות maker (LIMIT postOnly) אבל היציאה תמיד MARKET,
+        # ולכן שני הצדדים מתומחרים בנפרד ולא כ-taker כפול.
+        if bool(getattr(self.config, "maker_entry_enabled", False)):
+            entry_fee_pct = float(
+                getattr(self.config, "estimated_maker_fee_pct", taker) or taker
+            )
+        else:
+            entry_fee_pct = taker
+
+        if entry_fee_pct <= 0 and taker <= 0:
+            return 0.0
+        return abs(entry_price) * qty * entry_fee_pct + abs(exit_price) * qty * taker
+
     def _paper_close_position(
         self, symbol: str, exit_price: float, reason: str
     ) -> Optional[Dict[str, Any]]:
@@ -808,19 +937,23 @@ class ExecutionAgent:
         side = pos["side"]
 
         if side == "LONG":
-            pnl = (exit_price - entry) * qty
+            gross = (exit_price - entry) * qty
         else:  # SHORT
-            pnl = (entry - exit_price) * qty
+            gross = (entry - exit_price) * qty
+
+        fee = self._roundtrip_fee(entry, exit_price, qty)
+        pnl = gross - fee
 
         pnl_pct = pnl / (entry * qty / self.config.leverage) if entry > 0 else 0.0
 
-        # Return margin + PnL to balance
+        # Return margin + net PnL to balance (fees leave the account for real)
         self._paper_balance += margin + pnl
 
         now = datetime.now(timezone.utc).isoformat()
         logger.info(
-            "[PAPER] Closed %s %s @ %.4f — PnL: %.4f USDT (%.2f%%) reason=%s",
-            side, symbol, exit_price, pnl, pnl_pct * 100, reason,
+            "[PAPER] Closed %s %s @ %.4f — PnL: %.4f USDT (%.2f%%) "
+            "gross=%.4f fee=%.4f reason=%s",
+            side, symbol, exit_price, pnl, pnl_pct * 100, gross, fee, reason,
         )
         return {
             "symbol": symbol,
@@ -830,6 +963,7 @@ class ExecutionAgent:
             "quantity": qty,
             "pnl": round(pnl, 6),
             "pnl_pct": round(pnl_pct, 6),
+            "fee": round(fee, 6),
             "closed_at": now,
             "close_reason": reason,
             "trade_id": pos.get("trade_id"),
@@ -925,7 +1059,7 @@ class ExecutionAgent:
             self.set_leverage(symbol, self.config.leverage)
             binance_side = "BUY" if side == "LONG" else "SELL"
 
-            order = self.place_market_order(symbol, binance_side, quantity)
+            order = self.place_entry_order(symbol, binance_side, quantity)
             if order is None:
                 return None
 
@@ -941,6 +1075,20 @@ class ExecutionAgent:
 
             # Snap SL/TP to the actual fill and place exchange-side protective
             # orders so the position survives a bot outage.
+            # Same re-anchoring as the HFT path: SL/TP were derived from the
+            # signal's reference price, so a fill away from it shrinks the stop
+            # and stretches the target. Keep their distances, move their anchor.
+            if entry_price > 0 and filled_price > 0 and filled_price != entry_price:
+                ratio = filled_price / entry_price
+                sl_before, tp_before = sl_price, tp_price
+                sl_price, tp_price = sl_price * ratio, tp_price * ratio
+                logger.info(
+                    "%s: re-anchored SL/TP to fill %.6f (ref %.6f, %.4f%%): "
+                    "SL %.6f->%.6f TP %.6f->%.6f",
+                    symbol, filled_price, entry_price, (ratio - 1.0) * 100,
+                    sl_before, sl_price, tp_before, tp_price,
+                )
+
             sl_price, tp_price = self.refine_sl_tp_prices(
                 symbol, side, filled_price, sl_price, tp_price
             )
@@ -1002,6 +1150,7 @@ class ExecutionAgent:
                     "exit_price": result["exit_price"],
                     "pnl": result["pnl"],
                     "pnl_pct": result["pnl_pct"],
+                    "fee": result.get("fee", 0.0),
                     "status": "closed",
                     "closed_at": result["closed_at"],
                     "close_reason": reason,
@@ -1077,9 +1226,12 @@ class ExecutionAgent:
         is_long = (side == "SELL")
 
         if is_long:
-            pnl = (exit_price - entry_price) * closed_qty
+            gross = (exit_price - entry_price) * closed_qty
         else:
-            pnl = (entry_price - exit_price) * closed_qty
+            gross = (entry_price - exit_price) * closed_qty
+
+        fee = self._roundtrip_fee(entry_price, exit_price, closed_qty)
+        pnl = gross - fee
 
         pnl_pct = (
             pnl / (entry_price * closed_qty / self.config.leverage)
@@ -1099,6 +1251,7 @@ class ExecutionAgent:
             "quantity": closed_qty,
             "pnl": round(pnl, 6),
             "pnl_pct": round(pnl_pct, 6),
+            "fee": round(fee, 6),
             "closed_at": datetime.now(timezone.utc).isoformat(),
             "close_reason": reason,
             "trade_id": trade_id,
@@ -1403,7 +1556,7 @@ class ExecutionAgent:
             self.set_leverage(symbol, self.config.leverage)
             binance_side = "BUY" if direction == "LONG" else "SELL"
 
-            order = self.place_market_order(symbol, binance_side, quantity)
+            order = self.place_entry_order(symbol, binance_side, quantity)
             if order is None:
                 logger.error("HFT market order failed for %s", symbol)
                 return None
@@ -1437,6 +1590,24 @@ class ExecutionAgent:
                 symbol, self._last_slippage * 100, self._last_latency_ms,
                 signal_to_fill_ms, entry_price, filled_price,
             )
+
+            # SL/TP arrived as absolute price levels derived from the reference
+            # price the scanner ranked on. A fill away from that price silently
+            # rescales the risk/reward the risk manager approved: an adverse fill
+            # moves the stop closer and the target further, in the same direction.
+            # Re-anchor both to the price actually paid, keeping their original
+            # distances. Scaling by the ratio is direction-agnostic — for
+            # sl = entry*(1-d), sl*(filled/entry) == filled*(1-d).
+            if entry_price > 0 and filled_price > 0 and filled_price != entry_price:
+                ratio = filled_price / entry_price
+                sl_before, tp_before = sl, tp
+                sl, tp = sl * ratio, tp * ratio
+                logger.info(
+                    "HFT %s: re-anchored SL/TP to fill %.6f (ref %.6f, %.4f%%): "
+                    "SL %.6f->%.6f TP %.6f->%.6f",
+                    symbol, filled_price, entry_price, (ratio - 1.0) * 100,
+                    sl_before, sl, tp_before, tp,
+                )
 
             sl, tp = self.refine_sl_tp_prices(symbol, direction, filled_price, sl, tp)
             trade_dict["sl_price"] = sl
@@ -1524,6 +1695,7 @@ class ExecutionAgent:
                     "exit_price": result["exit_price"],
                     "pnl": result["pnl"],
                     "pnl_pct": result["pnl_pct"],
+                    "fee": result.get("fee", 0.0),
                     "status": "closed",
                     "closed_at": result["closed_at"],
                     "close_reason": result.get("close_reason") or reason,
