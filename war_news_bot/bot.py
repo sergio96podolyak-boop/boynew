@@ -16,6 +16,8 @@ Telegram news bot — worldwide missile launch / attack reports, in Hebrew & Eng
     NEWS_MAX_AGE_MIN     להתעלם מידיעות ישנות מ-X דקות (ברירת מחדל 90)
     NEWS_CHANNEL_NAME    חתימה בסוף כל הודעה (ברירת מחדל "🚀 מאיפה משגרים | Where From?")
     NEWS_CHANNEL_HANDLE  כתובת הערוץ שתופיע בחתימה, למשל @WhereFromLive (אופציונלי)
+    NEWS_TG_CHANNELS     ערוצי טלגרם ציבוריים לניטור דיווחי שיגור, מופרדים בפסיק (ch1,ch2)
+    NEWS_SOCIAL_MIN_SOURCES  כמה ערוצים שונים צריכים לדווח לפני פרסום (ברירת מחדל 2)
 """
 from __future__ import annotations
 
@@ -41,8 +43,10 @@ except ImportError:  # python-dotenv אופציונלי
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
+    from war_news_bot.social import KEYWORDS_AR, detect_route, fetch_channel, route_line
 else:
     from .sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
+    from .social import KEYWORDS_AR, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -72,7 +76,7 @@ EXCLUDE = [
     r"rocket lab", r"spacex", r"starship", r"satellite launch", r"video game", r"movie",
     r"מניות", r"בורסה", r"כדורגל", r"כדורסל",
 ]
-_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE), re.IGNORECASE)
+_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR), re.IGNORECASE)
 _EXC = re.compile("|".join(EXCLUDE), re.IGNORECASE)
 
 
@@ -113,25 +117,38 @@ def _flag(item: NewsItem) -> str:
     t = f"{item.title} {item.summary}".lower()
     if item.is_alert or "צבע אדום" in t or "siren" in t:
         return "🚨"
-    if "ballistic" in t or "בליסטי" in t or "missile" in t or "טיל" in t:
+    if any(k in t for k in ("ballistic", "בליסטי", "missile", "טיל", "صاروخ", "صواريخ", "باليستي")):
         return "🚀"
-    if "drone" in t or "כטב" in t or "uav" in t:
+    if "drone" in t or "כטב" in t or "uav" in t or "مسير" in t:
         return "🛩"
     return "💥"
 
 
 def format_message(item: NewsItem, he_title: str, en_title: str,
-                   he_summary: str = "", en_summary: str = "") -> str:
+                   he_summary: str = "", en_summary: str = "",
+                   corroborated_by: int = 1) -> str:
     e = html.escape
     when = (item.published or datetime.now(timezone.utc)).astimezone(IL_TZ).strftime("%H:%M %d/%m")
     icon = _flag(item)
-    parts = [f"{icon} <b>{e(he_title or item.title)}</b>"]
+    social = bool(item.extra.get("social"))
+    route_he, route_en = route_line(*detect_route(f"{item.title} {item.summary}"))
+    parts = []
+    if social:
+        parts.append("⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b> | <i>Unverified early report</i>")
+        if corroborated_by > 1:
+            parts.append(f"👥 מדווח ב־{corroborated_by} ערוצים | Reported by {corroborated_by} channels")
+        parts.append("")
+    parts.append(f"{icon} <b>{e(he_title or item.title)}</b>")
     if he_summary:
         parts.append(e(he_summary))
+    if route_he:
+        parts.append(route_he)
     parts.append("")
     parts.append(f"{icon} <b>{e(en_title or item.title)}</b>")
     if en_summary:
         parts.append(e(en_summary))
+    if route_en:
+        parts.append(route_en)
     parts.append("")
     footer = f"🕒 {when}  |  📰 {e(item.source)}"
     if item.link and item.link.startswith("http"):
@@ -146,10 +163,16 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     return "\n".join(parts)
 
 
-def build_message(item: NewsItem, session: Optional[requests.Session] = None) -> str:
+def build_message(item: NewsItem, session: Optional[requests.Session] = None,
+                  corroborated_by: int = 1) -> str:
     summary = item.summary if item.summary and item.summary not in item.title else ""
     summary = summary[:280]
-    if item.lang == "he":
+    if item.lang == "ar":
+        he_title = translate(item.title, "iw", "ar", session) or item.title
+        en_title = translate(item.title, "en", "ar", session) or item.title
+        he_sum = translate(summary, "iw", "ar", session) if summary else ""
+        en_sum = translate(summary, "en", "ar", session) if summary else ""
+    elif item.lang == "he":
         he_title, he_sum = item.title, summary
         en_title = translate(item.title, "en", "iw", session) or item.title
         en_sum = translate(summary, "en", "iw", session) if summary else ""
@@ -157,7 +180,7 @@ def build_message(item: NewsItem, session: Optional[requests.Session] = None) ->
         en_title, en_sum = item.title, summary
         he_title = translate(item.title, "iw", "en", session) or item.title
         he_sum = translate(summary, "iw", "en", session) if summary else ""
-    return format_message(item, he_title, en_title, he_sum, en_sum)
+    return format_message(item, he_title, en_title, he_sum, en_sum, corroborated_by)
 
 
 # --------------------------------------------------------------------------- #
@@ -182,9 +205,14 @@ class Telegram:
             raise RuntimeError(f"Telegram {method} failed: {data.get('description')}")
         return data
 
-    def send(self, text: str) -> None:
-        self.call("sendMessage", chat_id=self.chat_id, text=text, parse_mode="HTML",
-                  disable_web_page_preview=True)
+    def send(self, text: str) -> Optional[int]:
+        data = self.call("sendMessage", chat_id=self.chat_id, text=text, parse_mode="HTML",
+                         disable_web_page_preview=True)
+        return (data.get("result") or {}).get("message_id")
+
+    def edit(self, message_id: int, text: str) -> None:
+        self.call("editMessageText", chat_id=self.chat_id, message_id=message_id, text=text,
+                  parse_mode="HTML", disable_web_page_preview=True)
 
 
 def find_chat_id(token: str) -> None:
@@ -255,14 +283,21 @@ def collect(session: requests.Session, oref: bool) -> List[NewsItem]:
     return items
 
 
-def select_new(items: Iterable[NewsItem], seen: SeenStore, max_age: timedelta) -> List[NewsItem]:
+def select_new(items: Iterable[NewsItem], seen: SeenStore, max_age: timedelta,
+               social_max_age: Optional[timedelta] = None) -> List[NewsItem]:
     now = datetime.now(timezone.utc)
     out, batch = [], set()
     for it in items:
-        uid = f"oref:{it.extra.get('id')}" if it.is_alert and it.extra.get("id") else it.uid
+        if it.extra.get("uid"):
+            uid = it.extra["uid"]
+        elif it.is_alert and it.extra.get("id"):
+            uid = f"oref:{it.extra.get('id')}"
+        else:
+            uid = it.uid
         if uid in seen or uid in batch:
             continue
-        if it.published and now - it.published > max_age:
+        limit = social_max_age if (it.extra.get("social") and social_max_age) else max_age
+        if it.published and now - it.published > limit:
             continue
         if not is_relevant(it):
             continue
@@ -272,6 +307,39 @@ def select_new(items: Iterable[NewsItem], seen: SeenStore, max_age: timedelta) -
     # התרעות קודם, אח"כ מהישן לחדש
     out.sort(key=lambda i: (not i.is_alert, i.published or now))
     return out
+
+
+class SocialClusters:
+    """
+    מאחד דיווחי רשת על אותו אירוע: דיווחים מערוצים שונים עם אותו מקור שיגור
+    בתוך חלון זמן קצר = אירוע אחד. ההודעה נשלחת כשמגיעים ל-min_sources ערוצים,
+    ודיווחים נוספים רק מעדכנים את מונה הערוצים בהודעה הקיימת (עריכה).
+    """
+
+    def __init__(self, window: timedelta, min_sources: int):
+        self.window, self.min_sources = window, max(1, min_sources)
+        self.clusters: List[dict] = []
+
+    def add(self, item: NewsItem, now: Optional[datetime] = None) -> Optional[dict]:
+        now = now or datetime.now(timezone.utc)
+        self.clusters = [c for c in self.clusters if now - c["started"] <= self.window]
+        origin, _ = detect_route(f"{item.title} {item.summary}")
+        key = origin or "?"
+        c = next((c for c in self.clusters if c["key"] == key), None)
+        if c is None:
+            c = {"key": key, "started": now, "channels": set(), "item": item, "message_id": None}
+            self.clusters.append(c)
+        channel = item.extra.get("channel", "")
+        if channel in c["channels"]:
+            return None  # אותו ערוץ שוב — לא מחזק את הדיווח
+        c["channels"].add(channel)
+        n = len(c["channels"])
+        if n < self.min_sources:
+            return None
+        if c["message_id"] is None and not c.get("sent"):
+            c["sent"] = True
+            return {"action": "send", "cluster": c, "item": c["item"], "count": n}
+        return {"action": "edit", "cluster": c, "item": c["item"], "count": n}
 
 
 def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
@@ -284,48 +352,84 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
     oref = _env_bool("NEWS_OREF_ENABLED", True)
     max_age = timedelta(minutes=int(os.getenv("NEWS_MAX_AGE_MIN", "90")))
     max_per_cycle = int(os.getenv("NEWS_MAX_PER_CYCLE", "15"))
+    channels = [c.strip().lstrip("@") for c in os.getenv("NEWS_TG_CHANNELS", "").split(",") if c.strip()]
+    social_poll = max(10, int(os.getenv("NEWS_SOCIAL_POLL_SECONDS", "15")))
+    social_max_age = timedelta(minutes=int(os.getenv("NEWS_SOCIAL_MAX_AGE_MIN", "15")))
+    clusters = SocialClusters(
+        window=timedelta(minutes=int(os.getenv("NEWS_SOCIAL_WINDOW_MIN", "10"))),
+        min_sources=int(os.getenv("NEWS_SOCIAL_MIN_SOURCES", "2")),
+    )
 
     session = requests.Session()
     tg = Telegram(token, chat_id, session) if not dry_run else None
     seen = SeenStore(STATE_FILE)
 
+    def fetch_social() -> List[NewsItem]:
+        out: List[NewsItem] = []
+        for ch in channels:
+            out.extend(fetch_channel(ch, session))
+        return out
+
     # בהפעלה ראשונה: מסמנים את מה שכבר קיים כ"נראה" כדי לא להציף את הקבוצה
     if warmup and not seen.items and not dry_run:
-        for it in collect(session, oref=False):
-            seen.add(it.uid)
+        for it in collect(session, oref=False) + fetch_social():
+            seen.add(it.extra.get("uid") or it.uid)
         seen.save()
         logger.info("Warm-up: marked %d existing items as seen", len(seen.items))
+    if channels:
+        logger.info("Watching %d Telegram channels (min %d sources to post)",
+                    len(channels), clusters.min_sources)
 
-    last_rss = 0.0
+    def post(text: str) -> Optional[int]:
+        if dry_run:
+            print(text, "\n" + "-" * 60)
+            return None
+        mid = tg.send(text)
+        time.sleep(1.2)  # מתחת למגבלת 20 הודעות/דקה לקבוצה
+        return mid
+
+    last_rss = last_social = 0.0
     while True:
         started = time.time()
         try:
+            items: List[NewsItem] = []
+            if oref:
+                items.extend(fetch_oref_alerts(session))  # כל 5 שניות
             if started - last_rss >= poll:
-                items = collect(session, oref)
+                items.extend(collect(session, oref=False))
                 last_rss = started
-            else:  # בין סבבי RSS — בודקים רק פיקוד העורף (כל 5 שניות)
-                items = fetch_oref_alerts(session) if oref else []
-            new = select_new(items, seen, max_age)[:max_per_cycle]
+            if channels and started - last_social >= social_poll:
+                items.extend(fetch_social())
+                last_social = started
+            new = select_new(items, seen, max_age, social_max_age)[:max_per_cycle]
+            sent = 0
             for it in new:
-                msg = build_message(it, session)
-                if dry_run:
-                    print(msg, "\n" + "-" * 60)
-                else:
-                    try:
-                        tg.send(msg)
-                    except (RuntimeError, requests.RequestException) as e:
-                        logger.error("send failed: %s", e)
-                        continue
-                    time.sleep(1.2)  # מתחת למגבלת 20 הודעות/דקה לקבוצה
+                try:
+                    if it.extra.get("social"):
+                        act = clusters.add(it)
+                        if act and act["action"] == "send":
+                            act["cluster"]["message_id"] = post(
+                                build_message(act["item"], session, act["count"]))
+                            sent += 1
+                        elif act and act["action"] == "edit" and act["cluster"]["message_id"]:
+                            tg.edit(act["cluster"]["message_id"],
+                                    build_message(act["item"], session, act["count"]))
+                    else:
+                        post(build_message(it, session))
+                        sent += 1
+                except (RuntimeError, requests.RequestException) as e:
+                    logger.error("send failed: %s", e)
+                    continue
                 seen.add(it.extra["uid"])
             if new:
                 seen.save()
-                logger.info("Posted %d new items", len(new))
+            if sent:
+                logger.info("Posted %d new items", sent)
         except Exception:  # הלולאה לא נופלת על שגיאה בודדת
             logger.exception("cycle error")
         if once:
             break
-        time.sleep(5 if oref else poll)
+        time.sleep(5 if (oref or channels) else poll)
 
 
 def main() -> None:
