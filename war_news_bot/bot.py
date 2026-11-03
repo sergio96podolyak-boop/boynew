@@ -43,10 +43,10 @@ except ImportError:  # python-dotenv אופציונלי
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from war_news_bot.social import KEYWORDS_AR, detect_route, fetch_channel, route_line
+    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, detect_event, detect_route, fetch_channel, route_line
 else:
     from .sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from .social import KEYWORDS_AR, detect_route, fetch_channel, route_line
+    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, detect_event, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -64,19 +64,26 @@ KEYWORDS_EN = [
     r"drone (attack|strike)", r"\buav\b", r"shahed", r"intercept(ed|ion|or)", r"iron dome",
     r"sirens? (sound|blar|went off)", r"launch(ed|es)? .{0,30}(toward|at|into)", r"barrage",
     r"bombard", r"shelling", r"explosions? (heard|reported|rock)",
+    r"\bstrik(e|es|ing) (on|at|in|against|targets?)", r"\bstruck\b", r"\bairstrikes?\b",
+    r"\b(strikes?|struck|hits?|bomb(s|ed)?) (\w+ ){0,2}(targets|positions|sites|bases|facilit)",
+    r"attack(s|ed)? (on|in|against|targets?)", r"\braids?\b on", r"\bpound(s|ed|ing)\b",
+    r"(ukrain|russia)\w* (drone|missile|strike|attack)", r"glide bombs?", r"kamikaze",
+    r"forces (strike|struck|hit|attack)", r"strik\w* (\S+ ){0,3}(militia|militants|fighters|commander)",
 ]
 KEYWORDS_HE = [
     r"טיל", r"טילים", r"רקט", r"שיגור", r"שוגר", r"ירי", r"יירוט", r"יורט", r"כיפת ברזל",
     r"אזעק", r"צבע אדום", r"כטב\"?ם", r"רחפן נפץ", r"תקיפה", r"תקף", r"הפצצ", r"פיצוצ",
-    r"חדירת כלי טיס",
+    r"חדירת כלי טיס", r"הותקף", r"הותקפו", r"מתקפ", r"תקיפות",
 ]
 # מילים שמסמנות "רעש" (ספורט, בורסה וכו')
 EXCLUDE = [
     r"stock", r"shares", r"nasdaq", r"football", r"soccer", r"\bnba\b", r"rocket league",
     r"rocket lab", r"spacex", r"starship", r"satellite launch", r"video game", r"movie",
     r"מניות", r"בורסה", r"כדורגל", r"כדורסל",
+    r"hunger strike", r"general strike", r"workers? (on )?strike", r"strike action", r"on strike",
+    r"heart attack", r"panic attack", r"cyber", r"shark attack", r"lucky strike", r"bowling",
 ]
-_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR), re.IGNORECASE)
+_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR + KEYWORDS_RU_UA), re.IGNORECASE)
 _EXC = re.compile("|".join(EXCLUDE), re.IGNORECASE)
 
 
@@ -131,7 +138,9 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     when = (item.published or datetime.now(timezone.utc)).astimezone(IL_TZ).strftime("%H:%M %d/%m")
     icon = _flag(item)
     social = bool(item.extra.get("social"))
-    route_he, route_en = route_line(*detect_route(f"{item.title} {item.summary}"))
+    route_he, route_en = route_line(*detect_event(f"{item.title} {item.summary}"))
+    if not route_he and en_title:  # גיבוי: זיהוי על התרגום לאנגלית
+        route_he, route_en = route_line(*detect_event(f"{en_title} {en_summary}"))
     parts = []
     if social:
         parts.append("⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b> | <i>Unverified early report</i>")
@@ -167,11 +176,12 @@ def build_message(item: NewsItem, session: Optional[requests.Session] = None,
                   corroborated_by: int = 1) -> str:
     summary = item.summary if item.summary and item.summary not in item.title else ""
     summary = summary[:280]
-    if item.lang == "ar":
-        he_title = translate(item.title, "iw", "ar", session) or item.title
-        en_title = translate(item.title, "en", "ar", session) or item.title
-        he_sum = translate(summary, "iw", "ar", session) if summary else ""
-        en_sum = translate(summary, "en", "ar", session) if summary else ""
+    if item.lang not in ("he", "en"):  # ערבית / רוסית / אוקראינית → מתרגמים לשתיהן
+        src = "ar" if item.lang == "ar" else "auto"
+        he_title = translate(item.title, "iw", src, session) or item.title
+        en_title = translate(item.title, "en", src, session) or item.title
+        he_sum = translate(summary, "iw", src, session) if summary else ""
+        en_sum = translate(summary, "en", src, session) if summary else ""
     elif item.lang == "he":
         he_title, he_sum = item.title, summary
         en_title = translate(item.title, "en", "iw", session) or item.title

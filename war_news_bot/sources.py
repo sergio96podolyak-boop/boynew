@@ -64,11 +64,17 @@ DEFAULT_FEEDS = [
     ("Google News", _google_news('"missile strike" OR "air raid" OR "sirens sounded" OR "intercepted"', "en"), "en"),
     ("Google News", _google_news('שיגור טילים OR ירי רקטות OR אזעקות OR יירוט', "he"), "he"),
     ("Google News", _google_news('תקיפה אווירית OR כטב"ם OR טיל בליסטי', "he"), "he"),
+    ("Google News", _google_news('"Russian strike" OR "Russian missile" OR "Russian drones" OR "Shahed drones"', "en"), "en"),
+    ("Google News", _google_news('"Ukrainian drones" OR "Ukrainian strike" OR "Ukraine attacks" OR "air raid alert" Ukraine', "en"), "en"),
+    ("Google News", _google_news('"Israeli strike" OR "Israeli airstrike" OR "US strike" OR "strikes on"', "en"), "en"),
+    ("Google News", _google_news('רוסיה תקפה OR מתקפה על אוקראינה OR מתקפת רחפנים OR צה"ל תקף', "he"), "he"),
     # אתרי חדשות ישירים
     ("Times of Israel", "https://www.timesofisrael.com/feed/", "en"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml", "en"),
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "en"),
     ("Kyiv Independent", "https://kyivindependent.com/news-archive/rss/", "en"),
+    ("Ukrainska Pravda", "https://www.pravda.com.ua/eng/rss/", "en"),
+    ("Meduza", "https://meduza.io/rss/en/all", "en"),
     ("ynet מבזקים", "https://www.ynet.co.il/Integration/StoryRss1854.xml", "he"),
     ("וואלה חדשות", "https://rss.walla.co.il/feed/1?type=main", "he"),
 ]
