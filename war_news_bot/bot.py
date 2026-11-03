@@ -36,7 +36,9 @@ import requests
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # קודם קובץ ההגדרות של הבוט עצמו (war_news_bot/.env), אחר כך ה-.env הראשי של הפרויקט
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 except ImportError:  # python-dotenv אופציונלי
     pass
 
@@ -258,6 +260,62 @@ class Telegram:
     def edit(self, message_id: int, text: str) -> None:
         self.call("editMessageText", chat_id=self.chat_id, message_id=message_id, text=text,
                   parse_mode="HTML", disable_web_page_preview=True)
+
+
+CHANNEL_DESCRIPTION = (
+    "🚀 דיווחים בזמן אמת על שיגורי טילים, רחפנים ותקיפות מכל העולם — "
+    "ישראל, המזרח התיכון, רוסיה ואוקראינה ועוד. בעברית ובאנגלית.\n"
+    "Real-time global missile, drone & strike reports — HE/EN.\n"
+    "⚠️ אינו מחליף את פיקוד העורף"
+)
+
+WELCOME = (
+    "🚀 <b>ברוכים הבאים ל־מאיפה משגרים | Where From?</b>\n\n"
+    "כאן מתפרסמים <b>אוטומטית ובזמן אמת</b> דיווחים על שיגורי טילים, רקטות, כטב\"מים ותקיפות — "
+    "מישראל, המזרח התיכון, רוסיה, אוקראינה ועוד מדינות. כל דיווח בעברית ובאנגלית.\n\n"
+    "<b>מקורות:</b> התרעות פיקוד העורף, אתרי חדשות בעולם, וכ־25 ערוצי טלגרם בעברית, ערבית, רוסית ואוקראינית.\n\n"
+    "<b>מה אומרים הסימונים:</b>\n"
+    "✅ <b>התרעה רשמית</b> — פיקוד העורף\n"
+    "⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b> — מערוצי טלגרם (👥 = כמה ערוצים דיווחו)\n"
+    "⚠️ <b>פרטים לא ברורים</b> — לא זוהה מי שיגר/תקף ולאן\n"
+    "📍 מקור ויעד שיגור  |  🎯 תוקף ויעד בתקיפה\n"
+    "🚨 אזעקה  🚀 טילים  🛩 כטב\"מים  💥 תקיפות\n\n"
+    "⚠️ <b>הערוץ אוטומטי ואינו מחליף את אפליקציית פיקוד העורף.</b> בזמן אזעקה — פעלו לפי הנחיות פיקוד העורף.\n\n"
+    "━━━━━━━━━━━━\n"
+    "🚀 <b>Welcome to Where From?</b>\n"
+    "Automated, real-time reports of missile, rocket, drone launches and strikes worldwide — in Hebrew and English.\n"
+    "✅ official alert  ⚠️ unverified report  📍 origin → target  🎯 attacker → target\n"
+    "<i>Not a substitute for official civil-defense alerts.</i>"
+)
+
+
+def setup_channel(token: str, chat_id: str, logo_path: str) -> None:
+    """מגדיר את הערוץ: תמונה, תיאור, הודעת פתיחה נעוצה."""
+    s = requests.Session()
+    tg = Telegram(token, chat_id, s)
+    api = TELEGRAM_API.format(token=token, method="setChatPhoto")
+    try:
+        with open(logo_path, "rb") as f:
+            r = s.post(api, data={"chat_id": chat_id}, files={"photo": f}, timeout=30).json()
+        print("תמונת ערוץ:", "✅" if r.get("ok") else f"❌ {r.get('description')}")
+    except OSError as e:
+        print("תמונת ערוץ: ❌", e)
+    for label, fn in [
+        ("תיאור ערוץ", lambda: tg.call("setChatDescription", chat_id=chat_id, description=CHANNEL_DESCRIPTION)),
+        ("הודעת פתיחה", lambda: setattr(tg, "_welcome", tg.send(WELCOME))),
+    ]:
+        try:
+            fn()
+            print(f"{label}: ✅")
+        except (RuntimeError, requests.RequestException) as e:
+            print(f"{label}: ❌ {e}")
+    mid = getattr(tg, "_welcome", None)
+    if mid:
+        try:
+            tg.call("pinChatMessage", chat_id=chat_id, message_id=mid, disable_notification=True)
+            print("נעיצת הודעה: ✅")
+        except (RuntimeError, requests.RequestException) as e:
+            print(f"נעיצת הודעה: ❌ {e}")
 
 
 def find_chat_id(token: str) -> None:
@@ -516,6 +574,7 @@ def main() -> None:
     p.add_argument("--no-warmup", action="store_true", help="לשלוח גם ידיעות קיימות בהפעלה ראשונה")
     p.add_argument("--find-chat-id", action="store_true", help="הצג chat_id של קבוצות שהבוט בהן")
     p.add_argument("--check-channels", action="store_true", help="בדוק אילו ערוצי טלגרם נגישים ומה הם מפרסמים")
+    p.add_argument("--setup-channel", action="store_true", help="הגדר לערוץ תמונה, תיאור והודעת פתיחה נעוצה")
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if a.find_chat_id:
@@ -523,6 +582,12 @@ def main() -> None:
         if not token:
             sys.exit("הגדר NEWS_BOT_TOKEN ב-.env קודם")
         find_chat_id(token)
+        return
+    if a.setup_channel:
+        token, chat = os.getenv("NEWS_BOT_TOKEN", "").strip(), os.getenv("NEWS_CHAT_ID", "").strip()
+        if not token or not chat:
+            sys.exit("חסר NEWS_BOT_TOKEN או NEWS_CHAT_ID")
+        setup_channel(token, chat, os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png"))
         return
     if a.check_channels:
         check_channels()
