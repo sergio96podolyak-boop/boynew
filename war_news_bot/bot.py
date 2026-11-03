@@ -43,10 +43,10 @@ except ImportError:  # python-dotenv אופציונלי
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, detect_event, detect_route, fetch_channel, route_line
+    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, PRETRANSLATE, apply_hint, detect_event, detect_route, fetch_channel, route_line
 else:
     from .sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, detect_event, detect_route, fetch_channel, route_line
+    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, PRETRANSLATE, apply_hint, detect_event, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -131,6 +131,16 @@ def _flag(item: NewsItem) -> str:
     return "💥"
 
 
+def event_for(item: NewsItem, en_title: str = "", en_summary: str = ""):
+    """(סוג, מקור, יעד) — מהטקסט, גיבוי מהתרגום לאנגלית, ותיקון לפי ערוץ המקור."""
+    ev = detect_event(f"{item.title} {item.summary}")
+    if not ev[1] and en_title:
+        ev = detect_event(f"{en_title} {en_summary}")
+    if item.extra.get("social"):
+        ev = apply_hint(item.extra.get("channel", ""), *ev)
+    return ev
+
+
 def format_message(item: NewsItem, he_title: str, en_title: str,
                    he_summary: str = "", en_summary: str = "",
                    corroborated_by: int = 1) -> str:
@@ -138,9 +148,7 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     when = (item.published or datetime.now(timezone.utc)).astimezone(IL_TZ).strftime("%H:%M %d/%m")
     icon = _flag(item)
     social = bool(item.extra.get("social"))
-    route_he, route_en = route_line(*detect_event(f"{item.title} {item.summary}"))
-    if not route_he and en_title:  # גיבוי: זיהוי על התרגום לאנגלית
-        route_he, route_en = route_line(*detect_event(f"{en_title} {en_summary}"))
+    route_he, route_en = route_line(*event_for(item, en_title, en_summary))
     # רמת אמינות: רשמי (פיקוד העורף) / דיווח רשת / ידיעה שבה לא זוהה מי שיגר-תקף ולאן
     unclear = not item.is_alert and not route_he
     parts = []
@@ -188,10 +196,13 @@ def build_message(item: NewsItem, session: Optional[requests.Session] = None,
     summary = summary[:280]
     if item.lang not in ("he", "en"):  # ערבית / רוסית / אוקראינית → מתרגמים לשתיהן
         src = "ar" if item.lang == "ar" else "auto"
-        he_title = translate(item.title, "iw", src, session) or item.title
-        en_title = translate(item.title, "en", src, session) or item.title
-        he_sum = translate(summary, "iw", src, session) if summary else ""
-        en_sum = translate(summary, "en", src, session) if summary else ""
+        title, summ = item.title, summary
+        for rx, repl in PRETRANSLATE:
+            title, summ = rx.sub(repl, title), rx.sub(repl, summ)
+        he_title = translate(title, "iw", src, session) or item.title
+        en_title = translate(title, "en", src, session) or item.title
+        he_sum = translate(summ, "iw", src, session) if summ else ""
+        en_sum = translate(summ, "en", src, session) if summ else ""
     elif item.lang == "he":
         he_title, he_sum = item.title, summary
         en_title = translate(item.title, "en", "iw", session) or item.title
@@ -344,13 +355,18 @@ class SocialClusters:
     def add(self, item: NewsItem, now: Optional[datetime] = None) -> Optional[dict]:
         now = now or datetime.now(timezone.utc)
         self.clusters = [c for c in self.clusters if now - c["started"] <= self.window]
-        origin, _ = detect_route(f"{item.title} {item.summary}")
-        key = origin or "?"
+        _, origin, _ = event_for(item)
+        channel = item.extra.get("channel", "")
+        if origin:
+            key = origin
+        elif channel.lower() in self.trusted:
+            key = "?" + item.extra.get("uid", item.uid)  # לא ברור, אבל מערוץ מהימן — הודעה נפרדת
+        else:
+            return None  # לא ברור ומערוץ לא מהימן — לא מפרסמים
         c = next((c for c in self.clusters if c["key"] == key), None)
         if c is None:
             c = {"key": key, "started": now, "channels": set(), "item": item, "message_id": None}
             self.clusters.append(c)
-        channel = item.extra.get("channel", "")
         if channel in c["channels"]:
             return None  # אותו ערוץ שוב — לא מחזק את הדיווח
         c["channels"].add(channel)

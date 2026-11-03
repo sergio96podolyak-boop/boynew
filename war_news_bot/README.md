@@ -56,17 +56,36 @@
 
 | ערוץ | מה הוא | מהימן* |
 |---|---|---|
-| [@abualiexpress](https://t.me/abualiexpress) | אבו עלי אקספרס: הזירה הערבית בעברית (עזה, לבנון, סוריה, עיראק, איראן) | ✅ |
-| [@AbuAliEnglish](https://t.me/AbuAliEnglish) | Abu Ali Express באנגלית | |
-| [@manniefabian](https://t.me/manniefabian) | עמנואל פביאן (Times of Israel): לרוב מדווח על שיגורים בליסטיים לפני האזעקות | ✅ |
-| [@IL_RedAlerts](https://t.me/IL_RedAlerts) | התרעות טילים וכטב"מים בישראל | |
-| [@ILRedAlertNews](https://t.me/ILRedAlertNews) | שיגורים, פיצוצים, התרעות מוקדמות | |
-| [@OSINTdefender](https://t.me/OSINTdefender) | OSINT עולמי: המזרח התיכון, רוסיה ואוקראינה | |
-| [@osint613](https://t.me/osint613) | OSINT מהמזרח התיכון | |
-| [@kpszsu](https://t.me/kpszsu) | חיל האוויר של אוקראינה: ערוץ רשמי | ✅ |
-| [@noel_reports](https://t.me/noel_reports) | עדכוני מלחמת רוסיה ואוקראינה | |
+| [@abualiexpress](https://t.me/abualiexpress) | אבו עלי אקספרס — הזירה הערבית בעברית | ✅ |
+| [@manniefabian](https://t.me/manniefabian) | עמנואל פביאן (Times of Israel) — שיגורים לפני האזעקות | ✅ |
+| [@ILRedAlertNews](https://t.me/ILRedAlertNews) | ILRedAlert News — שיגורים, פיצוצים, התרעות מוקדמות |  |
+| [@ramreports](https://t.me/ramreports) | מבזקי רעם — מבזקים בזמן אמת |  |
+| [@amitsegal](https://t.me/amitsegal) | עמית סגל — חדשות ופוליטיקה |  |
+| [@OSINTdefender](https://t.me/OSINTdefender) | OSINTdefender — OSINT עולמי |  |
+| [@osint613](https://t.me/osint613) | OSINT613 — המזרח התיכון |  |
+| [@almayadeen](https://t.me/almayadeen) | الميادين — חדשות עאג'ל (לבנון/תימן) |  |
+| [@ajanews](https://t.me/ajanews) | الجزيرة — מבזקי אל-ג'זירה |  |
+| [@alyemenchannel](https://t.me/alyemenchannel) | قناة اليمن الفضائية — תימן |  |
+| [@Alyemennet](https://t.me/Alyemennet) | اليمن نت — תימן, לבנון, איראן |  |
+| [@newsyemn](https://t.me/newsyemn) | أخبار اليمن العاجلة — תימן/לבנון/עזה/איראן |  |
+| [@kpszsu](https://t.me/kpszsu) | חיל האוויר של אוקראינה — רשמי | ✅ |
+| [@war_monitor](https://t.me/war_monitor) | War Monitor — ניטור טילים ורחפנים בזמן אמת | ✅ |
+| [@monitoring_kyiv](https://t.me/monitoring_kyiv) | ניטור קייב |  |
+| [@truexanewsua](https://t.me/truexanewsua) | Труха Україна — מבזקים |  |
+| [@UkraineNow](https://t.me/UkraineNow) | Ukraine NOW — ערוץ חדשות |  |
+| [@suspilnenews](https://t.me/suspilnenews) | Суспільне — השידור הציבורי האוקראיני |  |
+| [@uniannet](https://t.me/uniannet) | УНИАН — סוכנות ידיעות |  |
+| [@noel_reports](https://t.me/noel_reports) | NOELREPORTS — עדכוני המלחמה |  |
+| [@tass_agency](https://t.me/tass_agency) | ТАСС — סוכנות הידיעות הרשמית |  |
+| [@rian_ru](https://t.me/rian_ru) | РИА Новости — סוכנות ידיעות רשמית |  |
+| [@bbbreaking](https://t.me/bbbreaking) | Раньше всех — מבזקים |  |
+| [@milinfolive](https://t.me/milinfolive) | Военный осведомитель — בלוגר צבאי |  |
+| [@astrapress](https://t.me/astrapress) | ASTRA — עיתונות עצמאית |  |
+| [@meduzalive](https://t.me/meduzalive) | Медуза — עיתונות עצמאית |  |
 
-\* **מהימן:** מספיק דיווח אחד מהערוץ כדי לפרסם. משאר הערוצים צריך שני ערוצים שונים לפחות.
+\* **מהימן:** מספיק דיווח אחד מהערוץ כדי לפרסם. משאר הערוצים צריך שני ערוצים שונים לפחות שמדווחים על אותו מקור שיגור. דיווח שלא ברור ממנו המקור מתפרסם רק אם הוא מערוץ מהימן.
+
+כל הערוצים נבדקו ב־04/11/2026 ונמצאו פעילים. ערוצים רוסיים וערביים מסוימים הם כלי תקשורת ממשלתיים או מגויסים. לכן כל דיווח מהרשת מסומן "לא מאומת".
 
 **בדיקה שהערוצים עובדים:**
 ```bash

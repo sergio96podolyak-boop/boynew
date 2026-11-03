@@ -200,16 +200,57 @@ def route_line(kind: Optional[str], origin: Optional[str], target: Optional[str]
 
 # (ערוץ, תיאור, מהימן?) — "מהימן" = מספיק ערוץ אחד כדי לפרסם (לא צריך אימות מערוץ נוסף)
 DEFAULT_CHANNELS = [
-    ("abualiexpress", "אבו עלי אקספרס — סיקור הזירה הערבית בעברית (עזה, לבנון, סוריה, עיראק, איראן)", True),
-    ("AbuAliEnglish", "Abu Ali Express English", False),
-    ("manniefabian", "עמנואל פביאן, Times of Israel — מדווח לרוב על שיגורים בליסטיים לפני האזעקות", True),
-    ("IL_RedAlerts", "ILRedAlert — התרעות טילים וכטב\"מים בישראל", False),
+    # --- ישראל / המזרח התיכון (עברית/אנגלית) ---
+    ("abualiexpress", "אבו עלי אקספרס — הזירה הערבית בעברית", True),
+    ("manniefabian", "עמנואל פביאן (Times of Israel) — שיגורים לפני האזעקות", True),
     ("ILRedAlertNews", "ILRedAlert News — שיגורים, פיצוצים, התרעות מוקדמות", False),
-    ("OSINTdefender", "OSINTdefender — OSINT עולמי (המזרח התיכון, רוסיה-אוקראינה)", False),
-    ("osint613", "OSINT613 — OSINT מהמזרח התיכון", False),
-    ("kpszsu", "חיל האוויר של אוקראינה — ערוץ רשמי, התרעות טילים/רחפנים", True),
-    ("noel_reports", "NOELREPORTS — עדכוני מלחמת רוסיה-אוקראינה", False),
+    ("ramreports", "מבזקי רעם — מבזקים בזמן אמת", False),
+    ("amitsegal", "עמית סגל — חדשות ופוליטיקה", False),
+    ("OSINTdefender", "OSINTdefender — OSINT עולמי", False),
+    ("osint613", "OSINT613 — המזרח התיכון", False),
+    # --- ערבית ---
+    ("almayadeen", "الميادين — חדשות עאג'ל (לבנון/תימן)", False),
+    ("ajanews", "الجزيرة — מבזקי אל-ג'זירה", False),
+    ("alyemenchannel", "قناة اليمن الفضائية — תימן", False),
+    ("Alyemennet", "اليمن نت — תימן, לבנון, איראן", False),
+    ("newsyemn", "أخبار اليمن العاجلة — תימן/לבנון/עזה/איראן", False),
+    # --- אוקראינה ---
+    ("kpszsu", "חיל האוויר של אוקראינה — רשמי", True),
+    ("war_monitor", "War Monitor — ניטור טילים ורחפנים בזמן אמת", True),
+    ("monitoring_kyiv", "ניטור קייב", False),
+    ("truexanewsua", "Труха Україна — מבזקים", False),
+    ("UkraineNow", "Ukraine NOW — ערוץ חדשות", False),
+    ("suspilnenews", "Суспільне — השידור הציבורי האוקראיני", False),
+    ("uniannet", "УНИАН — סוכנות ידיעות", False),
+    ("noel_reports", "NOELREPORTS — עדכוני המלחמה", False),
+    # --- רוסיה ---
+    ("tass_agency", "ТАСС — סוכנות הידיעות הרשמית", False),
+    ("rian_ru", "РИА Новости — סוכנות ידיעות רשמית", False),
+    ("bbbreaking", "Раньше всех — מבזקים", False),
+    ("milinfolive", "Военный осведомитель — בלוגר צבאי", False),
+    ("astrapress", "ASTRA — עיתונות עצמאית", False),
+    ("meduzalive", "Медуза — עיתונות עצמאית", False),
 ]
+
+# ערוצים שמדווחים כמעט תמיד על אותו כיוון — משמש כשהטקסט לא מציין מקור (או מציין רק אזור בתוך המדינה)
+CHANNEL_HINTS = {
+    c: ("launch", "RU", "UA")
+    for c in ("kpszsu", "war_monitor", "monitoring_kyiv", "truexanewsua")
+}
+
+# קיצורים שהמתרגם לא מכיר — מחליפים לפני התרגום
+PRETRANSLATE = [
+    (re.compile(r"\bБпЛА\b|\bБПЛА\b", re.I), "дронів"),
+    (re.compile(r"\bКР\b"), "крилаті ракети"),
+]
+
+
+def apply_hint(channel: str, kind, origin, target):
+    """מתקן מסלול לפי ערוץ המקור (למשל: ערוצי ניטור אוקראיניים → רוסיה ← אוקראינה)."""
+    hint = CHANNEL_HINTS.get((channel or "").lower()) or CHANNEL_HINTS.get(channel or "")
+    if hint and (origin is None or origin == hint[2]):
+        return hint
+    return kind, origin, target
 
 
 # --------------------------------------------------------------------------- #
