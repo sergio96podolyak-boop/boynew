@@ -43,10 +43,10 @@ except ImportError:  # python-dotenv אופציונלי
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, detect_event, detect_route, fetch_channel, route_line
+    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, detect_event, detect_route, fetch_channel, route_line
 else:
     from .sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, detect_event, detect_route, fetch_channel, route_line
+    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, detect_event, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -339,6 +339,7 @@ class SocialClusters:
     def __init__(self, window: timedelta, min_sources: int):
         self.window, self.min_sources = window, max(1, min_sources)
         self.clusters: List[dict] = []
+        self.trusted: set = set()  # ערוצים שמספיק דיווח אחד מהם
 
     def add(self, item: NewsItem, now: Optional[datetime] = None) -> Optional[dict]:
         now = now or datetime.now(timezone.utc)
@@ -354,7 +355,7 @@ class SocialClusters:
             return None  # אותו ערוץ שוב — לא מחזק את הדיווח
         c["channels"].add(channel)
         n = len(c["channels"])
-        if n < self.min_sources:
+        if n < self.min_sources and channel.lower() not in self.trusted:
             return None
         if c["message_id"] is None and not c.get("sent"):
             c["sent"] = True
@@ -372,13 +373,22 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
     oref = _env_bool("NEWS_OREF_ENABLED", True)
     max_age = timedelta(minutes=int(os.getenv("NEWS_MAX_AGE_MIN", "90")))
     max_per_cycle = int(os.getenv("NEWS_MAX_PER_CYCLE", "15"))
-    channels = [c.strip().lstrip("@") for c in os.getenv("NEWS_TG_CHANNELS", "").split(",") if c.strip()]
+    env_ch = os.getenv("NEWS_TG_CHANNELS", "default").strip()
+    if env_ch.lower() in ("", "default"):
+        channels = [c for c, _, _ in DEFAULT_CHANNELS]
+    elif env_ch.lower() in ("none", "off", "false"):
+        channels = []
+    else:
+        channels = [c.strip().lstrip("@") for c in env_ch.split(",") if c.strip()]
+    trusted = {c.lower() for c, _, t in DEFAULT_CHANNELS if t}
+    trusted |= {c.strip().lstrip("@").lower() for c in os.getenv("NEWS_TG_TRUSTED", "").split(",") if c.strip()}
     social_poll = max(10, int(os.getenv("NEWS_SOCIAL_POLL_SECONDS", "15")))
     social_max_age = timedelta(minutes=int(os.getenv("NEWS_SOCIAL_MAX_AGE_MIN", "15")))
     clusters = SocialClusters(
         window=timedelta(minutes=int(os.getenv("NEWS_SOCIAL_WINDOW_MIN", "10"))),
         min_sources=int(os.getenv("NEWS_SOCIAL_MIN_SOURCES", "2")),
     )
+    clusters.trusted = trusted
 
     session = requests.Session()
     tg = Telegram(token, chat_id, session) if not dry_run else None
@@ -397,8 +407,8 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
         seen.save()
         logger.info("Warm-up: marked %d existing items as seen", len(seen.items))
     if channels:
-        logger.info("Watching %d Telegram channels (min %d sources to post)",
-                    len(channels), clusters.min_sources)
+        logger.info("Watching %d Telegram channels (min %d sources to post, trusted: %s)",
+                    len(channels), clusters.min_sources, ", ".join(sorted(trusted)) or "-")
 
     def post(text: str) -> Optional[int]:
         if dry_run:
@@ -452,12 +462,30 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
         time.sleep(5 if (oref or channels) else poll)
 
 
+def check_channels() -> None:
+    """מדפיס לכל ערוץ: נגיש? כמה פוסטים, כמה רלוונטיים, ודוגמה."""
+    env_ch = os.getenv("NEWS_TG_CHANNELS", "default").strip()
+    chans = ([c for c, _, _ in DEFAULT_CHANNELS] if env_ch.lower() in ("", "default")
+             else [c.strip().lstrip("@") for c in env_ch.split(",") if c.strip()])
+    s = requests.Session()
+    for ch in chans:
+        posts = fetch_channel(ch, s)
+        rel = [p for p in posts if is_relevant(p)]
+        last = max((p.published for p in posts if p.published), default=None)
+        status = "✅" if posts else "❌ לא נגיש / אין תצוגה ציבורית"
+        print(f"{status} @{ch}: {len(posts)} פוסטים, {len(rel)} רלוונטיים"
+              + (f", אחרון: {last.astimezone(IL_TZ):%d/%m %H:%M}" if last else ""))
+        if rel:
+            print("    לדוגמה:", rel[-1].title[:100])
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="War/missile news → Telegram (HE + EN)")
     p.add_argument("--once", action="store_true", help="סבב אחד ויציאה")
     p.add_argument("--dry-run", action="store_true", help="הדפסה למסך במקום שליחה")
     p.add_argument("--no-warmup", action="store_true", help="לשלוח גם ידיעות קיימות בהפעלה ראשונה")
     p.add_argument("--find-chat-id", action="store_true", help="הצג chat_id של קבוצות שהבוט בהן")
+    p.add_argument("--check-channels", action="store_true", help="בדוק אילו ערוצי טלגרם נגישים ומה הם מפרסמים")
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if a.find_chat_id:
@@ -465,6 +493,9 @@ def main() -> None:
         if not token:
             sys.exit("הגדר NEWS_BOT_TOKEN ב-.env קודם")
         find_chat_id(token)
+        return
+    if a.check_channels:
+        check_channels()
         return
     run(once=a.once, dry_run=a.dry_run, warmup=not a.no_warmup)
 
