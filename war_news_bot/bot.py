@@ -14,6 +14,8 @@ Telegram news bot — worldwide missile launch / attack reports, in Hebrew & Eng
     NEWS_POLL_SECONDS    כל כמה שניות לסרוק RSS (ברירת מחדל 60)
     NEWS_OREF_ENABLED    true/false — התרעות פיקוד העורף (ברירת מחדל true, עובד רק מ-IP ישראלי)
     NEWS_MAX_AGE_MIN     להתעלם מידיעות ישנות מ-X דקות (ברירת מחדל 90)
+    NEWS_CHANNEL_NAME    חתימה בסוף כל הודעה (ברירת מחדל "🚀 מאיפה משגרים | Where From?")
+    NEWS_CHANNEL_HANDLE  כתובת הערוץ שתופיע בחתימה, למשל @WhereFromLive (אופציונלי)
 """
 from __future__ import annotations
 
@@ -135,6 +137,12 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     if item.link and item.link.startswith("http"):
         footer += f'  |  <a href="{e(item.link, quote=True)}">קישור / Link</a>'
     parts.append(footer)
+    signature = os.getenv("NEWS_CHANNEL_NAME", "🚀 מאיפה משגרים | Where From?").strip()
+    handle = os.getenv("NEWS_CHANNEL_HANDLE", "").strip()
+    if handle and not handle.startswith("@"):
+        handle = "@" + handle
+    if signature or handle:
+        parts.append(f"<b>{e(signature)}</b>" + (f"  {e(handle)}" if handle else ""))
     return "\n".join(parts)
 
 
