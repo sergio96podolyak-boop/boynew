@@ -45,10 +45,10 @@ except ImportError:  # python-dotenv אופציונלי
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, PRETRANSLATE, apply_hint, detect_event, detect_route, fetch_channel, route_line
+    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
 else:
     from .sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, PRETRANSLATE, apply_hint, detect_event, detect_route, fetch_channel, route_line
+    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -86,7 +86,7 @@ EXCLUDE = [
     r"heart attack", r"panic attack", r"cyber", r"shark attack", r"lucky strike", r"bowling",
     r"bitcoin", r"crypto", r"price prediction", r"presale", r"ביטקוין", r"קריפטו",
 ]
-_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR + KEYWORDS_RU_UA), re.IGNORECASE)
+_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR + KEYWORDS_RU_UA + KEYWORDS_FA), re.IGNORECASE)
 _EXC = re.compile("|".join(EXCLUDE), re.IGNORECASE)
 
 
@@ -94,7 +94,9 @@ def is_relevant(item: NewsItem) -> bool:
     if item.is_alert:
         return True
     text = f"{item.title} {item.summary}"
-    return bool(_INC.search(text)) and not _EXC.search(text)
+    if _EXC.search(text):
+        return False
+    return bool(_INC.search(text)) or is_escalation(text)
 
 
 # --------------------------------------------------------------------------- #
@@ -151,7 +153,10 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     when = (item.published or datetime.now(timezone.utc)).astimezone(IL_TZ).strftime("%H:%M %d/%m")
     icon = _flag(item)
     social = bool(item.extra.get("social"))
-    route_he, route_en = route_line(*event_for(item, en_title, en_summary))
+    ev = event_for(item, en_title, en_summary)
+    if ev[0] == "tension":
+        icon = "⚔️"
+    route_he, route_en = route_line(*ev)
     # רמת אמינות: רשמי (פיקוד העורף) / דיווח רשת / ידיעה שבה לא זוהה מי שיגר-תקף ולאן
     unclear = not item.is_alert and not route_he
     parts = []
@@ -211,7 +216,7 @@ def build_message(item: NewsItem, session: Optional[requests.Session] = None,
         summary = ""  # התקציר רק חוזר על הכותרת
     summary = summary[:280]
     if item.lang not in ("he", "en"):  # ערבית / רוסית / אוקראינית → מתרגמים לשתיהן
-        src = "ar" if item.lang == "ar" else "auto"
+        src = item.lang if item.lang in ("ar", "fa") else "auto"
         title, summ = item.title, summary
         for rx, repl in PRETRANSLATE:
             title, summ = rx.sub(repl, title), rx.sub(repl, summ)
@@ -427,9 +432,11 @@ class SocialClusters:
     def add(self, item: NewsItem, now: Optional[datetime] = None) -> Optional[dict]:
         now = now or datetime.now(timezone.utc)
         self.clusters = [c for c in self.clusters if now - c["started"] <= self.window]
-        _, origin, _ = event_for(item)
+        kind, origin, target = event_for(item)
         channel = item.extra.get("channel", "")
-        if origin:
+        if kind == "tension":
+            key = "T:" + "-".join(sorted([origin, target]))
+        elif origin:
             key = origin
         elif channel.lower() in self.trusted:
             key = "?" + item.extra.get("uid", item.uid)  # לא ברור, אבל מערוץ מהימן — הודעה נפרדת

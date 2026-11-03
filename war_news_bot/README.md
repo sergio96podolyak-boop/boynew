@@ -68,6 +68,24 @@
 | [@alyemenchannel](https://t.me/alyemenchannel) | قناة اليمن الفضائية — תימן |  |
 | [@Alyemennet](https://t.me/Alyemennet) | اليمن نت — תימן, לבנון, איראן |  |
 | [@newsyemn](https://t.me/newsyemn) | أخبار اليمن العاجلة — תימן/לבנון/עזה/איראן |  |
+| [@alarabiya](https://t.me/alarabiya) | العربية — מבזקים |  |
+| [@AlHadath](https://t.me/AlHadath) | الحدث — מבזקים |  |
+| [@asharqnews](https://t.me/asharqnews) | الشرق — חדשות |  |
+| [@arabi21news](https://t.me/arabi21news) | عربي21 — חדשות |  |
+| [@france24_ar](https://t.me/france24_ar) | فرانس 24 — ערבית |  |
+| [@MTVLebanonNews](https://t.me/MTVLebanonNews) | MTV Lebanon — לבנון |  |
+| [@alakhbar_news](https://t.me/alakhbar_news) | الأخبار — לבנון |  |
+| [@qudsn](https://t.me/qudsn) | شبكة قدس — עזה והגדה |  |
+| [@iranintltv](https://t.me/iranintltv) | איראן אינטרנשיונל — אופוזיציה, פרסית |  |
+| [@iranintl_en](https://t.me/iranintl_en) | Iran International English |  |
+| [@presstv](https://t.me/presstv) | PressTV — שופר המשטר, אנגלית |  |
+| [@FarsNewsInt](https://t.me/FarsNewsInt) | פארס — סוכנות ממשלתית (משמרות המהפכה) |  |
+| [@farsna](https://t.me/farsna) | פארס — פרסית |  |
+| [@irna_1313](https://t.me/irna_1313) | אירנ"א — סוכנות הידיעות הרשמית |  |
+| [@mehrnews](https://t.me/mehrnews) | מהר — סוכנות ממשלתית |  |
+| [@iribnews](https://t.me/iribnews) | IRIB — השידור הממלכתי |  |
+| [@clashreport](https://t.me/clashreport) | Clash Report — מבזקי עימותים |  |
+| [@warmonitors](https://t.me/warmonitors) | War Monitors — מבזקים |  |
 | [@kpszsu](https://t.me/kpszsu) | חיל האוויר של אוקראינה — רשמי | ✅ |
 | [@war_monitor](https://t.me/war_monitor) | War Monitor — ניטור טילים ורחפנים בזמן אמת | ✅ |
 | [@monitoring_kyiv](https://t.me/monitoring_kyiv) | ניטור קייב |  |
@@ -98,6 +116,8 @@
 3. הבוט בודק את הערוצים כל 15 שניות, מסנן רק הודעות על טילים, רקטות, כטב"מים ואזעקות (עברית, אנגלית וערבית) ומתרגם.
 
 **הגנה מפני שמועות:** דיווח מתפרסם רק כש־**2 ערוצים שונים לפחות** מדווחים על שיגור מאותו מקור בתוך 10 דקות. כל ערוץ נוסף רק מעדכן את ההודעה הקיימת ("👥 מדווח ב־3 ערוצים"), כך שלא יוצא ספאם. כל דיווח כזה מסומן **"⚠️ דיווח ראשוני מהרשת — לא מאומת"**.
+
+**⚔️ הסלמה בין ארה"ב, איראן וישראל:** דיווחים על איומים, נקמה, תזוזות כוחות, נושאות מטוסים ונושא הגרעין, כשמוזכרים בהם לפחות שניים מהשלושה, מתפרסמים עם השורה `⚔️ הסלמה: 🇮🇷 איראן · 🇺🇸 ארה"ב`. הבוט מבין גם **פרסית** (סוכנויות ידיעות איראניות).
 
 **זיהוי תוקף ויעד בתקיפות:** למשל "Russian missile strike on Kyiv" או "غارات إسرائيلية على لبنان" יוצגו כ־`🎯 תוקף לפי הדיווח: 🇷🇺 רוסיה ← יעד: 🇺🇦 אוקראינה`.
 

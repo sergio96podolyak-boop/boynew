@@ -53,6 +53,8 @@ def _google_news(query: str, lang: str) -> str:
     q = urllib.parse.quote(f"{query} when:1h")
     if lang == "he":
         return f"https://news.google.com/rss/search?q={q}&hl=iw&gl=IL&ceid=IL:he"
+    if lang == "ar":
+        return f"https://news.google.com/rss/search?q={q}&hl=ar&gl=EG&ceid=EG:ar"
     return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
 
 
@@ -68,6 +70,16 @@ DEFAULT_FEEDS = [
     ("Google News", _google_news('"Ukrainian drones" OR "Ukrainian strike" OR "Ukraine attacks" OR "air raid alert" Ukraine', "en"), "en"),
     ("Google News", _google_news('"Israeli strike" OR "Israeli airstrike" OR "US strike" OR "strikes on"', "en"), "en"),
     ("Google News", _google_news('רוסיה תקפה OR מתקפה על אוקראינה OR מתקפת רחפנים OR צה"ל תקף', "he"), "he"),
+    # ארה"ב / איראן / ישראל — הסלמה ומלחמה
+    ("Google News", _google_news('Iran (Israel OR "United States" OR US) (war OR escalation OR retaliation OR strike OR threat)', "en"), "en"),
+    ("Google News", _google_news('IRGC OR "Revolutionary Guard" OR "aircraft carrier" Iran OR "Iran nuclear"', "en"), "en"),
+    ("Google News", _google_news('איראן ארה"ב OR איראן ישראל OR הסלמה מול איראן OR משמרות המהפכה', "he"), "he"),
+    # ערבית
+    ("Google News", _google_news('صواريخ OR غارة OR قصف OR مسيرة إسرائيل OR إيران OR اليمن OR لبنان', "ar"), "ar"),
+    ("Google News", _google_news('إيران أمريكا OR إيران إسرائيل تصعيد OR الحرس الثوري', "ar"), "ar"),
+    ("BBC Arabic", "https://feeds.bbci.co.uk/arabic/rss.xml", "ar"),
+    ("Al Arabiya", "https://www.alarabiya.net/feed/rss2/ar.xml", "ar"),
+    ("Iran International", "https://www.iranintl.com/en/feed", "en"),
     # אתרי חדשות ישירים
     ("Times of Israel", "https://www.timesofisrael.com/feed/", "en"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml", "en"),

@@ -33,11 +33,18 @@ _HE = re.compile(r"[֐-׿]")
 _CY = re.compile(r"[Ѐ-ӿ]")
 
 
+_FA = re.compile(r"[پچژگ]|ی|ک")  # אותיות שקיימות בפרסית ולא בערבית
+
+
 def detect_lang(text: str) -> str:
-    """he / en / ar / ru (ru = כל טקסט בקירילית — רוסית או אוקראינית; התרגום מזהה לבד)."""
+    """he / en / ar / fa / ru (ru = כל טקסט בקירילית — רוסית או אוקראינית; התרגום מזהה לבד)."""
     counts = {"ar": len(_AR.findall(text)), "he": len(_HE.findall(text)), "ru": len(_CY.findall(text))}
     lang, n = max(counts.items(), key=lambda kv: kv[1])
-    return lang if n > 5 else "en"
+    if n <= 5:
+        return "en"
+    if lang == "ar" and len(_FA.findall(text)) >= 3:
+        return "fa"
+    return lang
 
 
 # --------------------------------------------------------------------------- #
@@ -48,6 +55,9 @@ KEYWORDS_AR = [
     r"صاروخ", r"صواريخ", r"إطلاق", r"اطلاق", r"انطلاق", r"رشقة", r"رشقات", r"باليستي",
     r"مسيرة", r"مسيّرة", r"مسيرات", r"طائرة مسيرة", r"صفارات الإنذار", r"صافرات الإنذار",
     r"اعتراض", r"قصف", r"غارة", r"غارات", r"انفجار", r"انفجارات", r"دوي", r"هجوم", r"استهداف",
+]
+KEYWORDS_FA = [
+    r"موشک", r"پهپاد", r"حمله", r"شلیک", r"انفجار", r"پدافند", r"رهگیری", r"بمباران", r"آژیر",
 ]
 KEYWORDS_RU_UA = [
     r"ракет", r"обстрел", r"обстріл", r"удар", r"шахед", r"дрон", r"бпла", r"беспилотн",
@@ -64,8 +74,9 @@ PLACES = {
         r"israel", r"\bidf\b", r"tel aviv", r"eilat", r"haifa", r"jerusalem",
         r"ישראל", r"צה\"?ל", r"תל אביב", r"אילת", r"חיפה", r"באר שבע", r"ירושלים", r"הגליל", r"גוש דן",
         r"إسرائيل", r"اسرائيل", r"الأراضي المحتلة", r"تل أبيب", r"الكيان", r"حيفا", r"إيلات", r"القدس",
-        r"الجليل", r"Израил"]),
-    "IR": ("🇮🇷", "איראן", "Iran", [r"iran", r"tehran", r"hormuz", r"qeshm", r"bandar abbas", r"הורמוז", r"هرمز", r"איראן", r"טהרן", r"إيران", r"ايران", r"طهران", r"Иран"]),
+        r"الجليل", r"Израил", r"اسرائیل", r"صهیونیست", r"رژیم صهیونی", r"تل‌آویو"]),
+    "IR": ("🇮🇷", "איראן", "Iran", [r"iran", r"tehran", r"hormuz", r"qeshm", r"bandar abbas", r"הורמוז", r"هرمز", r"איראן", r"טהרן", r"إيران", r"ايران", r"طهران", r"Иран", r"ایران", r"تهران", r"سپاه",
+                                   r"irgc", r"revolutionary guard", r"משמרות המהפכה", r"الحرس الثوري"]),
     "YE": ("🇾🇪", "תימן", "Yemen", [r"yemen", r"houthi", r"sanaa", r"תימן", r"חות'?י", r"צנעא",
                                     r"اليمن", r"الحوثي", r"صنعاء", r"Йемен"]),
     "LB": ("🇱🇧", "לבנון", "Lebanon", [r"lebanon", r"hezbollah", r"beirut", r"לבנון", r"חיזבאללה", r"ביירות",
@@ -82,7 +93,9 @@ PLACES = {
     "TR": ("🇹🇷", "טורקיה", "Turkey", [r"turkey", r"t[üu]rkiye", r"turkish", r"טורקיה", r"تركيا", r"Турци"]),
     "US": ("🇺🇸", "ארה\"ב", "USA", [r"\bu\.?s\.?(?= (?:strikes?|struck|forces|military|navy|army|air|attack|bomb|warplanes|jets|missile|launch))",
                                     r"united states", r"american", r"pentagon", r"ארה\"?ב", r"אמריק",
-                                    r"الولايات المتحدة", r"أمريك", r"الأمريكي", r"США", r"американ"]),
+                                    r"الولايات المتحدة", r"أمريك", r"الأمريكي", r"США", r"американ", r"آمریکا",
+                                    r"(?-i:\bUS\b)", r"\bu\.s\.", r"centcom", r"פנטגון", r"البنتاغون", r"واشنطن", r"washington", r"וושינגטון",
+                                    r"trump", r"טראמפ", r"ترامب", r"ترامپ", r"carrier strike group"]),
     "RU": ("🇷🇺", "רוסיה", "Russia", [r"russia", r"moscow", r"kremlin", r"belgorod", r"kursk", r"bryansk",
                                      r"רוסי", r"מוסקבה", r"בלגורוד", r"קורסק", r"روسيا", r"روسي", r"موسكو",
                                      r"Росси", r"российск", r"Москв", r"Белгород", r"Курск", r"Брянск",
@@ -151,9 +164,40 @@ def _match_strike(text: str) -> Tuple[Optional[str], Optional[str]]:
     return best[1], best[2]
 
 
+# הסלמה / מתיחות (איומים, נקמה, תזוזות כוחות) — בין ארה"ב, איראן וישראל (ומעורבים נוספים)
+ESCALATION = re.compile("|".join([
+    r"escalat", r"retaliat", r"revenge", r"vows? (?:to )?(?:respond|retaliate|revenge)", r"\bthreat(?:en|ens|ened)?\b",
+    r"\bwarn(?:s|ed|ing)?\b", r"\bvow", r"aggression", r"consequences", r"ultimatum", r"high alert", r"mobiliz", r"\bdeploy", r"aircraft carrier",
+    r"carrier strike group", r"\bb-2\b", r"bombers?", r"war (?:with|against|on)", r"all-out war", r"nuclear (?:site|facilit|program|deal)",
+    r"enrichment", r"\bwar\b", r"ceasefire", r"seiz(?:e|ed|ure) (?:of )?(?:a |an )?(?:tanker|ship|vessel)",
+    r"הסלמה", r"נקמה", r"איום", r"איים", r"מאיים", r"כוננות", r"נושאת מטוסים", r"מפציצ", r"גרעין", r"מלחמה", r"הפסקת אש",
+    r"תגובה", r"אולטימטום", r"תוגבר", r"פריסת",
+    r"تصعيد", r"انتقام", r"تهديد", r"يهدد", r"توعد", r"حاملة طائرات", r"قاذفات", r"النووي", r"حرب", r"استنفار",
+    r"وقف إطلاق النار", r"الرد",
+    r"تهدید", r"انتقام", r"جنگ", r"هسته‌ای", r"ناو هواپیمابر", r"پاسخ",
+    r"эскалац", r"угрож", r"ядерн", r"войн",
+]), re.IGNORECASE)
+TENSION_PARTIES = ("US", "IR", "IL")
+
+
+def _parties(text: str) -> List[str]:
+    """המעורבים מתוך ארה\"ב/איראן/ישראל לפי סדר ההופעה בטקסט."""
+    found = []
+    for code in TENSION_PARTIES:
+        m = re.search(_PAT[code], text, re.IGNORECASE)
+        if m:
+            found.append((m.start(), code))
+    return [c for _, c in sorted(found)]
+
+
+def is_escalation(text: str) -> bool:
+    return bool(ESCALATION.search(text)) and len(_parties(text)) >= 2
+
+
 def detect_event(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
-    מחזיר (סוג, מקור/תוקף, יעד): סוג = "launch" (שיגור) / "strike" (תקיפה) / None.
+    מחזיר (סוג, מקור/תוקף, יעד): סוג = "launch" (שיגור) / "strike" (תקיפה) /
+    "tension" (הסלמה בין ארה"ב/איראן/ישראל) / None.
     מבוסס על הטקסט בלבד — "לפי הדיווח".
     """
     attacker, victim = _match_strike(text)
@@ -168,6 +212,9 @@ def detect_event(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]
             # שיגור מהמזרח התיכון בלי יעד מפורש — אם ישראל מוזכרת, היא כנראה היעד
             target = "IL"
         return "launch", origin, target
+    if is_escalation(text):
+        p = _parties(text)
+        return "tension", p[0], p[1]
     return None, None, None
 
 
@@ -182,6 +229,9 @@ def route_line(kind: Optional[str], origin: Optional[str], target: Optional[str]
     if not kind or not origin:
         return "", ""
     fo, ho, eo, _ = PLACES[origin]
+    if kind == "tension":
+        ft, ht, et, _ = PLACES[target]
+        return (f"⚔️ הסלמה: {fo} {ho}  ·  {ft} {ht}", f"⚔️ Escalation: {fo} {eo}  ·  {ft} {et}")
     if kind == "strike":
         he, en = f"🎯 תוקף לפי הדיווח: {fo} {ho}", f"🎯 Reported attacker: {fo} {eo}"
     else:
@@ -214,6 +264,26 @@ DEFAULT_CHANNELS = [
     ("alyemenchannel", "قناة اليمن الفضائية — תימן", False),
     ("Alyemennet", "اليمن نت — תימן, לבנון, איראן", False),
     ("newsyemn", "أخبار اليمن العاجلة — תימן/לבנון/עזה/איראן", False),
+    ("alarabiya", "العربية — מבזקים", False),
+    ("AlHadath", "الحدث — מבזקים", False),
+    ("asharqnews", "الشرق — חדשות", False),
+    ("arabi21news", "عربي21 — חדשות", False),
+    ("france24_ar", "فرانس 24 — ערבית", False),
+    ("MTVLebanonNews", "MTV Lebanon — לבנון", False),
+    ("alakhbar_news", "الأخبار — לבנון", False),
+    ("qudsn", "شبكة قدس — עזה והגדה", False),
+    # --- איראן (פרסית/אנגלית) — כולל כלי תקשורת ממשלתיים ---
+    ("iranintltv", "איראן אינטרנשיונל — אופוזיציה, פרסית", False),
+    ("iranintl_en", "Iran International English", False),
+    ("presstv", "PressTV — שופר המשטר, אנגלית", False),
+    ("FarsNewsInt", "פארס — סוכנות ממשלתית (משמרות המהפכה)", False),
+    ("farsna", "פארס — פרסית", False),
+    ("irna_1313", "אירנ\"א — סוכנות הידיעות הרשמית", False),
+    ("mehrnews", "מהר — סוכנות ממשלתית", False),
+    ("iribnews", "IRIB — השידור הממלכתי", False),
+    # --- OSINT עולמי ---
+    ("clashreport", "Clash Report — מבזקי עימותים", False),
+    ("warmonitors", "War Monitors — מבזקים", False),
     # --- אוקראינה ---
     ("kpszsu", "חיל האוויר של אוקראינה — רשמי", True),
     ("war_monitor", "War Monitor — ניטור טילים ורחפנים בזמן אמת", True),
