@@ -82,6 +82,7 @@ EXCLUDE = [
     r"מניות", r"בורסה", r"כדורגל", r"כדורסל",
     r"hunger strike", r"general strike", r"workers? (on )?strike", r"strike action", r"on strike",
     r"heart attack", r"panic attack", r"cyber", r"shark attack", r"lucky strike", r"bowling",
+    r"bitcoin", r"crypto", r"price prediction", r"presale", r"ביטקוין", r"קריפטו",
 ]
 _INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR + KEYWORDS_RU_UA), re.IGNORECASE)
 _EXC = re.compile("|".join(EXCLUDE), re.IGNORECASE)
@@ -190,9 +191,22 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     return "\n".join(parts)
 
 
+def _strip_outlet(title: str) -> str:
+    """Google News מוסיף " - שם האתר" לכותרת; המקור כבר מופיע בשורה התחתונה."""
+    return re.sub(r"\s+[-–|]\s+[^-–|]{2,40}$", "", title).strip()
+
+
+def _norm(t: str) -> str:
+    return re.sub(r"[^\w\u0590-\u05FF\u0600-\u06FF\u0400-\u04FF]+", " ", t.lower()).strip()
+
+
 def build_message(item: NewsItem, session: Optional[requests.Session] = None,
                   corroborated_by: int = 1) -> str:
-    summary = item.summary if item.summary and item.summary not in item.title else ""
+    if item.source.startswith("Google News"):
+        item.title = _strip_outlet(item.title)
+    summary = item.summary or ""
+    if _norm(summary).startswith(_norm(item.title)[:60]) or _norm(summary) in _norm(item.title):
+        summary = ""  # התקציר רק חוזר על הכותרת
     summary = summary[:280]
     if item.lang not in ("he", "en"):  # ערבית / רוסית / אוקראינית → מתרגמים לשתיהן
         src = "ar" if item.lang == "ar" else "auto"
