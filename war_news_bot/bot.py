@@ -141,11 +141,21 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     route_he, route_en = route_line(*detect_event(f"{item.title} {item.summary}"))
     if not route_he and en_title:  # גיבוי: זיהוי על התרגום לאנגלית
         route_he, route_en = route_line(*detect_event(f"{en_title} {en_summary}"))
+    # רמת אמינות: רשמי (פיקוד העורף) / דיווח רשת / ידיעה שבה לא זוהה מי שיגר-תקף ולאן
+    unclear = not item.is_alert and not route_he
     parts = []
-    if social:
+    if item.is_alert:
+        parts.append("✅ <b>התרעה רשמית — פיקוד העורף</b> | <i>Official alert</i>")
+        parts.append("")
+    elif social:
         parts.append("⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b> | <i>Unverified early report</i>")
         if corroborated_by > 1:
             parts.append(f"👥 מדווח ב־{corroborated_by} ערוצים | Reported by {corroborated_by} channels")
+        if unclear:
+            parts.append("❓ מקור ויעד לא זוהו | Origin/target unclear")
+        parts.append("")
+    elif unclear:
+        parts.append("⚠️ <b>דיווח לא מאומת — פרטים לא ברורים</b> | <i>Unverified — details unclear</i>")
         parts.append("")
     parts.append(f"{icon} <b>{e(he_title or item.title)}</b>")
     if he_summary:
