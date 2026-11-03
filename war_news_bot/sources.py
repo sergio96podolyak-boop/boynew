@@ -78,11 +78,9 @@ DEFAULT_FEEDS = [
     ("Google News", _google_news('صواريخ OR غارة OR قصف OR مسيرة إسرائيل OR إيران OR اليمن OR لبنان', "ar"), "ar"),
     ("Google News", _google_news('إيران أمريكا OR إيران إسرائيل تصعيد OR الحرس الثوري', "ar"), "ar"),
     ("BBC Arabic", "https://feeds.bbci.co.uk/arabic/rss.xml", "ar"),
-    ("Al Arabiya", "https://www.alarabiya.net/feed/rss2/ar.xml", "ar"),
     ("Iran International", "https://www.iranintl.com/en/feed", "en"),
     # אתרי חדשות ישירים
     ("Times of Israel", "https://www.timesofisrael.com/feed/", "en"),
-    ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml", "en"),
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "en"),
     ("Kyiv Independent", "https://kyivindependent.com/news-archive/rss/", "en"),
     ("Ukrainska Pravda", "https://www.pravda.com.ua/eng/rss/", "en"),
