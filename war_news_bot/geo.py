@@ -192,7 +192,7 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
     מחזיר PNG או None (אם אין Pillow או אין מה לצייר).
     """
     try:
-        from PIL import Image, ImageDraw, ImageFilter
+        from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
     except ImportError:
         return None
     session = session or requests.Session()
@@ -224,7 +224,8 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
             pos = (int(tx * TILE - left), int(ty * TILE - top))
             t = _fetch_tile(session, z, tx, ty)
             if t is not None:
-                img.paste(t.convert("RGB"), pos)
+                # מכהים את הרקע כדי שהשמות הקטנים באנגלית שבאריחים כמעט ייעלמו והעברית תבלוט
+                img.paste(ImageEnhance.Brightness(t.convert("RGB")).enhance(0.62), pos)
 
     def xy(lat, lng):
         x, y = _px(lat, lng, z)
@@ -294,6 +295,7 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
             for name, lat, lng in [(n, p[0], p[1]) for n, p in zip(alert_names or [], alert_pts)]:
                 x, y = xy(lat, lng)
                 put(name, x, y, f_alert, (255, 225, 225, 255), dy=-20)
+        alert_xy = [xy(p[0], p[1]) for p in alert_pts]
         for name, lat, lng, kind in HE_LABELS:
             if (kind == "city" and z < 6) or (kind == "lake" and z < 8):
                 continue
@@ -305,6 +307,8 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
             elif kind in ("sea", "lake"):
                 put(name, x, y, f_sea, (120, 160, 205, 255))
             else:
+                if any(math.hypot(x - ax, y - ay) < 45 for ax, ay in alert_xy):
+                    continue  # לא מסתירים את נקודות ההתרעה בשמות ערים
                 td.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(200, 200, 210, 255))
                 put(name, x, y, f_city, (235, 235, 240, 255), dy=-16)
     td.text((W - 60, H - 16), "Esri ©", fill=(150, 155, 165, 255))
