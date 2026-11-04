@@ -2,7 +2,7 @@
 מפות — "מאיפה לאיפה": אזורי התרעה בישראל + חץ מכיוון השיגור.
 
 - קואורדינטות וזמני התגוננות ליישובים: cities.json של צופר (נשמר ב-data/ ומתרענן פעם בשבוע)
-- רקע מפה: אריחי CARTO (מבוסס OpenStreetMap), מצוירים עם Pillow — בלי תלויות נוספות
+- רקע מפה: אריחי Esri (Dark Gray Canvas) + שכבת שמות, מצוירים עם Pillow — בלי תלויות נוספות
 - כיוון השיגור: מדיווח שיגור אחרון (אם היה ב-20 הדקות האחרונות) או הערכה גאוגרפית לפי מיקום ההתרעות
 """
 from __future__ import annotations
@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 CITIES_URL = "https://www.tzevaadom.co.il/static/cities.json"
 CITIES_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "tzofar_cities.json")
-TILE_URL = "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
 _UA = "Mozilla/5.0 (compatible; EmergencyNewsBot/1.0)"
 TILE = 256
 
@@ -114,16 +115,16 @@ def _fit_zoom(pts: List[Tuple[float, float]], w: int, h: int, max_z: int) -> int
     return 3
 
 
-def _fetch_tile(session, z, x, y):
+def _fetch_tile(session, z, x, y, url_tpl: str = TILE_URL):
     from PIL import Image
     n = 2 ** z
-    url = TILE_URL.format(z=z, x=x % n, y=y)
+    url = url_tpl.format(z=z, x=x % n, y=y)
     if not 0 <= y < n:
         return None
     try:
         r = session.get(url, timeout=10, headers={"User-Agent": _UA})
         r.raise_for_status()
-        return Image.open(io.BytesIO(r.content)).convert("RGB")
+        return Image.open(io.BytesIO(r.content)).convert("RGBA")
     except Exception:  # noqa: BLE001 — רקע הוא לא קריטי
         return None
 
@@ -165,9 +166,13 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
     img = Image.new("RGB", (W, H), (14, 18, 26))
     for tx in range(int(left // TILE), int((left + W) // TILE) + 1):
         for ty in range(int(top // TILE), int((top + H) // TILE) + 1):
+            pos = (int(tx * TILE - left), int(ty * TILE - top))
             t = _fetch_tile(session, z, tx, ty)
             if t is not None:
-                img.paste(t, (int(tx * TILE - left), int(ty * TILE - top)))
+                img.paste(t.convert("RGB"), pos)
+            lab = _fetch_tile(session, z, tx, ty, LABELS_URL)  # שמות מדינות/ערים (שקוף)
+            if lab is not None:
+                img.paste(lab, pos, lab)
 
     def xy(lat, lng):
         x, y = _px(lat, lng, z)
@@ -216,7 +221,7 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
 
     img = Image.alpha_composite(img.convert("RGBA"), glow.filter(ImageFilter.GaussianBlur(10)))
     img = Image.alpha_composite(img, over)
-    ImageDraw.Draw(img).text((W - 170, H - 18), "(c) OpenStreetMap (c) CARTO", fill=(170, 175, 185, 255))
+    ImageDraw.Draw(img).text((W - 230, H - 18), "(c) Esri, HERE, Garmin, OpenStreetMap", fill=(170, 175, 185, 255))
     buf = io.BytesIO()
     img.convert("RGB").save(buf, "PNG", optimize=True)
     return buf.getvalue()
