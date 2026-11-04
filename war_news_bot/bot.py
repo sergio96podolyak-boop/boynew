@@ -519,7 +519,8 @@ def enrich_alert(item: NewsItem, recent: Optional["RecentLaunches"], session=Non
     if not _env_bool("NEWS_MAPS", True):
         return None
     try:
-        return geo.render_map(pts, origin, "IL", session)
+        names = [n.split(" - ")[0] for n in geo.city_names_found(item.extra.get("areas", []), session)]
+        return geo.render_map(pts, origin, "IL", session, alert_names=names)
     except Exception:  # noqa: BLE001 — מפה היא תוספת; לא מפילים התרעה בגללה
         logger.exception("map render failed")
         return None
