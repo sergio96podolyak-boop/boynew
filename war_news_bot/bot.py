@@ -14,7 +14,7 @@ Telegram news bot — worldwide missile launch / attack reports, in Hebrew & Eng
     NEWS_POLL_SECONDS    כל כמה שניות לסרוק RSS (ברירת מחדל 60)
     NEWS_OREF_ENABLED    true/false — התרעות פיקוד העורף (ברירת מחדל true, עובד רק מ-IP ישראלי)
     NEWS_MAX_AGE_MIN     להתעלם מידיעות ישנות מ-X דקות (ברירת מחדל 90)
-    NEWS_CHANNEL_NAME    חתימה בסוף כל הודעה (ברירת מחדל "🚀 מאיפה משגרים | Where From?")
+    NEWS_CHANNEL_NAME    חתימה בסוף כל הודעה (ברירת מחדל "🚨 חדשות חירום")
     NEWS_CHANNEL_HANDLE  כתובת הערוץ שתופיע בחתימה, למשל @WhereFromLive (אופציונלי)
     NEWS_TG_CHANNELS     ערוצי טלגרם ציבוריים לניטור דיווחי שיגור, מופרדים בפסיק (ch1,ch2)
     NEWS_SOCIAL_MIN_SOURCES  כמה ערוצים שונים צריכים לדווח לפני פרסום (ברירת מחדל 2)
@@ -157,21 +157,25 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     if ev[0] == "tension":
         icon = "⚔️"
     route_he, route_en = route_line(*ev)
+    en_on = _env_bool("NEWS_INCLUDE_ENGLISH", False)  # ברירת מחדל: עברית בלבד
+
+    def bi(he: str, en: str) -> str:
+        return f"{he} | <i>{en}</i>" if en_on else he
     # רמת אמינות: רשמי (פיקוד העורף) / דיווח רשת / ידיעה שבה לא זוהה מי שיגר-תקף ולאן
     unclear = not item.is_alert and not route_he
     parts = []
     if item.is_alert:
-        parts.append("✅ <b>התרעה רשמית — פיקוד העורף</b> | <i>Official alert</i>")
+        parts.append(bi("✅ <b>התרעה רשמית — פיקוד העורף</b>", "Official alert"))
         parts.append("")
     elif social:
-        parts.append("⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b> | <i>Unverified early report</i>")
+        parts.append(bi("⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b>", "Unverified early report"))
         if corroborated_by > 1:
-            parts.append(f"👥 מדווח ב־{corroborated_by} ערוצים | Reported by {corroborated_by} channels")
+            parts.append(bi(f"👥 מדווח ב־{corroborated_by} ערוצים", f"Reported by {corroborated_by} channels"))
         if unclear:
-            parts.append("❓ מקור ויעד לא זוהו | Origin/target unclear")
+            parts.append(bi("❓ מקור ויעד לא זוהו", "Origin/target unclear"))
         parts.append("")
     elif unclear:
-        parts.append("⚠️ <b>דיווח לא מאומת — פרטים לא ברורים</b> | <i>Unverified — details unclear</i>")
+        parts.append(bi("⚠️ <b>דיווח לא מאומת — פרטים לא ברורים</b>", "Unverified — details unclear"))
         parts.append("")
     parts.append(f"{icon} <b>{e(he_title or item.title)}</b>")
     if he_summary:
@@ -179,17 +183,18 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     if route_he:
         parts.append(route_he)
     parts.append("")
-    parts.append(f"{icon} <b>{e(en_title or item.title)}</b>")
-    if en_summary:
-        parts.append(e(en_summary))
-    if route_en:
-        parts.append(route_en)
-    parts.append("")
+    if en_on:
+        parts.append(f"{icon} <b>{e(en_title or item.title)}</b>")
+        if en_summary:
+            parts.append(e(en_summary))
+        if route_en:
+            parts.append(route_en)
+        parts.append("")
     footer = f"🕒 {when}  |  📰 {e(item.source)}"
     if item.link and item.link.startswith("http"):
-        footer += f'  |  <a href="{e(item.link, quote=True)}">קישור / Link</a>'
+        footer += f'  |  <a href="{e(item.link, quote=True)}">{"קישור / Link" if en_on else "לכתבה המלאה"}</a>'
     parts.append(footer)
-    signature = os.getenv("NEWS_CHANNEL_NAME", "🚀 מאיפה משגרים | Where From?").strip()
+    signature = os.getenv("NEWS_CHANNEL_NAME", DEFAULT_TITLE).strip()
     handle = os.getenv("NEWS_CHANNEL_HANDLE", "").strip()
     if handle and not handle.startswith("@"):
         handle = "@" + handle
@@ -267,37 +272,55 @@ class Telegram:
                   parse_mode="HTML", disable_web_page_preview=True)
 
 
+DEFAULT_TITLE = "🚨 חדשות חירום"
+
 CHANNEL_DESCRIPTION = (
-    "🚀 דיווחים בזמן אמת על שיגורי טילים, רחפנים ותקיפות מכל העולם — "
-    "ישראל, המזרח התיכון, רוסיה ואוקראינה ועוד. בעברית ובאנגלית.\n"
-    "Real-time global missile, drone & strike reports — HE/EN.\n"
-    "⚠️ אינו מחליף את פיקוד העורף"
+    "🚨 חדשות חירום בזמן אמת: שיגורי טילים, רקטות, כטב\"מים, אזעקות ותקיפות — "
+    "ישראל, איראן, ארה\"ב, לבנון, תימן, עזה, רוסיה ואוקראינה. "
+    "מבזקים מעשרות מקורות, מתורגמים לעברית.\n"
+    "⚠️ ערוץ אוטומטי — אינו מחליף את פיקוד העורף"
 )
 
 WELCOME = (
-    "🚀 <b>ברוכים הבאים ל־מאיפה משגרים | Where From?</b>\n\n"
-    "כאן מתפרסמים <b>אוטומטית ובזמן אמת</b> דיווחים על שיגורי טילים, רקטות, כטב\"מים ותקיפות — "
-    "מישראל, המזרח התיכון, רוסיה, אוקראינה ועוד מדינות. כל דיווח בעברית ובאנגלית.\n\n"
-    "<b>מקורות:</b> התרעות פיקוד העורף, אתרי חדשות בעולם, וכ־25 ערוצי טלגרם בעברית, ערבית, רוסית ואוקראינית.\n\n"
+    "🚨 <b>ברוכים הבאים לחדשות חירום</b>\n\n"
+    "כאן מתפרסמים <b>אוטומטית ובזמן אמת</b> מבזקי חירום: שיגורי טילים ורקטות, כטב\"מים, אזעקות, "
+    "תקיפות והסלמה — מישראל, איראן, ארה\"ב, לבנון, תימן, עזה, רוסיה, אוקראינה ועוד. הכול בעברית.\n\n"
+    "<b>מקורות:</b> התרעות פיקוד העורף, אתרי חדשות בעולם, וכ־40 ערוצי טלגרם בעברית, ערבית, פרסית, רוסית ואוקראינית — "
+    "מתורגמים אוטומטית לעברית.\n\n"
     "<b>מה אומרים הסימונים:</b>\n"
     "✅ <b>התרעה רשמית</b> — פיקוד העורף\n"
-    "⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b> — מערוצי טלגרם (👥 = כמה ערוצים דיווחו)\n"
+    "⚠️ <b>דיווח ראשוני מהרשת — לא מאומת</b> (👥 = כמה ערוצים דיווחו)\n"
     "⚠️ <b>פרטים לא ברורים</b> — לא זוהה מי שיגר/תקף ולאן\n"
-    "📍 מקור ויעד שיגור  |  🎯 תוקף ויעד בתקיפה\n"
+    "📍 מקור ויעד שיגור  |  🎯 תוקף ויעד  |  ⚔️ הסלמה\n"
     "🚨 אזעקה  🚀 טילים  🛩 כטב\"מים  💥 תקיפות\n\n"
-    "⚠️ <b>הערוץ אוטומטי ואינו מחליף את אפליקציית פיקוד העורף.</b> בזמן אזעקה — פעלו לפי הנחיות פיקוד העורף.\n\n"
-    "━━━━━━━━━━━━\n"
-    "🚀 <b>Welcome to Where From?</b>\n"
-    "Automated, real-time reports of missile, rocket, drone launches and strikes worldwide — in Hebrew and English.\n"
-    "✅ official alert  ⚠️ unverified report  📍 origin → target  🎯 attacker → target\n"
-    "<i>Not a substitute for official civil-defense alerts.</i>"
+    "⚠️ <b>הערוץ אוטומטי ואינו מחליף את אפליקציית פיקוד העורף.</b> בזמן אזעקה — פעלו לפי הנחיות פיקוד העורף."
 )
 
 
+def _welcome(tg: "Telegram", chat_id: str) -> None:
+    """עורך את הודעת הפתיחה הנעוצה הקיימת, או שולח חדשה."""
+    pinned = ((tg.call("getChat", chat_id=chat_id).get("result") or {}).get("pinned_message") or {})
+    if pinned.get("message_id"):
+        try:
+            tg.edit(pinned["message_id"], WELCOME)
+        except RuntimeError as e:
+            if "not modified" not in str(e):
+                raise
+        tg._welcome_existing = True
+        return
+    tg._welcome = tg.send(WELCOME)
+
+
 def setup_channel(token: str, chat_id: str, logo_path: str) -> None:
-    """מגדיר את הערוץ: תמונה, תיאור, הודעת פתיחה נעוצה."""
+    """מגדיר את הערוץ: שם, תמונה, תיאור, הודעת פתיחה נעוצה (מעדכן את הקיימת אם יש)."""
     s = requests.Session()
     tg = Telegram(token, chat_id, s)
+    title = os.getenv("NEWS_CHANNEL_TITLE", DEFAULT_TITLE).strip()
+    try:
+        tg.call("setChatTitle", chat_id=chat_id, title=title)
+        print("שם ערוץ: ✅", title)
+    except (RuntimeError, requests.RequestException) as e:
+        print(f"שם ערוץ: {'✅ (ללא שינוי)' if 'not modified' in str(e) else '❌ ' + str(e)}")
     api = TELEGRAM_API.format(token=token, method="setChatPhoto")
     try:
         with open(logo_path, "rb") as f:
@@ -307,14 +330,14 @@ def setup_channel(token: str, chat_id: str, logo_path: str) -> None:
         print("תמונת ערוץ: ❌", e)
     for label, fn in [
         ("תיאור ערוץ", lambda: tg.call("setChatDescription", chat_id=chat_id, description=CHANNEL_DESCRIPTION)),
-        ("הודעת פתיחה", lambda: setattr(tg, "_welcome", tg.send(WELCOME))),
+        ("הודעת פתיחה", lambda: _welcome(tg, chat_id)),
     ]:
         try:
             fn()
             print(f"{label}: ✅")
         except (RuntimeError, requests.RequestException) as e:
             print(f"{label}: ❌ {e}")
-    mid = getattr(tg, "_welcome", None)
+    mid = None if getattr(tg, "_welcome_existing", False) else getattr(tg, "_welcome", None)
     if mid:
         try:
             tg.call("pinChatMessage", chat_id=chat_id, message_id=mid, disable_notification=True)
