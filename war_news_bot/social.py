@@ -121,7 +121,8 @@ _PAT = {code: "|".join(v[3]) for code, v in PLACES.items()}
 
 # שיגור: "מ־X" / "לעבר Y". {p} = ביטויי המקום.
 _FROM = [r"\bfrom (?:the )?(?:{p})", r"(?:{p})\w*\s+(?:launch|fire)", r"\bמ(?:{p})",
-         r"من (?:{p})", r"انطلاق[^.\n]{{0,25}}(?:{p})", r"(?:из|з|со) (?:{p})",
+         r"(?:إطلاق|اطلاق|انطلاق|أطلق\S*|اطلق\S*|صواريخ|صاروخ|مسيرات?|مسيّرات?|رشقة|قذائف)\s+(?:\S+\s+){{0,4}}?من (?:{p})",
+         r"انطلاق[^.\n]{{0,25}}(?:{p})", r"(?:из|з|со) (?:{p})",
          r"(?:{p})\S*\s+(?:\S+\s+){{0,3}}?(?:שיגר|שיגרה|שיגרו|ירה|ירתה|ירו)\b", r"שוגר\S*\s+(?:\S+\s+){{0,3}}?מ(?:{p})",
          r"از (?:{p})", r"(?:{p})\S*\s+(?:\S+\s+){{0,6}}?شلیک"]
 _TO = [r"\b(?:toward|towards|at|on|into|over|against) (?:the )?(?:{p})",
@@ -343,8 +344,10 @@ DEFAULT_CHANNELS = [
 # ערוצים שמדווחים כמעט תמיד על אותו כיוון — משמש כשהטקסט לא מציין מקור (או מציין רק אזור בתוך המדינה)
 CHANNEL_HINTS = {
     c: ("launch", "RU", "UA")
-    for c in ("kpszsu", "war_monitor", "monitoring_kyiv", "truexanewsua")
+    for c in ("kpszsu", "war_monitor", "monitoring_kyiv")  # ערוצי ניטור בלבד, לא ערוצי חדשות כלליים
 }
+# הכיוון רוסיה ← אוקראינה מוחל רק על פוסט שמדבר על איום אווירי
+_HINT_CUES = re.compile(r"бпла|дрон|шахед|герань|ракет|балісти|баллисти|крилат|кр\b|тривог|тревог|вибух|взрыв", re.I)
 
 # קיצורים שהמתרגם לא מכיר — מחליפים לפני התרגום
 PRETRANSLATE = [
@@ -353,10 +356,10 @@ PRETRANSLATE = [
 ]
 
 
-def apply_hint(channel: str, kind, origin, target):
+def apply_hint(channel: str, kind, origin, target, text: str = ""):
     """מתקן מסלול לפי ערוץ המקור (למשל: ערוצי ניטור אוקראיניים → רוסיה ← אוקראינה)."""
     hint = CHANNEL_HINTS.get((channel or "").lower()) or CHANNEL_HINTS.get(channel or "")
-    if hint and (origin is None or origin == hint[2]):
+    if hint and (origin is None or origin == hint[2]) and _HINT_CUES.search(text or ""):
         return hint
     return kind, origin, target
 

@@ -85,6 +85,7 @@ EXCLUDE = [
     r"rocket lab", r"spacex", r"starship", r"satellite launch", r"video game", r"movie",
     r"מניות", r"בורסה", r"כדורגל", r"כדורסל",
     r"hunger strike", r"general strike", r"workers? (on )?strike", r"strike action", r"on strike",
+    r"відбій", r"отбой", r"all[- ]clear", r"סיום אירוע", r"ניתן לצאת מהמרחב המוגן",
     r"heart attack", r"panic attack", r"cyber", r"shark attack", r"lucky strike", r"bowling",
     r"bitcoin", r"crypto", r"price prediction", r"presale", r"ביטקוין", r"קריפטו",
     # פרסומות ומבצעי קניות (לא "מבצע צבאי")
@@ -150,7 +151,7 @@ def event_for(item: NewsItem, en_title: str = "", en_summary: str = ""):
     if not ev[1] and en_title:
         ev = detect_event(f"{en_title} {en_summary}")
     if item.extra.get("social"):
-        ev = apply_hint(item.extra.get("channel", ""), *ev)
+        ev = apply_hint(item.extra.get("channel", ""), *ev, text=f"{item.title} {item.summary}")
     return ev
 
 
