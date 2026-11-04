@@ -172,13 +172,13 @@ ESCALATION = re.compile("|".join([
     r"escalat", r"retaliat", r"revenge", r"vows? (?:to )?(?:respond|retaliate|revenge)", r"\bthreat(?:en|ens|ened)?\b",
     r"\bwarn(?:s|ed|ing)?\b", r"\bvow", r"aggression", r"consequences", r"ultimatum", r"high alert", r"mobiliz", r"\bdeploy", r"aircraft carrier",
     r"carrier strike group", r"\bb-2\b", r"bombers?", r"war (?:with|against|on)", r"all-out war", r"nuclear (?:site|facilit|program|deal)",
-    r"enrichment", r"\bwar\b", r"ceasefire", r"seiz(?:e|ed|ure) (?:of )?(?:a |an )?(?:tanker|ship|vessel)",
-    r"הסלמה", r"נקמה", r"איום", r"איים", r"מאיים", r"כוננות", r"נושאת מטוסים", r"מפציצ", r"גרעין", r"מלחמה", r"הפסקת אש",
-    r"תגובה", r"אולטימטום", r"תוגבר", r"פריסת",
-    r"تصعيد", r"انتقام", r"تهديد", r"يهدد", r"توعد", r"حاملة طائرات", r"قاذفات", r"النووي", r"حرب", r"استنفار",
-    r"وقف إطلاق النار", r"الرد",
-    r"تهدید", r"انتقام", r"جنگ", r"هسته‌ای", r"ناو هواپیمابر", r"پاسخ",
-    r"эскалац", r"угрож", r"ядерн", r"войн",
+    r"enrichment", r"ceasefire", r"seiz(?:e|ed|ure) (?:of )?(?:a |an )?(?:tanker|ship|vessel)",
+    r"הסלמה", r"נקמה", r"איום", r"איים", r"מאיים", r"כוננות", r"נושאת מטוסים", r"מפציצ", r"גרעין", r"מלחמה (?:עם|נגד|מול|כוללת)", r"הפסקת אש",
+    r"תגובה (?:קשה|כואבת|חריפה|צבאית|למתקפה)", r"אולטימטום", r"תוגבר", r"פריסת",
+    r"تصعيد", r"انتقام", r"تهديد", r"يهدد", r"توعد", r"حاملة طائرات", r"قاذفات", r"النووي", r"حرب (?:على|ضد|مع|شاملة)", r"استنفار",
+    r"وقف إطلاق النار", r"الرد (?:على|العسكري|القاسي)",
+    r"تهدید", r"انتقام", r"خونخواهی", r"جنگ (?:با|علیه)", r"هسته‌ای", r"ناو هواپیمابر", r"پاسخ (?:قاطع|سخت|کوبنده|نظامی)",
+    r"эскалац", r"угрож", r"ядерн", r"войн[аеуы] с",
 ]), re.IGNORECASE)
 TENSION_PARTIES = ("US", "IR", "IL")
 MIDEAST_LAUNCHERS = {"IR", "YE", "LB", "GZ", "IQ", "SY"}
