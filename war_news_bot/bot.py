@@ -46,11 +46,11 @@ if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
     from war_news_bot import geo
-    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
+    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
 else:
     from .sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
     from . import geo
-    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
+    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -98,7 +98,7 @@ def is_relevant(item: NewsItem) -> bool:
     text = f"{item.title} {item.summary}"
     if _EXC.search(text):
         return False
-    return bool(_INC.search(text)) or is_escalation(text)
+    return bool(_INC.search(text)) or is_escalation(text) or is_eyewitness(text)
 
 
 # --------------------------------------------------------------------------- #
@@ -158,6 +158,8 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
     ev = event_for(item, en_title, en_summary)
     if ev[0] == "tension":
         icon = "⚔️"
+    elif ev[0] == "witness":
+        icon = "👂"
     route_he, route_en = route_line(*ev)
     en_on = _env_bool("NEWS_INCLUDE_ENGLISH", False)  # ברירת מחדל: עברית בלבד
 
@@ -549,6 +551,8 @@ class SocialClusters:
         channel = item.extra.get("channel", "")
         if kind == "tension":
             key = "T:" + "-".join(sorted([origin, target]))
+        elif kind == "witness" and origin:
+            key = "W:" + origin  # דיווחי תושבים מאותו מקום — אירוע אחד
         elif origin:
             key = origin
         elif channel.lower() in self.trusted:

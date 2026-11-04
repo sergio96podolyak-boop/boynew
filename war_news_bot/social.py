@@ -181,6 +181,34 @@ ESCALATION = re.compile("|".join([
 ]), re.IGNORECASE)
 TENSION_PARTIES = ("US", "IR", "IL")
 
+# דיווחי תושבים / עדי ראייה: שמעו מטוסים, פיצוצים, בומים, יירוטים, ראו שובלים בשמיים
+EYEWITNESS = re.compile("|".join([
+    r"(?:heard|hearing|hear) (?:\S+ ){0,3}(?:jets?|planes?|aircraft|explosions?|blasts?|booms?|bangs?|sirens?|intercept)",
+    r"(?:explosions?|blasts?|booms?|loud bangs?|sonic boom|jets?|fighter jets|warplanes|drones?) (?:\S+ ){0,2}(?:heard|seen|spotted|reported) (?:over|in|across|near)",
+    r"sound of (?:jets|planes|explosions|interceptions)", r"residents (?:report|reported|say|hear)", r"eyewitness",
+    r"low[- ]flying (?:jets|aircraft|planes)", r"(?:trails?|streaks?) (?:seen|spotted) (?:in|over) the sky",
+    r"נשמע(?:ו|ה)? (?:\S+ ){0,2}(?:פיצוצ|בומ|רעש|קולות|מטוס|יירוט|אזעק)", r"רעש(?:י)? (?:של )?מטוסים", r"קולות (?:נפץ|פיצוץ|יירוט)",
+    r"תושבים (?:מדווחים|דיווחו|מספרים)", r"עדי ראייה", r"מטוסי קרב (?:בשמי|מעל)", r"שובל(?:ים)? בשמיים",
+    r"(?:سماع|سمع|تسمع) (?:\S+ ){0,2}(?:دوي|انفجار|أصوات|صوت|طيران)", r"أصوات انفجارات", r"تحليق (?:مكثف|منخفض|للطيران|طيران)",
+    r"دوي انفجار", r"شهود عيان", r"مواطنون (?:يفيدون|أفادوا)", r"رصد (?:صواريخ|مسيرات) في السماء",
+    r"صدای (?:انفجار|جنگنده|پدافند)", r"(?:شنیده|شنیده‌شدن) (?:\S+ ){0,2}(?:انفجار|صدا)", r"پرواز (?:جنگنده|هواپیما)", r"شاهدان عینی",
+    r"слышн\w* (?:\S+ ){0,2}(?:взрыв|звук|самолет|пво)", r"звуки (?:взрывов|самолетов|пво)", r"очевидц", r"чути (?:\S+ ){0,2}вибух",
+]), re.IGNORECASE)
+
+
+def first_place(text: str) -> Optional[str]:
+    """המקום הראשון שמוזכר בטקסט (לדיווחי תושבים: איפה שמעו/ראו)."""
+    best = (10 ** 9, None)
+    for code, pat in _PAT.items():
+        m = re.search(pat, text, re.IGNORECASE)
+        if m and m.start() < best[0]:
+            best = (m.start(), code)
+    return best[1]
+
+
+def is_eyewitness(text: str) -> bool:
+    return bool(EYEWITNESS.search(text))
+
 
 def _parties(text: str) -> List[str]:
     """המעורבים מתוך ארה\"ב/איראן/ישראל לפי סדר ההופעה בטקסט."""
@@ -217,6 +245,8 @@ def detect_event(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]
     if is_escalation(text):
         p = _parties(text)
         return "tension", p[0], p[1]
+    if is_eyewitness(text):
+        return "witness", first_place(text), None
     return None, None, None
 
 
@@ -231,6 +261,9 @@ def route_line(kind: Optional[str], origin: Optional[str], target: Optional[str]
     if not kind or not origin:
         return "", ""
     fo, ho, eo, _ = PLACES[origin]
+    if kind == "witness":
+        f, h, en, _ = PLACES[origin]
+        return f"👂 דיווחי תושבים מ־{f} {h}", f"👂 Eyewitness reports from {f} {en}"
     if kind == "tension":
         ft, ht, et, _ = PLACES[target]
         return (f"⚔️ הסלמה: {fo} {ho}  ·  {ft} {ht}", f"⚔️ Escalation: {fo} {eo}  ·  {ft} {et}")
