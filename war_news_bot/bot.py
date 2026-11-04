@@ -46,11 +46,11 @@ if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
     from war_news_bot import geo
-    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
+    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, MIDEAST_LAUNCHERS, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
 else:
     from .sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
     from . import geo
-    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
+    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, MIDEAST_LAUNCHERS, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -72,12 +72,12 @@ KEYWORDS_EN = [
     r"\b(strikes?|struck|hits?|bomb(s|ed)?) (\w+ ){0,2}(targets|positions|sites|bases|facilit)",
     r"attack(s|ed)? (on|in|against|targets?)", r"\braids?\b on", r"\bpound(s|ed|ing)\b",
     r"(ukrain|russia)\w* (drone|missile|strike|attack)", r"glide bombs?", r"kamikaze",
-    r"forces (strike|struck|hit|attack)", r"strik\w* (\S+ ){0,3}(militia|militants|fighters|commander)",
+    r"forces (strike|struck|hit|attack)", r"\bstrikes? (?:from|by)\b", r"(?:was|were|been) targeted", r"strik\w* (\S+ ){0,3}(militia|militants|fighters|commander)",
 ]
 KEYWORDS_HE = [
     r"טיל", r"טילים", r"רקט", r"שיגור", r"שוגר", r"ירי", r"יירוט", r"יורט", r"כיפת ברזל",
     r"אזעק", r"צבע אדום", r"כטב\"?ם", r"רחפן נפץ", r"תקיפה", r"תקף", r"הפצצ", r"פיצוצ",
-    r"חדירת כלי טיס", r"הותקף", r"הותקפו", r"מתקפ", r"תקיפות",
+    r"חדירת כלי טיס", r"מבצע (?:צבאי|קרקעי|אווירי)", r"הותקף", r"הותקפו", r"מתקפ", r"תקיפות",
 ]
 # מילים שמסמנות "רעש" (ספורט, בורסה וכו')
 EXCLUDE = [
@@ -87,6 +87,12 @@ EXCLUDE = [
     r"hunger strike", r"general strike", r"workers? (on )?strike", r"strike action", r"on strike",
     r"heart attack", r"panic attack", r"cyber", r"shark attack", r"lucky strike", r"bowling",
     r"bitcoin", r"crypto", r"price prediction", r"presale", r"ביטקוין", r"קריפטו",
+    # פרסומות ומבצעי קניות (לא "מבצע צבאי")
+    r"₪", r"\bהנח(?:ה|ות)\b", r"קופון", r"משלוח חינם", r"לרכישה", r"להזמנות", r"פרסומת", r"תוכן ממומן",
+    r"שיתוף פעולה בתשלום", r"מבצעי(?:ם)? (?:שלא|מטורפים|ענק|חגיגיים|סוף)", r"shopping", r"black friday",
+    r"blue november", r"cyber monday", r"sponsored", r"promo ?code", r"discount", r"\d+% off", r"buy now",
+    r"#ad\b", r"#ads\b", r"реклам", r"скидк", r"промокод", r"إعلان", r"خصم", r"عرض خاص", r"تخفيض", r"تخفیف",
+    r"آگهی", r"تبلیغ", r"casino", r"הימור", r"\bbetting\b",
 ]
 _INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR + KEYWORDS_RU_UA + KEYWORDS_FA), re.IGNORECASE)
 _EXC = re.compile("|".join(EXCLUDE), re.IGNORECASE)
@@ -523,10 +529,10 @@ def launch_map(item: NewsItem, session=None) -> Optional[bytes]:
     if not _env_bool("NEWS_MAPS", True):
         return None
     kind, origin, target = event_for(item)
-    if kind != "launch" or not origin:
-        return None
+    if kind != "launch" or not origin or not target or origin == target:
+        return None  # בלי מקור ויעד ברורים — אין מפה (לא מנחשים יעד)
     try:
-        return geo.render_map([], origin, target or "IL", session)
+        return geo.render_map([], origin, target, session)
     except Exception:  # noqa: BLE001
         logger.exception("map render failed")
         return None
@@ -669,8 +675,8 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                     seen.add(it.extra["uid"])
                     continue  # התרעות מטופלות למעלה
                 ev = event_for(it)
-                if ev[0] == "launch" and ev[1] and ev[1] != "IL" and ev[2] in (None, "IL"):
-                    recent.add(ev[1])
+                if ev[0] == "launch" and ev[2] == "IL" and ev[1] in MIDEAST_LAUNCHERS:
+                    recent.add(ev[1])  # רק שיגור מפורש לישראל משמש לכיוון של התרעה
                 try:
                     if it.extra.get("social"):
                         act = clusters.add(it)

@@ -125,7 +125,7 @@ _FROM = [r"\bfrom (?:the )?(?:{p})", r"(?:{p})\w*\s+(?:launch|fire)", r"\bמ(?:{
          r"(?:{p})\S*\s+(?:\S+\s+){{0,3}}?(?:שיגר|שיגרה|שיגרו|ירה|ירתה|ירו)\b", r"שוגר\S*\s+(?:\S+\s+){{0,3}}?מ(?:{p})",
          r"از (?:{p})", r"(?:{p})\S*\s+(?:\S+\s+){{0,6}}?شلیک"]
 _TO = [r"\b(?:toward|towards|at|on|into|over|against) (?:the )?(?:{p})",
-       r"(?:לעבר|לכיוון|אל|על|ב)\s?(?:{p})",
+       r"(?:לעבר|לכיוון|אל|על)\s?(?:{p})",
        r"(?:نحو|باتجاه|على|إلى|الى|في) (?:{p})",
        r"(?:по|на|в|над) (?:{p})", r"(?:به سمت|به سوی|علیه) (?:{p})"]
 
@@ -180,6 +180,7 @@ ESCALATION = re.compile("|".join([
     r"эскалац", r"угрож", r"ядерн", r"войн",
 ]), re.IGNORECASE)
 TENSION_PARTIES = ("US", "IR", "IL")
+MIDEAST_LAUNCHERS = {"IR", "YE", "LB", "GZ", "IQ", "SY"}
 
 # דיווחי תושבים / עדי ראייה: שמעו מטוסים, פיצוצים, בומים, יירוטים, ראו שובלים בשמיים
 EYEWITNESS = re.compile("|".join([
@@ -238,9 +239,11 @@ def detect_event(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]
         target = _match(text, _TO)
         if target == origin:
             target = None
-        if not target and origin != "IL" and re.search(_PAT["IL"], text, re.IGNORECASE):
-            # שיגור מהמזרח התיכון בלי יעד מפורש — אם ישראל מוזכרת, היא כנראה היעד
+        if not target and origin in MIDEAST_LAUNCHERS and re.search(_PAT["IL"], text, re.IGNORECASE):
+            # שיגור מאיראן/תימן/לבנון/עזה/עיראק/סוריה בלי יעד מפורש — אם ישראל מוזכרת, היא כנראה היעד
             target = "IL"
+        if origin == "IL" and not target:
+            return None, None, None  # "ישראל ... ירי" בלי יעד — לרוב לא שיגור (נסיגה, ירי כוחות וכו')
         return "launch", origin, target
     if is_escalation(text):
         p = _parties(text)
@@ -374,6 +377,20 @@ def _html_to_text(s: str) -> str:
     return re.sub(r"[ \t]+", " ", s).strip()
 
 
+_FOOTER = re.compile(
+    r"t\.me/|https?://|^[@#][\w_]+|הצטרפו|הצטרף|להצטרפות|לערוץ|subscribe|join (?:us|our|the channel)|follow us|"
+    r"اشترك|انضم|تابعونا|تابعوا|Подпис|подпис|Присоедин|عضویت|بپیوندید|ـــ",
+    re.IGNORECASE,
+)
+
+
+def _strip_footer(text: str) -> str:
+    """מסיר שורות קידום ערוץ / קישורים / האשטגים שערוצים מוסיפים לכל פוסט."""
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    kept = [ln for ln in lines if not (_FOOTER.search(ln) and len(re.sub(r"\S*(?:t\.me|https?://)\S*", "", ln)) < 60)]
+    return "\n".join(kept).strip() or text
+
+
 def parse_channel_page(page: str, channel: str) -> List[NewsItem]:
     items: List[NewsItem] = []
     for m in _POST.finditer(page):
@@ -381,7 +398,7 @@ def parse_channel_page(page: str, channel: str) -> List[NewsItem]:
         tm = _TEXT.search(body)
         if not tm:
             continue  # פוסט בלי טקסט (תמונה בלבד וכו')
-        text = _html_to_text(tm.group(1))
+        text = _strip_footer(_html_to_text(tm.group(1)))
         if not text:
             continue
         published = None
