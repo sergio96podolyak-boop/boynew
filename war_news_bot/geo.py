@@ -282,13 +282,14 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
 
         def put(text, x, y, font, fill, dy=0):
             if not (20 < x < W - 20 and 20 < y + dy < H - 30):
-                return
+                return False
             bw = font.getlength(text) / 2 + 6
             box = (x - bw, y + dy - 14, x + bw, y + dy + 14)
             if any(not (box[2] < b[0] or box[0] > b[2] or box[3] < b[1] or box[1] > b[3]) for b in taken):
-                return  # לא מעמיסים שמות אחד על השני
+                return False  # לא מעמיסים שמות אחד על השני
             taken.append(box)
             _draw_he(td, (x, y + dy), text, font, fill)
+            return True
 
         # יישובי ההתרעה (עד 6) — הכי חשובים, נכתבים ראשונים
         if 0 < len(alert_pts) <= 6 and z >= 8:
@@ -309,8 +310,8 @@ def render_map(alert_pts: List[Tuple[float, float, int]], origin: Optional[str] 
             else:
                 if any(math.hypot(x - ax, y - ay) < 45 for ax, ay in alert_xy):
                     continue  # לא מסתירים את נקודות ההתרעה בשמות ערים
-                td.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(200, 200, 210, 255))
-                put(name, x, y, f_city, (235, 235, 240, 255), dy=-16)
+                if put(name, x, y, f_city, (235, 235, 240, 255), dy=-16):
+                    td.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(200, 200, 210, 255))
     td.text((W - 60, H - 16), "Esri ©", fill=(150, 155, 165, 255))
     buf = io.BytesIO()
     img.convert("RGB").save(buf, "PNG", optimize=True)
