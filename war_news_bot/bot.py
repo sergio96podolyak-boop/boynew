@@ -44,11 +44,13 @@ except ImportError:  # python-dotenv אופציונלי
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
+    from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
+    from war_news_bot import geo
+    from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
 else:
-    from .sources import DEFAULT_FEEDS, NewsItem, fetch_feed, fetch_oref_alerts
-    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
+    from .sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
+    from . import geo
+    from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, PRETRANSLATE, apply_hint, is_escalation, detect_event, detect_route, fetch_channel, route_line
 
 logger = logging.getLogger("war_news_bot")
 
@@ -182,6 +184,8 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
         parts.append(e(he_summary))
     if route_he:
         parts.append(route_he)
+    for line in item.extra.get("extra_lines", []):
+        parts.append(line)
     parts.append("")
     if en_on:
         parts.append(f"{icon} <b>{e(en_title or item.title)}</b>")
@@ -192,7 +196,7 @@ def format_message(item: NewsItem, he_title: str, en_title: str,
         parts.append("")
     footer = f"🕒 {when}  |  📰 {e(item.source)}"
     if item.link and item.link.startswith("http"):
-        footer += f'  |  <a href="{e(item.link, quote=True)}">{"קישור / Link" if en_on else "לכתבה המלאה"}</a>'
+        footer += f'  |  <a href="{e(item.link, quote=True)}">{"קישור / Link" if en_on else ("לאתר ההתרעות" if item.is_alert else "לכתבה המלאה")}</a>'
     parts.append(footer)
     signature = os.getenv("NEWS_CHANNEL_NAME", DEFAULT_TITLE).strip()
     handle = os.getenv("NEWS_CHANNEL_HANDLE", "").strip()
@@ -266,6 +270,23 @@ class Telegram:
         data = self.call("sendMessage", chat_id=self.chat_id, text=text, parse_mode="HTML",
                          disable_web_page_preview=True)
         return (data.get("result") or {}).get("message_id")
+
+    def send_photo(self, png: bytes, caption: str) -> Optional[int]:
+        """תמונה + כיתוב. כיתוב ארוך מ-1024 תווים נשלח כהודעה נפרדת."""
+        api = TELEGRAM_API.format(token=self.token, method="sendPhoto")
+        data = {"chat_id": self.chat_id, "parse_mode": "HTML"}
+        long = len(caption) > 1000
+        if not long:
+            data["caption"] = caption
+        r = self.s.post(api, data=data, files={"photo": ("map.png", png, "image/png")}, timeout=30).json()
+        if not r.get("ok"):
+            raise RuntimeError(f"Telegram sendPhoto failed: {r.get('description')}")
+        mid = (r.get("result") or {}).get("message_id")
+        return self.send(caption) if long else mid
+
+    def edit_caption(self, message_id: int, caption: str) -> None:
+        self.call("editMessageCaption", chat_id=self.chat_id, message_id=message_id,
+                  caption=caption[:1024], parse_mode="HTML")
 
     def edit(self, message_id: int, text: str) -> None:
         self.call("editMessageText", chat_id=self.chat_id, message_id=message_id, text=text,
@@ -408,7 +429,7 @@ def _env_bool(name: str, default: bool) -> bool:
 def collect(session: requests.Session, oref: bool) -> List[NewsItem]:
     items: List[NewsItem] = []
     if oref:
-        items.extend(fetch_oref_alerts(session))
+        items.extend(fetch_alerts(session))
     for name, url, lang in DEFAULT_FEEDS:
         items.extend(fetch_feed(name, url, lang, session))
     return items
@@ -438,6 +459,75 @@ def select_new(items: Iterable[NewsItem], seen: SeenStore, max_age: timedelta,
     # התרעות קודם, אח"כ מהישן לחדש
     out.sort(key=lambda i: (not i.is_alert, i.published or now))
     return out
+
+
+class AlertTracker:
+    """בזמן מטח פיקוד העורף מוסיף יישובים לאותה התרעה — מפרסמים רק יישובים חדשים (חלון 3 דקות)."""
+
+    def __init__(self, window_s: int = 180):
+        self.window_s, self.last = window_s, {}
+
+    def new_areas(self, areas: List[str]) -> List[str]:
+        now = time.time()
+        self.last = {a: t for a, t in self.last.items() if now - t < self.window_s}
+        fresh = [a for a in areas if a not in self.last]
+        for a in areas:
+            self.last[a] = now
+        return fresh
+
+
+class RecentLaunches:
+    """דיווחי שיגור אחרונים לישראל — כדי לדעת "מאיפה" כשמגיעה התרעה."""
+
+    def __init__(self, window_s: int = 1200):
+        self.window_s, self.items = window_s, []
+
+    def add(self, origin: str) -> None:
+        self.items.append((time.time(), origin))
+
+    def latest(self) -> Optional[str]:
+        now = time.time()
+        self.items = [(t, o) for t, o in self.items if now - t < self.window_s]
+        return self.items[-1][1] if self.items else None
+
+
+def enrich_alert(item: NewsItem, recent: Optional["RecentLaunches"], session=None) -> Optional[bytes]:
+    """מוסיף להתרעה זמן התגוננות + כיוון משוער, ומחזיר מפה (PNG) אם אפשר."""
+    pts = geo.city_points(item.extra.get("areas", []), session)
+    lines = []
+    if pts:
+        cd = min(p[2] for p in pts)
+        lines.append(f"⏱ זמן להגעה למרחב מוגן: {'מיידי' if cd <= 15 else f'{cd} שניות'}")
+    origin, how = (recent.latest() if recent else None), "לפי דיווח שיגור"
+    if not origin:
+        origin, how = geo.estimate_origin(pts), "הערכה לפי מיקום ההתרעות"
+    if origin and origin != "IL" and origin in PLACES:
+        f, he = PLACES[origin][0], PLACES[origin][1]
+        lines.append(f"🧭 כיוון משוער: {f} {he} ← 🇮🇱 ישראל ({how})")
+    else:
+        origin = None
+    item.extra["extra_lines"] = lines
+    if not _env_bool("NEWS_MAPS", True):
+        return None
+    try:
+        return geo.render_map(pts, origin, "IL", session)
+    except Exception:  # noqa: BLE001 — מפה היא תוספת; לא מפילים התרעה בגללה
+        logger.exception("map render failed")
+        return None
+
+
+def launch_map(item: NewsItem, session=None) -> Optional[bytes]:
+    """מפת "מאיפה לאיפה" לדיווח שיגור עם מקור ידוע."""
+    if not _env_bool("NEWS_MAPS", True):
+        return None
+    kind, origin, target = event_for(item)
+    if kind != "launch" or not origin:
+        return None
+    try:
+        return geo.render_map([], origin, target or "IL", session)
+    except Exception:  # noqa: BLE001
+        logger.exception("map render failed")
+        return None
 
 
 class SocialClusters:
@@ -528,11 +618,17 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
         logger.info("Watching %d Telegram channels (min %d sources to post, trusted: %s)",
                     len(channels), clusters.min_sources, ", ".join(sorted(trusted)) or "-")
 
-    def post(text: str) -> Optional[int]:
+    alerts_seen = AlertTracker()
+    recent = RecentLaunches()
+
+    def post(text: str, png: Optional[bytes] = None) -> Optional[int]:
         if dry_run:
-            print(text, "\n" + "-" * 60)
+            print(text, "\n" + ("[+ מפה]" if png else "") + "-" * 60)
+            if png and os.getenv("NEWS_DRY_RUN_MAP_DIR"):
+                with open(os.path.join(os.getenv("NEWS_DRY_RUN_MAP_DIR"), f"map_{int(time.time()*1000)}.png"), "wb") as f:
+                    f.write(png)
             return None
-        mid = tg.send(text)
+        mid = tg.send_photo(png, text) if png else tg.send(text)
         time.sleep(1.2)  # מתחת למגבלת 20 הודעות/דקה לקבוצה
         return mid
 
@@ -541,8 +637,21 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
         started = time.time()
         try:
             items: List[NewsItem] = []
-            if oref:
-                items.extend(fetch_oref_alerts(session))  # כל 5 שניות
+            if oref:  # התרעות — כל 5 שניות, מטופלות מיד ובנפרד
+                for al in fetch_alerts(session):
+                    fresh = alerts_seen.new_areas(al.extra.get("areas", []))
+                    if not fresh:
+                        continue
+                    al = NewsItem(**{**al.__dict__, "extra": dict(al.extra)})
+                    al.extra["areas"] = fresh
+                    al.title = al.title.split(":")[0] + ": " + ", ".join(fresh[:25]) + (
+                        f" ועוד {len(fresh) - 25}" if len(fresh) > 25 else "")
+                    try:
+                        png = enrich_alert(al, recent, session)
+                        post(build_message(al, session), png)
+                        logger.info("Alert posted: %d areas", len(fresh))
+                    except (RuntimeError, requests.RequestException) as e:
+                        logger.error("alert send failed: %s", e)
             if started - last_rss >= poll:
                 items.extend(collect(session, oref=False))
                 last_rss = started
@@ -552,18 +661,29 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
             new = select_new(items, seen, max_age, social_max_age)[:max_per_cycle]
             sent = 0
             for it in new:
+                if it.is_alert:
+                    seen.add(it.extra["uid"])
+                    continue  # התרעות מטופלות למעלה
+                ev = event_for(it)
+                if ev[0] == "launch" and ev[1] and ev[1] != "IL" and ev[2] in (None, "IL"):
+                    recent.add(ev[1])
                 try:
                     if it.extra.get("social"):
                         act = clusters.add(it)
                         if act and act["action"] == "send":
+                            png = launch_map(act["item"], session)
+                            act["cluster"]["is_photo"] = bool(png)
                             act["cluster"]["message_id"] = post(
-                                build_message(act["item"], session, act["count"]))
+                                build_message(act["item"], session, act["count"]), png)
                             sent += 1
                         elif act and act["action"] == "edit" and act["cluster"]["message_id"]:
-                            tg.edit(act["cluster"]["message_id"],
-                                    build_message(act["item"], session, act["count"]))
+                            text = build_message(act["item"], session, act["count"])
+                            if act["cluster"].get("is_photo"):
+                                tg.edit_caption(act["cluster"]["message_id"], text)
+                            else:
+                                tg.edit(act["cluster"]["message_id"], text)
                     else:
-                        post(build_message(it, session))
+                        post(build_message(it, session), launch_map(it, session))
                         sent += 1
                 except (RuntimeError, requests.RequestException) as e:
                     logger.error("send failed: %s", e)

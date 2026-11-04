@@ -160,17 +160,33 @@ def fetch_feed(name: str, url: str, lang: str, session: requests.Session) -> Lis
 # פיקוד העורף — התרעות בזמן אמת (עובד רק מכתובת IP בישראל)
 # --------------------------------------------------------------------------- #
 
-OREF_URL = "https://www.oref.org.il/WarningMessages/alert/alerts.json"
+OREF_URL = "https://www.oref.org.il/warningMessages/alert/Alerts.json"
+TZOFAR_URL = "https://api.tzevaadom.co.il/notifications"
+_BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+
+# קודי איום של צופר
+TZOFAR_THREATS = {
+    0: "ירי רקטות וטילים", 1: "חומרים מסוכנים", 2: "חשש לחדירת מחבלים", 3: "רעידת אדמה",
+    4: "חשש לצונאמי", 5: "חדירת כלי טיס עוין", 6: "אירוע רדיולוגי", 7: "ירי בלתי קונבנציונלי",
+}
+
+
+def _alert_item(title: str, areas: List[str], desc: str, source: str, link: str, extra: dict) -> NewsItem:
+    shown = ", ".join(areas[:25]) + (f" ועוד {len(areas) - 25}" if len(areas) > 25 else "")
+    return NewsItem(
+        title=f"{title}: {shown}", link=link, source=source, summary=desc,
+        published=datetime.now(timezone.utc), lang="he", is_alert=True,
+        extra={"areas": list(areas), **extra},
+    )
 
 
 def fetch_oref_alerts(session: requests.Session) -> List[NewsItem]:
-    headers = {
-        "User-Agent": _UA,
-        "Referer": "https://www.oref.org.il/",
-        "X-Requested-With": "XMLHttpRequest",
-    }
+    """התרעות פיקוד העורף (עובד מכתובת IP בישראל)."""
+    headers = {"User-Agent": _BROWSER_UA, "Referer": "https://www.oref.org.il/",
+               "X-Requested-With": "XMLHttpRequest", "Accept": "application/json, text/plain, */*"}
     try:
-        r = session.get(OREF_URL, timeout=_HTTP_TIMEOUT, headers=headers)
+        r = session.get(OREF_URL, timeout=10, headers=headers)
         r.raise_for_status()
         body = r.content.decode("utf-8-sig").strip()
         if not body:
@@ -179,21 +195,35 @@ def fetch_oref_alerts(session: requests.Session) -> List[NewsItem]:
     except (requests.RequestException, ValueError) as e:
         logger.debug("Oref fetch failed: %s", e)
         return []
-
     areas = data.get("data") or []
     if not areas:
         return []
-    title = data.get("title") or "התרעה"
-    desc = data.get("desc") or ""
-    alert_id = str(data.get("id") or "")
-    item = NewsItem(
-        title=f"{title}: {', '.join(areas[:25])}" + (" ועוד" if len(areas) > 25 else ""),
-        link="https://www.oref.org.il/",
-        source="פיקוד העורף",
-        summary=desc,
-        published=datetime.now(timezone.utc),
-        lang="he",
-        is_alert=True,
-        extra={"id": alert_id, "areas": areas, "cat": data.get("cat")},
-    )
-    return [item]
+    return [_alert_item(data.get("title") or "התרעה", areas, data.get("desc") or "", "פיקוד העורף",
+                        "https://www.oref.org.il/", {"id": str(data.get("id") or ""), "cat": data.get("cat")})]
+
+
+def fetch_tzofar_alerts(session: requests.Session) -> List[NewsItem]:
+    """גיבוי: התרעות פעילות מצופר (tzevaadom)."""
+    try:
+        r = session.get(TZOFAR_URL, timeout=10, headers={"User-Agent": _BROWSER_UA})
+        r.raise_for_status()
+        data = r.json()
+    except (requests.RequestException, ValueError) as e:
+        logger.debug("Tzofar fetch failed: %s", e)
+        return []
+    out = []
+    for n in data if isinstance(data, list) else []:
+        if not isinstance(n, dict) or n.get("isDrill"):
+            continue
+        areas = n.get("cities") or []
+        if not areas:
+            continue
+        title = TZOFAR_THREATS.get(n.get("threat"), "התרעה")
+        out.append(_alert_item(title, areas, "", "פיקוד העורף (דרך צופר)", "https://www.tzevaadom.co.il/",
+                               {"id": str(n.get("notificationId") or n.get("time") or ""), "threat": n.get("threat")}))
+    return out
+
+
+def fetch_alerts(session: requests.Session) -> List[NewsItem]:
+    """פיקוד העורף, ואם אין — צופר."""
+    return fetch_oref_alerts(session) or fetch_tzofar_alerts(session)
