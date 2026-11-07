@@ -30,7 +30,7 @@ import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import requests
 
@@ -72,12 +72,15 @@ KEYWORDS_EN = [
     r"\b(strikes?|struck|hits?|bomb(s|ed)?) (\w+ ){0,2}(targets|positions|sites|bases|facilit)",
     r"attack(s|ed)? (on|in|against|targets?)", r"\braids?\b on", r"\bpound(s|ed|ing)\b",
     r"(ukrain|russia)\w* (drone|missile|strike|attack)", r"glide bombs?", r"kamikaze",
+    r"\bb-52\b", r"\bb-2\b", r"\bb-1b?\b", r"\bf-35", r"\bf-15", r"\bf-16", r"\bkc-(?:135|46)\b",
+    r"refuel(?:ing|er)? (?:aircraft|planes|tankers?)", r"tankers? (?:aircraft|planes)", r"fighter jets?", r"warplanes?",
     r"forces (strike|struck|hit|attack)", r"\bstrikes? (?:from|by)\b", r"(?:was|were|been) targeted", r"strik\w* (\S+ ){0,3}(militia|militants|fighters|commander)",
 ]
 KEYWORDS_HE = [
     r"טיל", r"טילים", r"רקט", r"שיגור", r"שוגר", r"ירי", r"יירוט", r"יורט", r"כיפת ברזל",
     r"אזעק", r"צבע אדום", r"כטב\"?ם", r"רחפן נפץ", r"תקיפה", r"תקף", r"הפצצ", r"פיצוצ",
-    r"חדירת כלי טיס", r"מבצע (?:צבאי|קרקעי|אווירי)", r"הותקף", r"הותקפו", r"מתקפ", r"תקיפות",
+    r"חדירת כלי טיס", r"מבצע (?:צבאי|קרקעי|אווירי)", r"מטוסי (?:קרב|תדלוק|ארה|חיל)", r"מפציצ", r"מטוס(?:י)? תדלוק",
+    r"פעילות (?:חריגה של )?מטוסים", r"הותקף", r"הותקפו", r"מתקפ", r"תקיפות",
 ]
 # מילים שמסמנות "רעש" (ספורט, בורסה וכו')
 EXCLUDE = [
@@ -112,22 +115,78 @@ def is_relevant(item: NewsItem) -> bool:
 # תרגום (Google Translate, ללא מפתח API)
 # --------------------------------------------------------------------------- #
 
+_TR_CACHE: Dict[Tuple[str, str], str] = {}
+_TR_COOLDOWN: Dict[str, float] = {}  # שירות שנחסם (429) — לא פונים אליו עד הזמן הזה
+_MM_LANG = {"iw": "he", "he": "he", "en": "en", "ar": "ar", "fa": "fa", "ru": "ru", "auto": "ru"}
+
+
+class Untranslated(Exception):
+    """לא הצלחנו לתרגם — לא מפרסמים טקסט בשפה זרה; ננסה שוב בסבב הבא."""
+
+
+def _tr_google_gtx(s, text, target, source):
+    r = s.get("https://translate.googleapis.com/translate_a/single",
+              params={"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text}, timeout=10)
+    if r.status_code == 429:
+        raise PermissionError("429")
+    r.raise_for_status()
+    return "".join(part[0] for part in r.json()[0] if part and part[0]).strip()
+
+
+def _tr_google_dict(s, text, target, source):
+    r = s.get("https://clients5.google.com/translate_a/t",
+              params={"client": "dict-chrome-ex", "sl": source, "tl": target, "q": text}, timeout=10)
+    if r.status_code == 429:
+        raise PermissionError("429")
+    r.raise_for_status()
+    d = r.json()
+    first = d[0] if isinstance(d, list) and d else d
+    return (first[0] if isinstance(first, list) else first or "").strip()
+
+
+def _tr_mymemory(s, text, target, source):
+    pair = f"{_MM_LANG.get(source, 'en')}|{_MM_LANG.get(target, 'he')}"
+    r = s.get("https://api.mymemory.translated.net/get", params={"q": text[:480], "langpair": pair}, timeout=12)
+    r.raise_for_status()
+    d = r.json()
+    out = ((d.get("responseData") or {}).get("translatedText") or "").strip()
+    if not out or "MYMEMORY WARNING" in out.upper() or d.get("quotaFinished"):
+        raise PermissionError("quota")
+    return html.unescape(out)
+
+
+_TR_BACKENDS = [("google", _tr_google_gtx), ("google-dict", _tr_google_dict), ("mymemory", _tr_mymemory)]
+
+
 def translate(text: str, target: str, source: str = "auto",
               session: Optional[requests.Session] = None) -> str:
+    """מתרגם עם כמה שירותים לגיבוי, זיכרון תרגומים, והשהיה לשירות שחוסם. מחזיר "" אם כולם נכשלו."""
+    text = (text or "").strip()[:1500]
     if not text:
         return ""
-    s = session or requests
-    try:
-        r = s.get(
-            "https://translate.googleapis.com/translate_a/single",
-            params={"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text[:1500]},
-            timeout=10,
-        )
-        r.raise_for_status()
-        return "".join(part[0] for part in r.json()[0] if part and part[0]).strip()
-    except (requests.RequestException, ValueError, IndexError, TypeError) as e:
-        logger.debug("translate failed: %s", e)
-        return ""
+    key = (text, target)
+    if key in _TR_CACHE:
+        return _TR_CACHE[key]
+    s = session or requests.Session()
+    now = time.time()
+    for name, fn in _TR_BACKENDS:
+        if _TR_COOLDOWN.get(name, 0) > now:
+            continue
+        try:
+            out = fn(s, text, target, source)
+        except PermissionError:
+            _TR_COOLDOWN[name] = now + 900  # נחסמנו — 15 דקות הפסקה מהשירות הזה
+            logger.warning("translate: %s is rate-limiting, pausing it for 15 min", name)
+            continue
+        except (requests.RequestException, ValueError, IndexError, TypeError, KeyError) as e:
+            logger.debug("translate via %s failed: %s", name, e)
+            continue
+        if out and out != text:
+            if len(_TR_CACHE) > 3000:
+                _TR_CACHE.clear()
+            _TR_CACHE[key] = out
+            return out
+    return ""
 
 
 # --------------------------------------------------------------------------- #
@@ -233,23 +292,27 @@ def build_message(item: NewsItem, session: Optional[requests.Session] = None,
     if _norm(summary).startswith(_norm(item.title)[:60]) or _norm(summary) in _norm(item.title):
         summary = ""  # התקציר רק חוזר על הכותרת
     summary = summary[:280]
-    if item.lang not in ("he", "en"):  # ערבית / רוסית / אוקראינית → מתרגמים לשתיהן
-        src = item.lang if item.lang in ("ar", "fa") else "auto"
+    en_on = _env_bool("NEWS_INCLUDE_ENGLISH", False)
+    if item.lang != "he":  # אנגלית / ערבית / פרסית / רוסית / אוקראינית → עברית
+        src = item.lang if item.lang in ("ar", "fa", "en") else "auto"
         title, summ = item.title, summary
         for rx, repl in PRETRANSLATE:
             title, summ = rx.sub(repl, title), rx.sub(repl, summ)
-        he_title = translate(title, "iw", src, session) or item.title
-        en_title = translate(title, "en", src, session) or item.title
+        he_title = translate(title, "iw", src, session)
+        if not he_title:
+            raise Untranslated(item.title[:80])
         he_sum = translate(summ, "iw", src, session) if summ else ""
-        en_sum = translate(summ, "en", src, session) if summ else ""
-    elif item.lang == "he":
-        he_title, he_sum = item.title, summary
-        en_title = translate(item.title, "en", "iw", session) or item.title
-        en_sum = translate(summary, "en", "iw", session) if summary else ""
+        if item.lang == "en":
+            en_title, en_sum = item.title, summary
+        elif en_on:
+            en_title = translate(title, "en", src, session) or item.title
+            en_sum = translate(summ, "en", src, session) if summ else ""
+        else:
+            en_title, en_sum = "", ""
     else:
-        en_title, en_sum = item.title, summary
-        he_title = translate(item.title, "iw", "en", session) or item.title
-        he_sum = translate(summary, "iw", "en", session) if summary else ""
+        he_title, he_sum = item.title, summary
+        en_title = (translate(item.title, "en", "iw", session) or item.title) if en_on else ""
+        en_sum = (translate(summary, "en", "iw", session) if summary else "") if en_on else ""
     return format_message(item, he_title, en_title, he_sum, en_sum, corroborated_by)
 
 
@@ -671,7 +734,7 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                 items.extend(fetch_social())
                 last_social = started
             new = select_new(items, seen, max_age, social_max_age)[:max_per_cycle]
-            sent = 0
+            sent = untranslated = 0
             for it in new:
                 if it.is_alert:
                     seen.add(it.extra["uid"])
@@ -679,6 +742,14 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                 ev = event_for(it)
                 if ev[0] == "launch" and ev[2] == "IL" and ev[1] in MIDEAST_LAUNCHERS:
                     recent.add(ev[1])  # רק שיגור מפורש לישראל משמש לכיוון של התרעה
+                if it.lang != "he":
+                    src = it.lang if it.lang in ("ar", "fa", "en") else "auto"
+                    t = it.title
+                    for rx, repl in PRETRANSLATE:
+                        t = rx.sub(repl, t)
+                    if not translate(t, "iw", src, session):
+                        untranslated += 1
+                        continue  # לא מסמנים כ"נראה" — ננסה לתרגם שוב בסבב הבא
                 try:
                     if it.extra.get("social"):
                         act = clusters.add(it)
@@ -697,6 +768,9 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                     else:
                         post(build_message(it, session), launch_map(it, session))
                         sent += 1
+                except Untranslated:
+                    untranslated += 1
+                    continue
                 except (RuntimeError, requests.RequestException) as e:
                     logger.error("send failed: %s", e)
                     continue
@@ -705,6 +779,8 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                 seen.save()
             if sent:
                 logger.info("Posted %d new items", sent)
+            if untranslated:
+                logger.warning("Held %d items: translation unavailable, will retry", untranslated)
         except Exception:  # הלולאה לא נופלת על שגיאה בודדת
             logger.exception("cycle error")
         if once:

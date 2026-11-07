@@ -84,6 +84,18 @@
 | [@irna_1313](https://t.me/irna_1313) | אירנ"א — סוכנות הידיעות הרשמית |  |
 | [@mehrnews](https://t.me/mehrnews) | מהר — סוכנות ממשלתית |  |
 | [@iribnews](https://t.me/iribnews) | IRIB — השידור הממלכתי |  |
+| [@idfofficial](https://t.me/idfofficial) | דובר צה"ל — ערוץ רשמי | ✅ |
+| [@FlightRadarIL](https://t.me/FlightRadarIL) | מעקב מטוסים — פעילות מטוסי קרב ותדלוק בשמי האזור | ✅ |
+| [@N12chat](https://t.me/N12chat) | חדשות 12 — מבזקים |  |
+| [@i24NEWS_HE](https://t.me/i24NEWS_HE) | i24NEWS — מבזקים בעברית |  |
+| [@israelhayomheb](https://t.me/israelhayomheb) | ישראל היום — מבזקים |  |
+| [@lelotsenzura](https://t.me/lelotsenzura) | ללא צנזורה — מבזקים |  |
+| [@Middle_East_Spectator](https://t.me/Middle_East_Spectator) | Middle East Spectator — OSINT מהמזרח התיכון |  |
+| [@intelslava](https://t.me/intelslava) | Intel Slava — מבזקי OSINT |  |
+| [@MilitaryNewsEN](https://t.me/MilitaryNewsEN) | Military News — מבזקים צבאיים |  |
+| [@warfareanalysis](https://t.me/warfareanalysis) | Warfare Analysis — מבזקים |  |
+| [@QudsNen](https://t.me/QudsNen) | Quds News Network — עזה והגדה, אנגלית |  |
+| [@militarysummary](https://t.me/militarysummary) | Military Summary — מבזקים |  |
 | [@clashreport](https://t.me/clashreport) | Clash Report — מבזקי עימותים |  |
 | [@warmonitors](https://t.me/warmonitors) | War Monitors — מבזקים |  |
 | [@kpszsu](https://t.me/kpszsu) | חיל האוויר של אוקראינה — רשמי | ✅ |
@@ -132,7 +144,7 @@
 | `NEWS_SOCIAL_MAX_AGE_MIN` | 15 | להתעלם מפוסטים ישנים יותר |
 
 ## הערות
-- תרגום: Google Translate (ללא מפתח). אם התרגום נכשל — נשלחת הכותרת המקורית.
+- תרגום: Google Translate, ואם הוא חוסם אז Google (כתובת נוספת) ו־MyMemory. תרגומים נשמרים בזיכרון. אם כל השירותים נכשלים, הדיווח **לא** מתפרסם בשפה זרה, והבוט מנסה שוב בסבב הבא.
 - כפילויות: אותה כותרת ממקורות שונים נשלחת פעם אחת (מצב נשמר ב־`data/war_news_seen.json`).
 - ערוצים בערבית מפרסמים לפעמים תעמולה או מידע שגוי. לכן יש סימון "לא מאומת" ודרישה לכמה מקורות.
 - זה מאגד חדשות אוטומטי — **לא מחליף את אפליקציית פיקוד העורף** להתרעות מצילות חיים.
