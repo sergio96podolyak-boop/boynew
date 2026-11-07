@@ -36,3 +36,4 @@ pomarket_agent/
 
 # Gradle build output
 market_bloom/android/build/
+data/war_news_seen.json
