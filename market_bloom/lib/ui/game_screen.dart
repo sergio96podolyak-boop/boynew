@@ -122,6 +122,14 @@ class _GameScreenState extends State<GameScreen>
     }
     _startupFlowStarted = true;
 
+    // The privacy choice is a full-screen layer under the navigator, so any
+    // dialog opened now would stack on top of it. Wait for that decision
+    // first, then show the startup dialogs one at a time.
+    await _waitForPrivacyDecision();
+    if (!mounted) {
+      return;
+    }
+
     if (!game.onboardingComplete) {
       await _showOnboarding();
     }
@@ -138,6 +146,24 @@ class _GameScreenState extends State<GameScreen>
       _offlineSheetShown = true;
       await _showOfflineEarnings();
     }
+  }
+
+  Future<void> _waitForPrivacyDecision() {
+    bool decided() =>
+        !(settings.isLoaded && settings.requiresPrivacyConsent);
+    if (decided()) {
+      return Future<void>.value();
+    }
+    final completer = Completer<void>();
+    void listener() {
+      if (!mounted || decided()) {
+        settings.removeListener(listener);
+        if (!completer.isCompleted) completer.complete();
+      }
+    }
+
+    settings.addListener(listener);
+    return completer.future;
   }
 
   Future<void> _showOnboarding() async {

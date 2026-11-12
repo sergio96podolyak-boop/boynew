@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../game/game_controller.dart';
+import '../../game/weekly_challenges.dart';
 import '../../services/app_localizations.dart';
 import '../widgets/management_ui.dart';
 import '../widgets/premium_ui.dart';
@@ -226,6 +227,8 @@ class QuestsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 26),
+                _WeeklyChallengesSection(controller: controller, loc: loc),
               ],
             ),
           );
@@ -392,6 +395,7 @@ class _QuestProgressCard extends StatefulWidget {
     required this.onClaim,
     required this.loc,
     this.emphasized = false,
+    this.gemReward = 0,
   });
 
   final String kind;
@@ -403,6 +407,7 @@ class _QuestProgressCard extends StatefulWidget {
   final int progress;
   final int target;
   final int reward;
+  final int gemReward;
   final bool available;
   final bool completed;
   final bool claimed;
@@ -540,6 +545,12 @@ class _QuestProgressCardState extends State<_QuestProgressCard> {
                             color: PoMarketPalette.gold,
                             icon: Icons.card_giftcard_rounded,
                           ),
+                          if (widget.gemReward > 0)
+                            ManagementStatusPill(
+                              label: '${widget.gemReward}',
+                              color: PoMarketPalette.violet,
+                              icon: Icons.diamond_rounded,
+                            ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -892,3 +903,362 @@ String _term(
   'ar' => ar,
   _ => en,
 };
+
+
+class _WeeklyChallengesSection extends StatelessWidget {
+  const _WeeklyChallengesSection({required this.controller, required this.loc});
+
+  final GameController controller;
+  final AppLocalizations loc;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = controller.weeklyChallengeProgress;
+    final state = controller.weeklyChallenges;
+    final left = controller.weeklyTimeLeft;
+    final timeLabel = left.inDays >= 1
+        ? _term(
+            context,
+            en: '${left.inDays}d ${left.inHours % 24}h left',
+            he: 'נותרו ${left.inDays} ימים ו-${left.inHours % 24} שעות',
+            ar: 'متبقٍ ${left.inDays} يوم و${left.inHours % 24} ساعة',
+          )
+        : _term(
+            context,
+            en: '${left.inHours}h ${left.inMinutes % 60}m left',
+            he: 'נותרו ${left.inHours} שעות ו-${left.inMinutes % 60} דקות',
+            ar: 'متبقٍ ${left.inHours} ساعة و${left.inMinutes % 60} دقيقة',
+          );
+    final claimedCount = items.where((item) => item.claimed).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ManagementSectionTitle(
+          title: _term(
+            context,
+            en: 'Weekly challenges',
+            he: 'אתגרים שבועיים',
+            ar: 'تحديات أسبوعية',
+          ),
+          subtitle: _term(
+            context,
+            en: 'New goals every Monday. Finish all three to open the weekly chest.',
+            he: 'יעדים חדשים בכל יום שני. השלימו את שלושתם כדי לפתוח את תיבת השבוע.',
+            ar: 'أهداف جديدة كل يوم اثنين. أكمل الثلاثة لفتح صندوق الأسبوع.',
+          ),
+          trailing: ManagementStatusPill(
+            label: timeLabel,
+            color: PoMarketPalette.blue,
+            icon: Icons.timer_outlined,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ManagementResponsiveWrap(
+          children: [
+            for (final item in items)
+              _QuestProgressCard(
+                key: ValueKey('weekly-${item.challenge.metric.name}'),
+                kind: _term(
+                  context,
+                  en: 'Weekly',
+                  he: 'שבועי',
+                  ar: 'أسبوعي',
+                ),
+                icon: _icon(item.challenge.metric),
+                color: _color(item.challenge.metric),
+                title: _title(context, item.challenge),
+                description: _description(context, item.challenge.metric),
+                nextAction: _description(context, item.challenge.metric),
+                progress: item.progress,
+                target: item.challenge.target,
+                reward: item.challenge.coinReward,
+                gemReward: item.challenge.gemReward,
+                available: controller.initialized,
+                completed: item.completed,
+                claimed: item.claimed,
+                onClaim: () {
+                  if (!controller.claimWeeklyChallenge(item.challenge.id)) {
+                    return;
+                  }
+                  _snack(
+                    context,
+                    '${loc.questCompleted} +${item.challenge.coinReward}'
+                    ' · +${item.challenge.gemReward} 💎',
+                  );
+                },
+                loc: loc,
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _WeeklyChestCard(
+          claimedCount: claimedCount,
+          total: items.length,
+          ready: state.chestReady,
+          opened: state.chestClaimed,
+          onOpen: () {
+            if (!controller.claimWeeklyChest()) return;
+            _snack(
+              context,
+              _term(
+                context,
+                en: 'Weekly chest opened! +${WeeklyChallengeBalance.chestCoins} · +${WeeklyChallengeBalance.chestGems} 💎',
+                he: 'תיבת השבוע נפתחה! +${WeeklyChallengeBalance.chestCoins} · +${WeeklyChallengeBalance.chestGems} 💎',
+                ar: 'تم فتح صندوق الأسبوع! +${WeeklyChallengeBalance.chestCoins} · +${WeeklyChallengeBalance.chestGems} 💎',
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  static void _snack(BuildContext context, String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  static IconData _icon(WeeklyChallengeMetric metric) => switch (metric) {
+    WeeklyChallengeMetric.sales => Icons.shopping_basket_rounded,
+    WeeklyChallengeMetric.itemsStocked => Icons.inventory_2_rounded,
+    WeeklyChallengeMetric.coinsEarned => Icons.savings_rounded,
+    WeeklyChallengeMetric.upgrades => Icons.rocket_launch_rounded,
+    WeeklyChallengeMetric.actions => Icons.bolt_rounded,
+  };
+
+  static Color _color(WeeklyChallengeMetric metric) => switch (metric) {
+    WeeklyChallengeMetric.sales => PoMarketPalette.blue,
+    WeeklyChallengeMetric.itemsStocked => PoMarketPalette.mint,
+    WeeklyChallengeMetric.coinsEarned => PoMarketPalette.gold,
+    WeeklyChallengeMetric.upgrades => PoMarketPalette.violet,
+    WeeklyChallengeMetric.actions => PoMarketPalette.forestLight,
+  };
+
+  static String _title(BuildContext context, WeeklyChallenge challenge) {
+    final n = challenge.target;
+    return switch (challenge.metric) {
+      WeeklyChallengeMetric.sales => _term(
+        context,
+        en: 'Make $n sales',
+        he: 'בצעו $n מכירות',
+        ar: 'أنجز $n عملية بيع',
+      ),
+      WeeklyChallengeMetric.itemsStocked => _term(
+        context,
+        en: 'Stock $n items',
+        he: 'מלאו $n מוצרים על המדפים',
+        ar: 'رتّب $n منتجًا على الرفوف',
+      ),
+      WeeklyChallengeMetric.coinsEarned => _term(
+        context,
+        en: 'Earn $n coins',
+        he: 'הרוויחו $n מטבעות',
+        ar: 'اكسب $n عملة',
+      ),
+      WeeklyChallengeMetric.upgrades => _term(
+        context,
+        en: 'Buy $n upgrades',
+        he: 'קנו $n שדרוגים',
+        ar: 'اشترِ $n ترقيات',
+      ),
+      WeeklyChallengeMetric.actions => _term(
+        context,
+        en: 'Complete $n actions',
+        he: 'בצעו $n פעולות במרקט',
+        ar: 'نفّذ $n إجراءً في المتجر',
+      ),
+    };
+  }
+
+  static String _description(
+    BuildContext context,
+    WeeklyChallengeMetric metric,
+  ) => switch (metric) {
+    WeeklyChallengeMetric.sales => _term(
+      context,
+      en: 'Serve customers at checkout all week long.',
+      he: 'שרתו לקוחות בקופה לאורך כל השבוע.',
+      ar: 'اخدم العملاء عند الصندوق طوال الأسبوع.',
+    ),
+    WeeklyChallengeMetric.itemsStocked => _term(
+      context,
+      en: 'Carry stock from the storeroom and keep shelves full.',
+      he: 'הביאו סחורה מהמחסן ושמרו על מדפים מלאים.',
+      ar: 'انقل البضاعة من المخزن وأبقِ الرفوف ممتلئة.',
+    ),
+    WeeklyChallengeMetric.coinsEarned => _term(
+      context,
+      en: 'Grow revenue with sales, tips and bonuses.',
+      he: 'הגדילו את ההכנסות ממכירות, טיפים ובונוסים.',
+      ar: 'زِد الإيرادات من المبيعات والإكراميات والمكافآت.',
+    ),
+    WeeklyChallengeMetric.upgrades => _term(
+      context,
+      en: 'Invest in your market with any upgrade.',
+      he: 'השקיעו במרקט בכל שדרוג שתבחרו.',
+      ar: 'استثمر في متجرك بأي ترقية.',
+    ),
+    WeeklyChallengeMetric.actions => _term(
+      context,
+      en: 'Stay busy: every stock run, sale and claim counts.',
+      he: 'הישארו בתנועה: כל מילוי, מכירה ואיסוף נספרים.',
+      ar: 'ابقَ نشطًا: كل تعبئة وبيع وجمع يُحتسب.',
+    ),
+  };
+}
+
+class _WeeklyChestCard extends StatelessWidget {
+  const _WeeklyChestCard({
+    required this.claimedCount,
+    required this.total,
+    required this.ready,
+    required this.opened,
+    required this.onOpen,
+  });
+
+  final int claimedCount;
+  final int total;
+  final bool ready;
+  final bool opened;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ready
+        ? const [Color(0xFFB77718), Color(0xFFF2C14E)]
+        : opened
+        ? const [Color(0xFF1F5C46), Color(0xFF2E8B67)]
+        : const [Color(0xFF2B2F45), Color(0xFF454B6B)];
+    final title = opened
+        ? _term(
+            context,
+            en: 'Chest opened — see you next week!',
+            he: 'התיבה נפתחה — נתראה בשבוע הבא!',
+            ar: 'تم فتح الصندوق — نراك الأسبوع القادم!',
+          )
+        : ready
+        ? _term(
+            context,
+            en: 'The weekly chest is ready!',
+            he: 'תיבת השבוע מוכנה!',
+            ar: 'صندوق الأسبوع جاهز!',
+          )
+        : _term(
+            context,
+            en: 'Weekly chest: $claimedCount/$total challenges',
+            he: 'תיבת השבוע: $claimedCount/$total אתגרים',
+            ar: 'صندوق الأسبوع: $claimedCount/$total تحديات',
+          );
+    final reward = _term(
+      context,
+      en: '+${WeeklyChallengeBalance.chestCoins} coins · +${WeeklyChallengeBalance.chestGems} gems',
+      he: '${WeeklyChallengeBalance.chestCoins} מטבעות · ${WeeklyChallengeBalance.chestGems} יהלומים',
+      ar: '${WeeklyChallengeBalance.chestCoins} عملة · ${WeeklyChallengeBalance.chestGems} جواهر',
+    );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: colors,
+          begin: AlignmentDirectional.topStart,
+          end: AlignmentDirectional.bottomEnd,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: colors.last.withValues(alpha: ready ? 0.45 : 0.18),
+            blurRadius: ready ? 24 : 12,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.9, end: ready ? 1.08 : 1.0),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) =>
+                Transform.scale(scale: scale, child: child),
+            child: Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                opened ? Icons.check_circle_rounded : Icons.redeem_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  reward,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (!opened) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: total == 0 ? 0 : claimedCount / total,
+                      minHeight: 7,
+                      color: Colors.white,
+                      backgroundColor: Colors.white.withValues(alpha: 0.22),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (ready) ...[
+            const SizedBox(width: 10),
+            PressableScale(
+              child: FilledButton(
+                key: const ValueKey('weekly-chest-open'),
+                onPressed: onOpen,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF7A4E0C),
+                  minimumSize: const Size(48, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(
+                  _term(context, en: 'Open', he: 'פתיחה', ar: 'افتح'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

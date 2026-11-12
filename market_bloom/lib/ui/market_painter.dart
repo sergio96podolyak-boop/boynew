@@ -327,6 +327,7 @@ class MarketPainter extends CustomPainter {
       item.draw();
     }
 
+    _drawLockedBakery(canvas, layout);
     _drawForeground(canvas, layout);
     _drawAtmosphere(canvas, layout);
     _drawGameplayFeedback(canvas, layout);
@@ -476,11 +477,54 @@ class MarketPainter extends CustomPainter {
       canvas.drawLine(Offset(x, salesFloor.top), Offset(x, salesFloor.bottom), _paint);
     }
 
+    // Alternate tiles a touch warmer so the floor reads as real tiling.
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0x0E8A5A1E);
+    for (var row = 0; row < rows; row++) {
+      final top = salesFloor.top + salesFloor.height * pow(row / rows, .86);
+      final bottom =
+          salesFloor.top + salesFloor.height * pow((row + 1) / rows, .86);
+      for (var column = row.isEven ? 0 : 1; column < columns; column += 2) {
+        canvas.drawRect(
+          Rect.fromLTRB(
+            salesFloor.left + salesFloor.width * column / columns,
+            top,
+            salesFloor.left + salesFloor.width * (column + 1) / columns,
+            bottom,
+          ),
+          _paint,
+        );
+      }
+    }
+
+    // Ceiling lights pool on the floor; the walls fall slightly into shade.
+    for (final light in const <Offset>[
+      Offset(.28, .46),
+      Offset(.62, .58),
+      Offset(.36, .76),
+    ]) {
+      final center = _point(layout.market, light);
+      final radius = layout.market.width * .34;
+      _paint.shader = RadialGradient(
+        colors: const <Color>[Color(0x2EFFFDF2), Color(0x00FFFDF2)],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+      canvas.drawCircle(center, radius, _paint);
+    }
+    _paint.shader = RadialGradient(
+      center: const Alignment(0, -.1),
+      radius: .95,
+      colors: const <Color>[Color(0x00000000), Color(0x22213A30)],
+      stops: const <double>[.62, 1],
+    ).createShader(salesFloor);
+    canvas.drawRect(salesFloor, _paint);
+    _paint.shader = null;
+
     // Wide, subtle circulation bands unify the store without reading as map
     // overlays or debug rectangles.
     _paint
       ..style = PaintingStyle.fill
-      ..color = const Color(0x30FFF9EA);
+      ..color = const Color(0x14FFF9EA);
     canvas.drawRRect(
       RRect.fromRectAndRadius(layout.mainAisle, Radius.circular(6 * scale)),
       _paint,
@@ -491,11 +535,23 @@ class MarketPainter extends CustomPainter {
     );
 
     final checkoutInset = layout.checkout.deflate(5 * scale);
-    _paint.color = const Color(0x358D8B84);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(checkoutInset, Radius.circular(7 * scale)),
-      _paint,
+    final serviceMat = RRect.fromRectAndRadius(
+      checkoutInset,
+      Radius.circular(9 * scale),
     );
+    _paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[Color(0x3D2E6B57), Color(0x1F2E6B57)],
+    ).createShader(checkoutInset);
+    canvas.drawRRect(serviceMat, _paint);
+    _paint.shader = null;
+    _paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4 * scale
+      ..color = const Color(0x552E6B57);
+    canvas.drawRRect(serviceMat.deflate(3 * scale), _paint);
+    _paint.style = PaintingStyle.fill;
 
     // Front apron makes the storefront read as the beginning of the journey.
     final apron = Rect.fromLTRB(
@@ -530,10 +586,46 @@ class MarketPainter extends CustomPainter {
 
     _paint
       ..style = PaintingStyle.fill
-      ..color = const Color(0xFFB8BCB7);
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: <Color>[Color(0xFFA9B2AE), Color(0xFFC7CCC6)],
+      ).createShader(storage);
     canvas.drawRect(storage, _paint);
-    _paint.color = const Color(0xFFF0D49B);
+    _paint.shader = null;
+    // Poured-concrete slabs: a few faint seams instead of a flat grey block.
+    _paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .7 * scale
+      ..color = const Color(0x22303B37);
+    for (var i = 1; i < 3; i++) {
+      final x = storage.left + storage.width * i / 3;
+      canvas.drawLine(Offset(x, storage.top), Offset(x, storage.bottom), _paint);
+    }
+    final seamY = storage.top + storage.height * .55;
+    canvas.drawLine(
+      Offset(storage.left, seamY),
+      Offset(storage.right, seamY),
+      _paint,
+    );
+    _paint.style = PaintingStyle.fill;
+    _paint.shader = const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: <Color>[Color(0xFFF6DDAA), Color(0xFFEBC788)],
+    ).createShader(bakery);
     canvas.drawRect(bakery, _paint);
+    _paint.shader = null;
+    _hazardStripe(
+      canvas,
+      Rect.fromLTWH(
+        layout.storageOpening.left,
+        storage.bottom - 15 * scale,
+        layout.storageOpening.width,
+        5 * scale,
+      ),
+      scale,
+    );
 
     // A single installed service facade joins both rear departments.
     final beamTop = storage.bottom - 8 * scale;
@@ -564,7 +656,7 @@ class MarketPainter extends CustomPainter {
     _departmentPlaque(
       canvas,
       Offset(bakery.right - bakery.width * .18, bakery.top + 12 * scale),
-      game.bakeryUnlocked ? bakeryLabel : bakeryLockedLabel,
+      bakeryLabel,
       _bakeryGold,
       scale,
     );
@@ -694,15 +786,6 @@ class MarketPainter extends CustomPainter {
           alpha: game.bakeryUnlocked ? 1 : .54,
           shadow: game.bakeryUnlocked ? .24 : .13,
         );
-        if (!game.bakeryUnlocked) {
-          _departmentPlaque(
-            canvas,
-            ground - Offset(0, 27 * scale),
-            bakeryLockedLabel,
-            const Color(0xFF675C50),
-            scale,
-          );
-        }
       },
     );
   }
@@ -1038,21 +1121,186 @@ class MarketPainter extends CustomPainter {
       _point(layout.market, const Offset(.905, .55)).dx,
       _point(layout.market, const Offset(.5, .745)).dy,
     );
+    // Footprint dots guide the line; posts and a rope frame it.
     _paint
       ..style = PaintingStyle.fill
-      ..color = const Color(0x295F6D68);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(lane, Radius.circular(7 * scale)),
-      _paint,
+      ..color = const Color(0x2E2E6B57);
+    const steps = 5;
+    for (var i = 0; i < steps; i++) {
+      final y = lane.top + lane.height * (i + .5) / steps;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(lane.center.dx, y),
+          width: 11 * scale,
+          height: 6 * scale,
+        ),
+        _paint,
+      );
+    }
+    for (final x in <double>[lane.left + 2 * scale, lane.right - 2 * scale]) {
+      final posts = <Offset>[
+        for (var i = 0; i < 3; i++)
+          Offset(x, lane.top + lane.height * i / 2),
+      ];
+      _paint
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6 * scale
+        ..strokeCap = StrokeCap.round
+        ..color = _checkoutRed;
+      for (var i = 0; i < posts.length - 1; i++) {
+        final a = posts[i] - Offset(0, 8 * scale);
+        final b = posts[i + 1] - Offset(0, 8 * scale);
+        final sag = Offset((a.dx + b.dx) / 2 + 2 * scale, (a.dy + b.dy) / 2);
+        canvas.drawPath(
+          Path()
+            ..moveTo(a.dx, a.dy)
+            ..quadraticBezierTo(sag.dx, sag.dy, b.dx, b.dy),
+          _paint,
+        );
+      }
+      _paint
+        ..style = PaintingStyle.fill
+        ..strokeCap = StrokeCap.butt;
+      for (final post in posts) {
+        _paint.color = const Color(0x33213A30);
+        canvas.drawOval(
+          Rect.fromCenter(center: post, width: 7 * scale, height: 3 * scale),
+          _paint,
+        );
+        _paint.color = const Color(0xFFB7BDB9);
+        canvas.drawRect(
+          Rect.fromLTWH(post.dx - 1 * scale, post.dy - 9 * scale, 2 * scale,
+              9 * scale),
+          _paint,
+        );
+        _paint.color = const Color(0xFFE6EAE7);
+        canvas.drawCircle(post - Offset(0, 9 * scale), 1.8 * scale, _paint);
+      }
+    }
+  }
+
+  void _hazardStripe(Canvas canvas, Rect band, double scale) {
+    canvas.save();
+    canvas.clipRect(band);
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFFE5B83B);
+    canvas.drawRect(band, _paint);
+    _paint.color = const Color(0xFF2F3A36);
+    final step = 7 * scale;
+    for (var x = band.left - band.height; x < band.right; x += step) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(x, band.bottom)
+          ..lineTo(x + step / 2, band.bottom)
+          ..lineTo(x + step / 2 + band.height, band.top)
+          ..lineTo(x + band.height, band.top)
+          ..close(),
+        _paint,
+      );
+    }
+    canvas.restore();
+  }
+
+  /// Locked departments read as "coming soon" rather than unfinished: a dim
+  /// glass, diagonal sheen, a padlock and the unlock condition in one pill.
+  void _drawLockedBakery(Canvas canvas, MarketWorldLayout layout) {
+    if (game.bakeryUnlocked) return;
+    final scale = layout.scale;
+    final area = layout.bakery.deflate(2 * scale);
+    canvas.save();
+    canvas.clipRect(area);
+    _paint
+      ..style = PaintingStyle.fill
+      ..color = const Color(0x8C1C2B26);
+    canvas.drawRect(area, _paint);
+    _paint.color = const Color(0x12FFFFFF);
+    final stripe = 14 * scale;
+    for (var x = area.left - area.height; x < area.right; x += stripe * 2) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(x, area.bottom)
+          ..lineTo(x + stripe, area.bottom)
+          ..lineTo(x + stripe + area.height, area.top)
+          ..lineTo(x + area.height, area.top)
+          ..close(),
+        _paint,
+      );
+    }
+    canvas.restore();
+
+    final center = Offset(area.center.dx, area.top + area.height * .34);
+    final glow = 30 * scale;
+    _paint.shader = const RadialGradient(
+      colors: <Color>[Color(0x66F4C25B), Color(0x00F4C25B)],
+    ).createShader(Rect.fromCircle(center: center, radius: glow));
+    canvas.drawCircle(center, glow, _paint);
+    _paint.shader = null;
+
+    // Padlock: shackle arc + rounded body + keyhole.
+    final body = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: center + Offset(0, 4 * scale),
+        width: 20 * scale,
+        height: 15 * scale,
+      ),
+      Radius.circular(4 * scale),
     );
     _paint
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1 * scale
-      ..color = const Color(0x42606B66);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(lane.deflate(3 * scale), Radius.circular(5 * scale)),
+      ..strokeWidth = 3.2 * scale
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFFE9EDEA);
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: center - Offset(0, 3 * scale),
+        width: 13 * scale,
+        height: 15 * scale,
+      ),
+      pi,
+      pi,
+      false,
       _paint,
     );
+    _paint
+      ..style = PaintingStyle.fill
+      ..strokeCap = StrokeCap.butt
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: <Color>[Color(0xFFF7D27A), Color(0xFFD59739)],
+      ).createShader(body.outerRect);
+    canvas.drawRRect(body, _paint);
+    _paint
+      ..shader = null
+      ..color = const Color(0xFF5B3F14);
+    canvas.drawCircle(body.center - Offset(0, 1.5 * scale), 2 * scale, _paint);
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: body.center + Offset(0, 2 * scale),
+        width: 1.6 * scale,
+        height: 4 * scale,
+      ),
+      _paint,
+    );
+
+    final pillCenter = Offset(area.center.dx, body.outerRect.bottom + 12 * scale);
+    final pillWidth = min(area.width * .86, 104 * scale);
+    final pill = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: pillCenter, width: pillWidth, height: 15 * scale),
+      Radius.circular(8 * scale),
+    );
+    _paint.color = const Color(0xE61C2B26);
+    canvas.drawRRect(pill, _paint);
+    _paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1 * scale
+      ..color = const Color(0x99F4C25B);
+    canvas.drawRRect(pill, _paint);
+    _paint.style = PaintingStyle.fill;
+    _text(canvas, bakeryLockedLabel, pillCenter, 6.2 * scale,
+        const Color(0xFFFFE7B0), FontWeight.w900,
+        maxWidth: pillWidth - 8 * scale);
   }
 
   void _addEntrance(

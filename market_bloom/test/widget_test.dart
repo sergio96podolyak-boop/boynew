@@ -421,6 +421,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('first launch shows privacy, then the tutorial exactly once', (
+    tester,
+  ) async {
+    final settings = AppSettings(preferences: _MockSharedPrefs());
+    await settings.load();
+    expect(settings.requiresPrivacyConsent, isTrue);
+    final controller = GameController(
+      storage: MemoryGameStorage(),
+      monetization: PreviewMonetizationService(),
+    );
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      PoMarketApp(controller: controller, settings: settings, showSplash: false),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The tutorial waits behind the privacy decision instead of stacking.
+    expect(find.text('WELCOME TO POMARKET'), findsNothing);
+
+    await settings.rejectAllPrivacy();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('WELCOME TO POMARKET'), findsOneWidget);
+
+    await tester.tap(find.text('SKIP'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(controller.onboardingComplete, isTrue);
+    expect(find.text('WELCOME TO POMARKET'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('first visit tutorial fits a compact phone', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
@@ -521,6 +555,7 @@ void main() {
 
     final settings = AppSettings(preferences: _MockSharedPrefs());
     await settings.load();
+    await settings.rejectAllPrivacy();
     await settings.setLanguage(const Locale('ar'));
     final controller = GameController(
       storage: MemoryGameStorage(),

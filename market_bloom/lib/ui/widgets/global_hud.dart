@@ -50,7 +50,8 @@ class GlobalHud extends StatelessWidget {
             // flexible element, so these thresholds decide what fits before the
             // wordmark absorbs whatever is left.
             final showBrandText = width >= 380;
-            final showPhaseBadge = width >= 400;
+            // The shift rail already spells out the phase when it has room.
+            final showPhaseBadge = width >= 400 && !showPhaseLabel;
             return AnimatedBuilder(
               animation: game,
               builder: (context, _) {
@@ -307,7 +308,8 @@ class _LevelChip extends StatelessWidget {
       child: PoCurrencyChip(
         icon: Icons.stars_rounded,
         value: '${game.storeLevel}',
-        label: compact ? null : loc.levelLabel,
+        // Always labelled: a bare "1" next to the logo read as a badge count.
+        label: loc.levelLabel,
         face: PoAccent.mintFace,
         progress: game.levelProgress,
         compact: compact,
@@ -428,7 +430,7 @@ class _PopOnChangeState extends State<_PopOnChange>
   ShiftPhase.open => (
     label: loc.shiftOpen,
     face: PoAccent.mintFace,
-    icon: Icons.lock_open_rounded,
+    icon: Icons.play_arrow_rounded,
   ),
   ShiftPhase.rush => (
     label: loc.rushHour,
@@ -568,8 +570,8 @@ class _LowStockFlag extends StatelessWidget {
     return Tooltip(
       message: message,
       child: Container(
-        width: 30,
-        height: 30,
+        height: 26,
+        padding: const EdgeInsetsDirectional.fromSTEB(5, 0, 8, 0),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
@@ -580,10 +582,24 @@ class _LowStockFlag extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
           boxShadow: PoDepth.glow(PoAccent.coralFace, strength: 0.7),
         ),
-        child: const Icon(
-          Icons.priority_high_rounded,
-          color: Colors.white,
-          size: 17,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.inventory_2_rounded,
+              color: Colors.white,
+              size: 13,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              message,
+              maxLines: 1,
+              style: PoNumerals.caption.copyWith(
+                color: Colors.white,
+                fontSize: 9,
+              ),
+            ),
+          ],
         ),
       ),
     );
