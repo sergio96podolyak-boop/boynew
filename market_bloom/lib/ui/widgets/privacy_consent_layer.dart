@@ -18,45 +18,47 @@ class PrivacyConsentLayer extends StatelessWidget {
       animation: settings,
       child: child,
       builder: (context, child) {
-        if (!settings.isLoaded || !settings.requiresPrivacyConsent) {
-          return child!;
-        }
+        final showConsent =
+            settings.isLoaded && settings.requiresPrivacyConsent;
         final reduced =
             settings.reducedMotion || MediaQuery.disableAnimationsOf(context);
+        // Keep the same tree shape whether or not the consent card is shown.
+        // Returning the bare child here used to remount the whole game when
+        // the player answered, which restarted the startup dialogs.
         return Stack(
           children: [
             Positioned.fill(child: child!),
-            const Positioned.fill(
-              child: ModalBarrier(
-                dismissible: false,
-                color: Color(0x99031E17),
+            if (showConsent)
+              const Positioned.fill(
+                child: ModalBarrier(
+                  dismissible: false,
+                  color: Color(0x99031E17),
+                ),
               ),
-            ),
-            Positioned.fill(
-              child: SafeArea(
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: AnimatedScale(
-                      scale: 1,
-                      duration: reduced
-                          ? Duration.zero
-                          : const Duration(milliseconds: 180),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 560),
-                        child: PrivacyConsentCard(
-                          key: const ValueKey(
-                            'privacy-consent-first-launch',
+            if (showConsent)
+              Positioned.fill(
+                child: SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: AnimatedScale(
+                        scale: 1,
+                        duration: reduced
+                            ? Duration.zero
+                            : const Duration(milliseconds: 180),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 560),
+                          child: PrivacyConsentCard(
+                            key: const ValueKey('privacy-consent-first-launch'),
+                            settings: settings,
+                            requiredDecision: true,
                           ),
-                          settings: settings,
-                          requiredDecision: true,
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
           ],
         );
       },
@@ -93,12 +95,9 @@ class PrivacySettingsLauncher extends StatelessWidget {
               ),
               child: FilledButton.icon(
                 key: const ValueKey('open-privacy-settings'),
-                onPressed: () =>
-                    showPrivacySettingsDialog(context, settings),
+                onPressed: () => showPrivacySettingsDialog(context, settings),
                 icon: const Icon(Icons.privacy_tip_outlined),
-                label: Text(
-                  _t(context, 'Privacy', 'פרטיות', 'الخصوصية'),
-                ),
+                label: Text(_t(context, 'Privacy', 'פרטיות', 'الخصوصية')),
               ),
             ),
           ),
@@ -181,12 +180,12 @@ class _PrivacyConsentCardState extends State<PrivacyConsentCard> {
 
   @override
   Widget build(BuildContext context) {
-    const privacyNotice = String.fromEnvironment(
-      'POMARKET_PRIVACY_POLICY_URL',
-    );
+    const privacyNotice = String.fromEnvironment('POMARKET_PRIVACY_POLICY_URL');
     final media = MediaQuery.of(context);
-    final cardHeight = (media.size.height - media.padding.vertical - 32)
-        .clamp(280.0, 680.0);
+    final cardHeight = (media.size.height - media.padding.vertical - 32).clamp(
+      280.0,
+      680.0,
+    );
     return Material(
       color: const Color(0xFFFFFCF5),
       borderRadius: BorderRadius.circular(24),
@@ -316,9 +315,7 @@ class _PrivacyConsentCardState extends State<PrivacyConsentCard> {
               DecoratedBox(
                 decoration: const BoxDecoration(
                   color: Color(0xFFFFFCF5),
-                  border: Border(
-                    top: BorderSide(color: Color(0x1F087A58)),
-                  ),
+                  border: Border(top: BorderSide(color: Color(0x1F087A58))),
                 ),
                 child: SafeArea(
                   top: false,
@@ -398,10 +395,7 @@ class _ConsentSwitch extends StatelessWidget {
       hint: description,
       child: SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
         subtitle: Text(description),
         value: value,
         onChanged: onChanged,
