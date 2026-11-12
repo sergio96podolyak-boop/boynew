@@ -10,6 +10,7 @@ import '../services/sfx/sfx_manager.dart';
 import 'game_models.dart';
 import 'operating_cost_policy.dart';
 import 'meta_models.dart';
+import 'weekly_challenges.dart';
 
 class GameController extends ChangeNotifier {
   GameController({
@@ -174,6 +175,8 @@ class GameController extends ChangeNotifier {
   Timer? _saveDebounce;
 
   DailyBonusState dailyBonus = const DailyBonusState();
+  WeeklyChallengeState weeklyChallenges = const WeeklyChallengeState();
+  double _weeklyCheckTimer = 0;
   DailyBonusResult? pendingDailyBonus;
   List<AchievementProgress> _achievementProgress =
       const <AchievementProgress>[];
@@ -765,6 +768,7 @@ class GameController extends ChangeNotifier {
       _bootstrapSystems();
       _lastObservedStoreLevel = storeLevel;
       shouldPersist = _applyDailyBonus();
+      shouldPersist = _refreshWeeklyChallenges() || shouldPersist;
       _recordPerformanceSample(force: _performanceHistory.isEmpty);
       _updateHighs();
       _evaluateAchievements();
@@ -817,6 +821,11 @@ class GameController extends ChangeNotifier {
     _updateCustomers(safeDt);
     totalPlaySeconds += safeDt;
     _dirty = true;
+    _weeklyCheckTimer += safeDt;
+    if (_weeklyCheckTimer >= 5) {
+      _weeklyCheckTimer = 0;
+      if (_refreshWeeklyChallenges()) notifyListeners();
+    }
 
     if (floatingEffects.isNotEmpty) {
       for (var i = floatingEffects.length - 1; i >= 0; i--) {
@@ -931,6 +940,43 @@ class GameController extends ChangeNotifier {
     totalActions++;
     _afterProgressChanged(immediate: true);
 
+    return true;
+  }
+
+  List<WeeklyChallengeProgress> get weeklyChallengeProgress =>
+      weeklyChallenges.progress(_weeklyTotals);
+
+  int get weeklyReadyToClaimCount =>
+      weeklyChallengeProgress.where((item) => item.readyToClaim).length +
+      (weeklyChallenges.chestReady ? 1 : 0);
+
+  Duration get weeklyTimeLeft => weeklyChallenges.timeLeft(_now());
+
+  bool claimWeeklyChallenge(String id) {
+    _refreshWeeklyChallenges();
+    WeeklyChallengeProgress? item;
+    for (final candidate in weeklyChallengeProgress) {
+      if (candidate.challenge.id == id) item = candidate;
+    }
+    if (item == null || !item.readyToClaim) return false;
+    weeklyChallenges = weeklyChallenges.markClaimed(id);
+    coins += item.challenge.coinReward;
+    gems += item.challenge.gemReward;
+    recordBonus(item.challenge.coinReward);
+    totalActions++;
+    _afterProgressChanged(immediate: true);
+    return true;
+  }
+
+  bool claimWeeklyChest() {
+    _refreshWeeklyChallenges();
+    if (!weeklyChallenges.chestReady) return false;
+    weeklyChallenges = weeklyChallenges.markChestClaimed();
+    coins += WeeklyChallengeBalance.chestCoins;
+    gems += WeeklyChallengeBalance.chestGems;
+    recordBonus(WeeklyChallengeBalance.chestCoins);
+    totalActions++;
+    _afterProgressChanged(immediate: true);
     return true;
   }
 
@@ -2451,6 +2497,7 @@ class GameController extends ChangeNotifier {
       'playerX': playerPosition.dx,
       'playerY': playerPosition.dy,
       'dailyBonus': dailyBonus.toJson(),
+      'weeklyChallenges': weeklyChallenges.toJson(),
       'achievements': _achievementProgress
           .map((item) => item.toJson())
           .toList(growable: false),
@@ -2532,6 +2579,7 @@ class GameController extends ChangeNotifier {
     muted = false;
     onboardingComplete = false;
     dailyBonus = const DailyBonusState();
+    weeklyChallenges = const WeeklyChallengeState();
     pendingDailyBonus = null;
     _achievementProgress = const <AchievementProgress>[];
     _performanceHistory = const <PerformanceSample>[];
@@ -2567,6 +2615,7 @@ class GameController extends ChangeNotifier {
     _bootstrapSystems();
     _lastObservedStoreLevel = storeLevel;
     _applyDailyBonus();
+    _refreshWeeklyChallenges();
     _recordPerformanceSample(force: true);
     _updateHighs();
     _evaluateAchievements();
@@ -2839,6 +2888,9 @@ class GameController extends ChangeNotifier {
             : const <String>[],
       );
     dailyBonus = DailyBonusState.fromJson(saved['dailyBonus']);
+    weeklyChallenges = WeeklyChallengeState.fromJson(
+      saved['weeklyChallenges'],
+    );
     _achievementProgress = AchievementCatalog.restoreProgress(
       saved['achievements'],
     );
@@ -3256,6 +3308,27 @@ class GameController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  Map<WeeklyChallengeMetric, int> get _weeklyTotals =>
+      <WeeklyChallengeMetric, int>{
+        WeeklyChallengeMetric.sales: totalSales,
+        WeeklyChallengeMetric.itemsStocked: stockedTotal,
+        WeeklyChallengeMetric.coinsEarned: totalCoinsEarned,
+        WeeklyChallengeMetric.upgrades: upgradesBought,
+        WeeklyChallengeMetric.actions: totalActions,
+      };
+
+  /// Starts a new challenge week when the calendar week changed.
+  bool _refreshWeeklyChallenges() {
+    if (!weeklyChallenges.needsRollover(_now())) return false;
+    weeklyChallenges = weeklyChallenges.rollover(
+      _now(),
+      storeLevel: storeLevel,
+      currentTotals: _weeklyTotals,
+    );
+    _dirty = true;
+    return true;
   }
 
   bool _applyDailyBonus() {
