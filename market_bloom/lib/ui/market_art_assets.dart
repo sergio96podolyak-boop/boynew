@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -174,11 +173,15 @@ abstract final class MarketArtAssets {
   static Future<void> load() => _loadFuture ??= _loadAll();
 
   static Future<void> _loadAll() async {
-    final loaded = <MapEntry<String, ui.Image>>[];
-    for (final path in activeRuntimePaths) {
-      loaded.add(MapEntry<String, ui.Image>(path, await _decode(path)));
-    }
-    _images.addEntries(loaded);
+    // Decode in parallel: the world stays empty until every sprite is ready,
+    // so sequential decoding made first launch show a bare floor for seconds.
+    final images = await Future.wait<ui.Image>(
+      activeRuntimePaths.map(_decode),
+    );
+    _images.addEntries(<MapEntry<String, ui.Image>>[
+      for (var i = 0; i < activeRuntimePaths.length; i++)
+        MapEntry<String, ui.Image>(activeRuntimePaths[i], images[i]),
+    ]);
     _repaintNotifier.refresh();
   }
 
@@ -193,80 +196,10 @@ abstract final class MarketArtAssets {
     } finally {
       codec.dispose();
     }
-    if (!mainWorldModularPaths.contains(path)) return image;
-    final cleaned = await _removeEdgeConnectedWhiteMatte(image);
-    image.dispose();
-    return cleaned;
-  }
-
-  /// Removes only near-white pixels connected to the image border. This keeps
-  /// light fixture details intact while turning the exported rectangular matte
-  /// into real transparent runtime pixels.
-  static Future<ui.Image> _removeEdgeConnectedWhiteMatte(ui.Image image) async {
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    if (byteData == null) return image.clone();
-    final width = image.width;
-    final height = image.height;
-    final pixels = Uint8List.fromList(byteData.buffer.asUint8List());
-    final visited = Uint8List(width * height);
-    final queue = Queue<int>();
-
-    bool isMatte(int pixelIndex) {
-      final offset = pixelIndex * 4;
-      final red = pixels[offset];
-      final green = pixels[offset + 1];
-      final blue = pixels[offset + 2];
-      final alpha = pixels[offset + 3];
-      final minimum = red < green
-          ? (red < blue ? red : blue)
-          : (green < blue ? green : blue);
-      final maximum = red > green
-          ? (red > blue ? red : blue)
-          : (green > blue ? green : blue);
-      return alpha > 0 && minimum >= 232 && maximum - minimum <= 18;
-    }
-
-    void enqueue(int pixelIndex) {
-      if (visited[pixelIndex] != 0 || !isMatte(pixelIndex)) return;
-      visited[pixelIndex] = 1;
-      queue.add(pixelIndex);
-    }
-
-    for (var x = 0; x < width; x++) {
-      enqueue(x);
-      enqueue((height - 1) * width + x);
-    }
-    for (var y = 0; y < height; y++) {
-      enqueue(y * width);
-      enqueue(y * width + width - 1);
-    }
-
-    while (queue.isNotEmpty) {
-      final pixelIndex = queue.removeFirst();
-      final offset = pixelIndex * 4;
-      pixels[offset + 3] = 0;
-      final x = pixelIndex % width;
-      final y = pixelIndex ~/ width;
-      if (x > 0) enqueue(pixelIndex - 1);
-      if (x + 1 < width) enqueue(pixelIndex + 1);
-      if (y > 0) enqueue(pixelIndex - width);
-      if (y + 1 < height) enqueue(pixelIndex + width);
-    }
-
-    final buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
-    final descriptor = ui.ImageDescriptor.raw(
-      buffer,
-      width: width,
-      height: height,
-      pixelFormat: ui.PixelFormat.rgba8888,
-    );
-    final cleanedCodec = await descriptor.instantiateCodec();
-    try {
-      return (await cleanedCodec.getNextFrame()).image;
-    } finally {
-      cleanedCodec.dispose();
-      descriptor.dispose();
-      buffer.dispose();
-    }
+    // The modular fixtures ship with transparent backgrounds, so the old
+    // runtime matte pass changed no pixels while reading back ~5 MP of RGBA
+    // on the UI thread. test/main_world_modular_assets_test.dart checks the
+    // bundled files stay transparent instead.
+    return image;
   }
 }
