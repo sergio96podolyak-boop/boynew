@@ -28,6 +28,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -44,11 +45,11 @@ except ImportError:  # python-dotenv אופציונלי
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
+    from war_news_bot.sources import DEFAULT_FEEDS, NewsItem, _alert_item, fetch_alerts, fetch_feed, fetch_oref_alerts, fetch_tzofar_history
     from war_news_bot import geo
     from war_news_bot.social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, MIDEAST_LAUNCHERS, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
 else:
-    from .sources import DEFAULT_FEEDS, NewsItem, fetch_alerts, fetch_feed, fetch_oref_alerts
+    from .sources import DEFAULT_FEEDS, NewsItem, _alert_item, fetch_alerts, fetch_feed, fetch_oref_alerts, fetch_tzofar_history
     from . import geo
     from .social import KEYWORDS_AR, KEYWORDS_RU_UA, DEFAULT_CHANNELS, KEYWORDS_FA, PLACES, MIDEAST_LAUNCHERS, PRETRANSLATE, apply_hint, is_escalation, is_eyewitness, detect_event, detect_route, fetch_channel, route_line
 
@@ -62,26 +63,45 @@ IL_TZ = timezone(timedelta(hours=2))  # שעון ישראל (חורף); לתצו
 # סינון — רק ידיעות על טילים / רקטות / תקיפות
 # --------------------------------------------------------------------------- #
 
+# מילים "חזקות": מספיקות לבד (טילים, רקטות, כטב"מים, אזעקות, יירוטים, תקיפות אוויריות)
 KEYWORDS_EN = [
     r"missile", r"rocket(s)? (fire|attack|launch|barrage|strike)", r"rockets? (were )?fired",
-    r"ballistic", r"cruise missile", r"hypersonic", r"icbm", r"air ?strike", r"air raid",
+    r"ballistic", r"cruise missile", r"hypersonic", r"icbm", r"air ?strikes?", r"air raid",
     r"drone (attack|strike)", r"\buav\b", r"shahed", r"intercept(ed|ion|or)", r"iron dome",
-    r"sirens? (sound|blar|went off)", r"launch(ed|es)? .{0,30}(toward|at|into)", r"barrage",
-    r"bombard", r"shelling", r"explosions? (heard|reported|rock)",
-    r"\bstrik(e|es|ing) (on|at|in|against|targets?)", r"\bstruck\b", r"\bairstrikes?\b",
-    r"\b(strikes?|struck|hits?|bomb(s|ed)?) (\w+ ){0,2}(targets|positions|sites|bases|facilit)",
-    r"attack(s|ed)? (on|in|against|targets?)", r"\braids?\b on", r"\bpound(s|ed|ing)\b",
+    r"sirens? (sound|blar|went off)", r"barrage", r"bombard", r"shelling",
     r"(ukrain|russia)\w* (drone|missile|strike|attack)", r"glide bombs?", r"kamikaze",
     r"\bb-52\b", r"\bb-2\b", r"\bb-1b?\b", r"\bf-35", r"\bf-15", r"\bf-16", r"\bkc-(?:135|46)\b",
     r"refuel(?:ing|er)? (?:aircraft|planes|tankers?)", r"tankers? (?:aircraft|planes)", r"fighter jets?", r"warplanes?",
-    r"forces (strike|struck|hit|attack)", r"\bstrikes? (?:from|by)\b", r"(?:was|were|been) targeted", r"strik\w* (\S+ ){0,3}(militia|militants|fighters|commander)",
 ]
+_HE_PFX = r"(?<![֐-׿])(?:ו|ה|ב|ל|ש|כ|וה|וב|ול|שה|מה)?"
 KEYWORDS_HE = [
-    r"טיל", r"טילים", r"רקט", r"שיגור", r"שוגר", r"ירי", r"יירוט", r"יורט", r"כיפת ברזל",
-    r"אזעק", r"צבע אדום", r"כטב\"?ם", r"רחפן נפץ", r"תקיפה", r"תקף", r"הפצצ", r"פיצוצ",
-    r"חדירת כלי טיס", r"מבצע (?:צבאי|קרקעי|אווירי)", r"מטוסי (?:קרב|תדלוק|ארה|חיל)", r"מפציצ", r"מטוס(?:י)? תדלוק",
-    r"פעילות (?:חריגה של )?מטוסים", r"הותקף", r"הותקפו", r"מתקפ", r"תקיפות",
+    _HE_PFX + r"טיל(?:ים|י)?(?![֐-׿])", _HE_PFX + r"(?:מ)?רקט(?:ה|ות|ת)(?![֐-׿])",
+    r"שיגור", r"שוגר(?:ו|ה)?(?![֐-׿])", r"יירוט", r"יורט", r"כיפת ברזל", r"אזעק", r"צבע אדום",
+    r"כטב\"?ם", r"רחפן נפץ", r"הפצצ", r"חדירת כלי טיס", r"תקיפ(?:ה|ות) אוויר", r"מטוסי (?:קרב|תדלוק|ארה|חיל)",
+    r"מפציצ", r"מטוס(?:י)? תדלוק", r"פעילות (?:חריגה של )?מטוסים",
 ]
+# מילים "חלשות" (תקף, ירי, פיצוץ, attack, strike...) — נחשבות רק עם הקשר צבאי/מדינה,
+# כדי ש"ליברמן תקף את החוק" או "ירי שוטר" לא יעברו
+WEAK_EN = [
+    r"launch(ed|es)? .{0,30}(toward|at|into)", r"explosions? (heard|reported|rock)",
+    r"\bstrik(e|es|ing) (on|at|in|against|targets?)", r"\bstruck\b",
+    r"\b(strikes?|struck|hits?|bomb(s|ed)?) (\w+ ){0,2}(targets|positions|sites|bases|facilit)",
+    r"attack(s|ed)? (on|in|against|targets?)", r"\braids?\b on", r"\bpound(s|ed|ing)\b",
+    r"forces (strike|struck|hit|attack)", r"\bstrikes? (?:from|by)\b", r"(?:was|were|been) targeted",
+    r"strik\w* (\S+ ){0,3}(militia|militants|fighters|commander)",
+]
+WEAK_HE = [
+    _HE_PFX + r"(?:מ)?ירי(?![\u0590-\u05FF])", r"תקיפ(?:ה|ות)", r"(?<![\u0590-\u05FF])(?:ו|ש)?(?:תקף|תקפה|תקפו|תוקף|תוקפת|תוקפים)(?![\u0590-\u05FF])",
+    r"פיצוצ", r"מבצע (?:צבאי|קרקעי|אווירי)", r"הותקפ", r"מתקפ",
+]
+_WEAK_FOREIGN = re.compile(r"هجوم|استهداف|انفجار|دوي|حمله|انفجار|удар|атак|взрыв|вибух|обстр", re.IGNORECASE)
+# הקשר צבאי (בנוסף לשמות מדינות/ערים מ-PLACES)
+MILITARY_CONTEXT = re.compile(
+    r"צבא|צה\"?ל|חיל האוויר|חיל הים|חיילים|כוחות|חיזבאללה|חמאס|חות'|ג'יהאד|מחבל|משמרות המהפכה|"
+    r"military|army|troops|forces|soldiers|militia|militants|\bidf\b|irgc|hezbollah|hamas|houthi|navy|"
+    r"الجيش|القوات|حزب الله|حماس|الحوثي|армі|армия|войск|ЗСУ|ВСУ|سپاه|ارتش",
+    re.IGNORECASE,
+)
 # מילים שמסמנות "רעש" (ספורט, בורסה וכו')
 EXCLUDE = [
     r"stock", r"shares", r"nasdaq", r"football", r"soccer", r"\bnba\b", r"rocket league",
@@ -98,8 +118,19 @@ EXCLUDE = [
     r"#ad\b", r"#ads\b", r"реклам", r"скидк", r"промокод", r"إعلان", r"خصم", r"عرض خاص", r"تخفيض", r"تخفیف",
     r"آگهی", r"تبلیغ", r"casino", r"הימור", r"\bbetting\b",
 ]
-_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + KEYWORDS_AR + KEYWORDS_RU_UA + KEYWORDS_FA), re.IGNORECASE)
+_STRONG_FOREIGN = [k for k in KEYWORDS_AR + KEYWORDS_RU_UA + KEYWORDS_FA if not _WEAK_FOREIGN.fullmatch(k)]
+_INC = re.compile("|".join(KEYWORDS_EN + KEYWORDS_HE + _STRONG_FOREIGN), re.IGNORECASE)
+_WEAK = re.compile("|".join(WEAK_EN + WEAK_HE) + "|" + _WEAK_FOREIGN.pattern, re.IGNORECASE)
 _EXC = re.compile("|".join(EXCLUDE), re.IGNORECASE)
+_ANY_PLACE = re.compile("|".join(v[3][i] for v in PLACES.values() for i in range(len(v[3]))), re.IGNORECASE)
+
+
+def has_war_context(text: str) -> bool:
+    return bool(MILITARY_CONTEXT.search(text) or _ANY_PLACE.search(text))
+
+
+def is_strong(text: str) -> bool:
+    return bool(_INC.search(text))
 
 
 def is_relevant(item: NewsItem) -> bool:
@@ -108,7 +139,92 @@ def is_relevant(item: NewsItem) -> bool:
     text = f"{item.title} {item.summary}"
     if _EXC.search(text):
         return False
-    return bool(_INC.search(text)) or is_escalation(text) or is_eyewitness(text)
+    if _INC.search(text) or is_escalation(text) or is_eyewitness(text):
+        return True
+    return bool(_WEAK.search(text)) and has_war_context(text)
+
+
+# כותרות של ניתוח / שאלה / דעה — לא מבזק
+_ANALYSIS = re.compile(
+    r"\?|^(?:why|how|what|when|will|can|could|should|would|who|is|are|does|do)\b|"
+    r"^(?:האם|למה|מדוע|איך|מה |מי )|^هل |^(?:почему|как|что)\b|"
+    r"\bopinion\b|\banalysis\b|\bexplainer\b|\bpodcast\b|\beditorial\b|\bop-ed\b|\binterview\b|"
+    r"live blog|as it happened|in pictures|\bwatch:|\bvideo:|\bphotos:|"
+    r"ניתוח|פרשנות|טור דעה|ראיון|הסבר:|כל מה שצריך לדעת|تحليل|مقال رأي",
+    re.IGNORECASE,
+)
+
+
+def rss_skip_reason(item: NewsItem, ev) -> Optional[str]:
+    """ידיעה מאתר חדשות (לא מערוץ טלגרם ולא התרעה): מתי לא לפרסם."""
+    if _ANALYSIS.search(item.title.strip()):
+        return "analysis"
+    if not ev[0] or not ev[1]:
+        # לא זוהה מי/מה/לאן: מ-Google News — לא מפרסמים (שם רוב הרעש);
+        # מאתר חדשות ישיר — רק אם יש מילה "חזקה" (טיל, אזעקה, כטב"ם...)
+        if item.source.startswith("Google News") or not is_strong(f"{item.title} {item.summary}"):
+            return "unclear"
+    return None
+
+
+class RouteThrottle:
+    """מאתרי חדשות: אותו מסלול (למשל אוקראינה ← רוסיה) לא יותר מפעם אחת בפרק זמן."""
+
+    WINDOWS = {"launch": 600, "strike": 1800, "tension": 3600, "witness": 900}
+
+    def __init__(self):
+        self.last: Dict[tuple, float] = {}
+
+    @staticmethod
+    def key(ev) -> tuple:
+        kind, a, b = ev
+        if kind == "tension":
+            a, b = sorted([a or "", b or ""])
+        return kind, a or "", b or ""
+
+    def allowed(self, ev) -> bool:
+        if not ev[0]:
+            return True
+        return time.time() - self.last.get(self.key(ev), 0) > self.WINDOWS.get(ev[0], 900)
+
+    def mark(self, ev) -> None:
+        if ev[0]:
+            self.last[self.key(ev)] = time.time()
+
+
+_STOP = {"של", "על", "את", "עם", "לא", "כי", "גם", "אחרי", "לאחר", "בין", "הוא", "היא", "זה", "זו", "כך",
+         "לפי", "אך", "או", "אם", "כל", "the", "a", "an", "of", "in", "on", "to", "and", "for", "at", "by", "with"}
+
+
+def _tokens(text: str) -> set:
+    out = set()
+    for w in re.findall(r"[\w\u0590-\u05FF]+", text.lower()):
+        if len(w) > 3 and w[0] in "הובלמשכ":
+            w = w[1:]  # מסירים אות שימוש (ה/ו/ב/ל...) — "בגשר" ≈ "גשר"
+        if len(w) >= 2 and w not in _STOP:
+            out.add(w)
+    return out
+
+
+class RecentStories:
+    """זיהוי אותו סיפור במילים אחרות (ממקורות שונים) ב-6 השעות האחרונות."""
+
+    def __init__(self, window_s: int = 6 * 3600):
+        self.window_s, self.items = window_s, []
+
+    def is_dup(self, text: str) -> bool:
+        now, toks = time.time(), _tokens(text)
+        self.items = [(t, k) for t, k in self.items if now - t < self.window_s]
+        if len(toks) < 3:
+            return False
+        for _, k in self.items:
+            inter = len(toks & k)
+            if inter >= 3 and (inter / min(len(toks), len(k)) >= 0.6 or inter / len(toks | k) >= 0.45):
+                return True
+        return False
+
+    def add(self, text: str) -> None:
+        self.items.append((time.time(), _tokens(text)))
 
 
 # --------------------------------------------------------------------------- #
@@ -324,16 +440,26 @@ class Telegram:
     def __init__(self, token: str, chat_id: str, session: requests.Session):
         self.token, self.chat_id, self.s = token, chat_id, session
 
-    def call(self, method: str, **params) -> dict:
-        r = self.s.post(TELEGRAM_API.format(token=self.token, method=method), json=params, timeout=15)
-        data = r.json()
-        if not data.get("ok"):
-            # הגבלת קצב — מחכים כמה שטלגרם מבקש ומנסים שוב פעם אחת
+    def _request(self, method: str, attempts: int = 3, **kw) -> dict:
+        """POST עם ניסיונות חוזרים: ניתוק רשת / timeout / הגבלת קצב של טלגרם."""
+        url = TELEGRAM_API.format(token=self.token, method=method)
+        last: Optional[Exception] = None
+        for attempt in range(attempts):
+            try:
+                data = self.s.post(url, timeout=30, **kw).json()
+            except (requests.RequestException, ValueError) as e:
+                last = e
+                time.sleep(2 * (attempt + 1))
+                continue
             retry = (data.get("parameters") or {}).get("retry_after")
-            if retry:
-                time.sleep(int(retry) + 1)
-                r = self.s.post(TELEGRAM_API.format(token=self.token, method=method), json=params, timeout=15)
-                data = r.json()
+            if not data.get("ok") and retry and attempt < attempts - 1:
+                time.sleep(min(int(retry) + 1, 60))
+                continue
+            return data
+        raise requests.ConnectionError(f"Telegram {method}: {last}")
+
+    def call(self, method: str, **params) -> dict:
+        data = self._request(method, json=params)
         if not data.get("ok"):
             raise RuntimeError(f"Telegram {method} failed: {data.get('description')}")
         return data
@@ -345,12 +471,11 @@ class Telegram:
 
     def send_photo(self, png: bytes, caption: str) -> Optional[int]:
         """תמונה + כיתוב. כיתוב ארוך מ-1024 תווים נשלח כהודעה נפרדת."""
-        api = TELEGRAM_API.format(token=self.token, method="sendPhoto")
         data = {"chat_id": self.chat_id, "parse_mode": "HTML"}
         long = len(caption) > 1000
         if not long:
             data["caption"] = caption
-        r = self.s.post(api, data=data, files={"photo": ("map.png", png, "image/png")}, timeout=30).json()
+        r = self._request("sendPhoto", data=data, files={"photo": ("map.png", png, "image/png")})
         if not r.get("ok"):
             raise RuntimeError(f"Telegram sendPhoto failed: {r.get('description')}")
         mid = (r.get("result") or {}).get("message_id")
@@ -378,7 +503,7 @@ WELCOME = (
     "🚨 <b>ברוכים הבאים לחדשות חירום</b>\n\n"
     "כאן מתפרסמים <b>אוטומטית ובזמן אמת</b> מבזקי חירום: שיגורי טילים ורקטות, כטב\"מים, אזעקות, "
     "תקיפות והסלמה — מישראל, איראן, ארה\"ב, לבנון, תימן, עזה, רוסיה, אוקראינה ועוד. הכול בעברית.\n\n"
-    "<b>מקורות:</b> התרעות פיקוד העורף, אתרי חדשות בעולם, וכ־40 ערוצי טלגרם בעברית, ערבית, פרסית, רוסית ואוקראינית — "
+    "<b>מקורות:</b> התרעות פיקוד העורף, אתרי חדשות בעולם, וכ־50 ערוצי טלגרם בעברית, ערבית, פרסית, רוסית ואוקראינית — "
     "מתורגמים אוטומטית לעברית.\n\n"
     "<b>מה אומרים הסימונים:</b>\n"
     "✅ <b>התרעה רשמית</b> — פיקוד העורף\n"
@@ -460,7 +585,7 @@ def find_chat_id(token: str) -> None:
 # --------------------------------------------------------------------------- #
 
 class SeenStore:
-    def __init__(self, path: str, limit: int = 5000):
+    def __init__(self, path: str, limit: int = 20000):
         self.path, self.limit = path, limit
         self.items: List[str] = []
         try:
@@ -546,6 +671,93 @@ class AlertTracker:
         for a in areas:
             self.last[a] = now
         return fresh
+
+
+ALERTS_STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "war_news_alerts.json")
+
+
+class AlertService:
+    """
+    התרעות בתהליך נפרד, בלי תלות בסבב החדשות:
+    - כל 2 שניות: פיקוד העורף (ואם לא עונה — צופר)
+    - כל 30 שניות: היסטוריית ההתרעות של צופר כגיבוי — התרעה מ-5 הדקות האחרונות שלא פורסמה תפורסם
+    יישוב שכבר פורסם ב-3 הדקות האחרונות לא מפורסם שוב. המצב נשמר בקובץ (שורד הפעלה מחדש).
+    """
+
+    def __init__(self, post_fn, recent: "RecentLaunches", window_s: int = 180,
+                 state_path: str = ALERTS_STATE):
+        self.post_fn, self.recent, self.window_s, self.state_path = post_fn, recent, window_s, state_path
+        self.session = requests.Session()
+        self.posted: Dict[str, float] = {}  # יישוב → מתי פורסם
+        try:
+            with open(state_path) as f:
+                self.posted = {k: float(v) for k, v in json.load(f).items()}
+        except (OSError, ValueError, AttributeError):
+            pass
+        self._last_history = 0.0
+
+    def _save(self) -> None:
+        cutoff = time.time() - 3600
+        self.posted = {k: v for k, v in self.posted.items() if v > cutoff}
+        try:
+            os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+            with open(self.state_path + ".tmp", "w") as f:
+                json.dump(self.posted, f, ensure_ascii=False)
+            os.replace(self.state_path + ".tmp", self.state_path)
+        except OSError as e:
+            logger.warning("alert state save failed: %s", e)
+
+    def _publish(self, al: NewsItem, areas: List[str], late_note: str = "") -> bool:
+        al = NewsItem(**{**al.__dict__, "extra": dict(al.extra)})
+        al.extra["areas"] = areas
+        al.title = al.title.split(":")[0] + ": " + ", ".join(areas[:25]) + (
+            f" ועוד {len(areas) - 25}" if len(areas) > 25 else "")
+        try:
+            png = enrich_alert(al, self.recent, self.session)
+            if late_note:
+                al.extra.setdefault("extra_lines", []).insert(0, late_note)
+            self.post_fn(build_message(al, self.session), png)
+        except (RuntimeError, requests.RequestException) as e:
+            logger.error("alert send failed (will retry): %s", e)
+            return False
+        now = time.time()
+        for a in areas:
+            self.posted[a] = now
+        self._save()
+        logger.info("Alert posted: %d areas%s", len(areas), " (late, from history)" if late_note else "")
+        return True
+
+    def check_live(self) -> None:
+        now = time.time()
+        for al in fetch_alerts(self.session):
+            fresh = [a for a in al.extra.get("areas", []) if now - self.posted.get(a, 0) > self.window_s]
+            if fresh:
+                self._publish(al, fresh)
+
+    def check_history(self, max_age_s: int = 300) -> None:
+        """גיבוי: התרעות שהופיעו בהיסטוריה של צופר ולא פורסמו (למשל כי הבדיקה החיה פספסה)."""
+        if time.time() - self._last_history < 30:
+            return
+        self._last_history = time.time()
+        for when, title, areas in fetch_tzofar_history(self.session):
+            age = time.time() - when
+            if age > max_age_s or age < 20:  # צעיר מ-20 שניות — הבדיקה החיה עוד מטפלת בו
+                continue
+            missing = [a for a in areas if self.posted.get(a, 0) < when - 60]
+            if missing:
+                mins = max(1, round(age / 60))
+                item = _alert_item(title, missing, "", "פיקוד העורף (דרך צופר)", "https://www.tzevaadom.co.il/", {})
+                self._publish(item, missing, f"⏮ התרעה מלפני כ־{mins} דקות (התקבלה באיחור)")
+
+    def run_forever(self, interval_s: float = 2.0) -> None:
+        logger.info("Alert watcher started (every %.0fs + Tzofar history backup)", interval_s)
+        while True:
+            try:
+                self.check_live()
+                self.check_history()
+            except Exception:  # noqa: BLE001 — לעולם לא עוצרים את בדיקת ההתרעות
+                logger.exception("alert watcher error")
+            time.sleep(interval_s)
 
 
 class RecentLaunches:
@@ -693,40 +905,42 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
         logger.info("Watching %d Telegram channels (min %d sources to post, trusted: %s)",
                     len(channels), clusters.min_sources, ", ".join(sorted(trusted)) or "-")
 
-    alerts_seen = AlertTracker()
     recent = RecentLaunches()
+    throttle = RouteThrottle()
+    stories = RecentStories()
+    skipped = {"analysis": 0, "unclear": 0, "throttled": 0, "duplicate": 0}
+    send_lock = threading.Lock()  # התרעות וחדשות נשלחות משני תהליכים — לא במקביל
 
-    def post(text: str, png: Optional[bytes] = None) -> Optional[int]:
-        if dry_run:
-            print(text, "\n" + ("[+ מפה]" if png else "") + "-" * 60)
-            if png and os.getenv("NEWS_DRY_RUN_MAP_DIR"):
-                with open(os.path.join(os.getenv("NEWS_DRY_RUN_MAP_DIR"), f"map_{int(time.time()*1000)}.png"), "wb") as f:
-                    f.write(png)
-            return None
-        mid = tg.send_photo(png, text) if png else tg.send(text)
-        time.sleep(1.2)  # מתחת למגבלת 20 הודעות/דקה לקבוצה
-        return mid
+    def make_post(client: Optional["Telegram"]):
+        def post(text: str, png: Optional[bytes] = None) -> Optional[int]:
+            if dry_run:
+                print(text, "\n" + ("[+ מפה]" if png else "") + "-" * 60)
+                if png and os.getenv("NEWS_DRY_RUN_MAP_DIR"):
+                    with open(os.path.join(os.getenv("NEWS_DRY_RUN_MAP_DIR"), f"map_{int(time.time()*1000)}.png"), "wb") as f:
+                        f.write(png)
+                return None
+            with send_lock:
+                mid = client.send_photo(png, text) if png else client.send(text)
+                time.sleep(1.2)  # מתחת למגבלת 20 הודעות/דקה לקבוצה
+            return mid
+        return post
+
+    post = make_post(tg)
+    alert_service = None
+    if oref:
+        # לקוח טלגרם וחיבור נפרדים לתהליך ההתרעות
+        tg_alerts = Telegram(token, chat_id, requests.Session()) if not dry_run else None
+        alert_service = AlertService(make_post(tg_alerts), recent)
+        if not once:
+            threading.Thread(target=alert_service.run_forever, name="alerts", daemon=True).start()
 
     last_rss = last_social = 0.0
     while True:
         started = time.time()
         try:
             items: List[NewsItem] = []
-            if oref:  # התרעות — כל 5 שניות, מטופלות מיד ובנפרד
-                for al in fetch_alerts(session):
-                    fresh = alerts_seen.new_areas(al.extra.get("areas", []))
-                    if not fresh:
-                        continue
-                    al = NewsItem(**{**al.__dict__, "extra": dict(al.extra)})
-                    al.extra["areas"] = fresh
-                    al.title = al.title.split(":")[0] + ": " + ", ".join(fresh[:25]) + (
-                        f" ועוד {len(fresh) - 25}" if len(fresh) > 25 else "")
-                    try:
-                        png = enrich_alert(al, recent, session)
-                        post(build_message(al, session), png)
-                        logger.info("Alert posted: %d areas", len(fresh))
-                    except (RuntimeError, requests.RequestException) as e:
-                        logger.error("alert send failed: %s", e)
+            if once and alert_service:  # בהרצה חד-פעמית — בדיקת התרעות אחת כאן
+                alert_service.check_live()
             if started - last_rss >= poll:
                 items.extend(collect(session, oref=False))
                 last_rss = started
@@ -742,14 +956,27 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                 ev = event_for(it)
                 if ev[0] == "launch" and ev[2] == "IL" and ev[1] in MIDEAST_LAUNCHERS:
                     recent.add(ev[1])  # רק שיגור מפורש לישראל משמש לכיוון של התרעה
+                is_social = bool(it.extra.get("social"))
+                if not is_social:  # אתרי חדשות: מסננים ניתוחים, ידיעות לא ברורות ואותו מסלול שוב ושוב
+                    reason = rss_skip_reason(it, ev) or (None if throttle.allowed(ev) else "throttled")
+                    if reason:
+                        skipped[reason] += 1
+                        seen.add(it.extra["uid"])
+                        continue
+                he_title = it.title
                 if it.lang != "he":
                     src = it.lang if it.lang in ("ar", "fa", "en") else "auto"
-                    t = it.title
+                    t = _strip_outlet(it.title) if it.source.startswith("Google News") else it.title
                     for rx, repl in PRETRANSLATE:
                         t = rx.sub(repl, t)
-                    if not translate(t, "iw", src, session):
+                    he_title = translate(t, "iw", src, session)
+                    if not he_title:
                         untranslated += 1
                         continue  # לא מסמנים כ"נראה" — ננסה לתרגם שוב בסבב הבא
+                if not is_social and stories.is_dup(he_title):
+                    skipped["duplicate"] += 1
+                    seen.add(it.extra["uid"])
+                    continue
                 try:
                     if it.extra.get("social"):
                         act = clusters.add(it)
@@ -758,6 +985,7 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                             act["cluster"]["is_photo"] = bool(png)
                             act["cluster"]["message_id"] = post(
                                 build_message(act["item"], session, act["count"]), png)
+                            stories.add(he_title)
                             sent += 1
                         elif act and act["action"] == "edit" and act["cluster"]["message_id"]:
                             text = build_message(act["item"], session, act["count"])
@@ -767,6 +995,8 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                                 tg.edit(act["cluster"]["message_id"], text)
                     else:
                         post(build_message(it, session), launch_map(it, session))
+                        stories.add(he_title)
+                        throttle.mark(ev)
                         sent += 1
                 except Untranslated:
                     untranslated += 1
@@ -781,11 +1011,15 @@ def run(once: bool = False, dry_run: bool = False, warmup: bool = True) -> None:
                 logger.info("Posted %d new items", sent)
             if untranslated:
                 logger.warning("Held %d items: translation unavailable, will retry", untranslated)
+            if any(skipped.values()) and time.time() - getattr(run, "_last_skip_log", 0) > 3600:
+                logger.info("Filtered in the last hour: %s", skipped)  # סיכום סינון — פעם בשעה
+                run._last_skip_log = time.time()
+                skipped.update({k: 0 for k in skipped})
         except Exception:  # הלולאה לא נופלת על שגיאה בודדת
             logger.exception("cycle error")
         if once:
             break
-        time.sleep(5 if (oref or channels) else poll)
+        time.sleep(5 if channels else poll)
 
 
 def check_channels() -> None:

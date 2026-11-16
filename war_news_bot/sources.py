@@ -224,6 +224,27 @@ def fetch_tzofar_alerts(session: requests.Session) -> List[NewsItem]:
     return out
 
 
+TZOFAR_HISTORY_URL = "https://api.tzevaadom.co.il/alerts-history"
+
+
+def fetch_tzofar_history(session: requests.Session) -> List[tuple]:
+    """היסטוריית התרעות מצופר: [(זמן epoch, כותרת, [יישובים]), ...] — בלי תרגילים."""
+    try:
+        r = session.get(TZOFAR_HISTORY_URL, timeout=10, headers={"User-Agent": _BROWSER_UA})
+        r.raise_for_status()
+        data = r.json()
+    except (requests.RequestException, ValueError) as e:
+        logger.debug("Tzofar history failed: %s", e)
+        return []
+    out = []
+    for group in data if isinstance(data, list) else []:
+        for a in (group.get("alerts") or []) if isinstance(group, dict) else []:
+            if a.get("isDrill") or not a.get("cities") or not a.get("time"):
+                continue
+            out.append((float(a["time"]), TZOFAR_THREATS.get(a.get("threat"), "התרעה"), list(a["cities"])))
+    return out
+
+
 def fetch_alerts(session: requests.Session) -> List[NewsItem]:
     """פיקוד העורף, ואם אין — צופר."""
     return fetch_oref_alerts(session) or fetch_tzofar_alerts(session)

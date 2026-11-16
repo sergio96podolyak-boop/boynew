@@ -187,15 +187,22 @@ MIDEAST_LAUNCHERS = {"IR", "YE", "LB", "GZ", "IQ", "SY"}
 EYEWITNESS = re.compile("|".join([
     r"(?:heard|hearing|hear) (?:\S+ ){0,3}(?:jets?|planes?|aircraft|explosions?|blasts?|booms?|bangs?|sirens?|intercept)",
     r"(?:explosions?|blasts?|booms?|loud bangs?|sonic boom|jets?|fighter jets|warplanes|drones?) (?:\S+ ){0,2}(?:heard|seen|spotted|reported) (?:over|in|across|near)",
-    r"sound of (?:jets|planes|explosions|interceptions)", r"residents (?:report|reported|say|hear)", r"eyewitness",
+    r"sound of (?:jets|planes|explosions|interceptions)",
     r"low[- ]flying (?:jets|aircraft|planes)", r"(?:trails?|streaks?) (?:seen|spotted) (?:in|over) the sky",
     r"נשמע(?:ו|ה)? (?:\S+ ){0,2}(?:פיצוצ|בומ|רעש|קולות|מטוס|יירוט|אזעק)", r"רעש(?:י)? (?:של )?מטוסים", r"קולות (?:נפץ|פיצוץ|יירוט)",
-    r"תושבים (?:מדווחים|דיווחו|מספרים)", r"עדי ראייה", r"מטוסי קרב (?:בשמי|מעל)", r"שובל(?:ים)? בשמיים",
+    r"מטוסי קרב (?:בשמי|מעל)", r"שובל(?:ים)? בשמיים",
     r"(?:سماع|سمع|تسمع) (?:\S+ ){0,2}(?:دوي|انفجار|أصوات|صوت|طيران)", r"أصوات انفجارات", r"تحليق (?:مكثف|منخفض|للطيران|طيران)",
-    r"دوي انفجار", r"شهود عيان", r"مواطنون (?:يفيدون|أفادوا)", r"رصد (?:صواريخ|مسيرات) في السماء",
-    r"صدای (?:انفجار|جنگنده|پدافند)", r"(?:شنیده|شنیده‌شدن) (?:\S+ ){0,2}(?:انفجار|صدا)", r"پرواز (?:جنگنده|هواپیما)", r"شاهدان عینی",
-    r"слышн\w* (?:\S+ ){0,2}(?:взрыв|звук|самолет|пво)", r"звуки (?:взрывов|самолетов|пво)", r"очевидц", r"чути (?:\S+ ){0,2}вибух",
+    r"دوي انفجار", r"رصد (?:صواريخ|مسيرات) في السماء",
+    r"صدای (?:انفجار|جنگنده|پدافند)", r"(?:شنیده|شنیده‌شدن) (?:\S+ ){0,2}(?:انفجار|صدا)", r"پرواز (?:جنگنده|هواپیما)",
+    r"слышн\w* (?:\S+ ){0,2}(?:взрыв|звук|самолет|пво)", r"звуки (?:взрывов|самолетов|пво)", r"чути (?:\S+ ){0,2}вибух",
 ]), re.IGNORECASE)
+# "תושבים מדווחים" / "עדי ראייה" — נחשב דיווח תושבים רק אם יש גם פיצוץ/מטוס/יירוט
+EYEWITNESS_SOFT = re.compile(
+    r"residents (?:report|reported|say|hear)|eyewitness|תושבים (?:מדווחים|דיווחו|מספרים)|עדי ראייה|"
+    r"شهود عيان|مواطنون (?:يفيدون|أفادوا)|شاهدان عینی|очевидц", re.IGNORECASE)
+_SOUND = re.compile(
+    r"פיצוצ|בומ|רעש|יירוט|מטוס|explos|blast|boom|jets?\b|intercept|drone|انفجار|دوي|طيران|взрыв|вибух|جنگنده",
+    re.IGNORECASE)
 
 
 def first_place(text: str) -> Optional[str]:
@@ -209,7 +216,7 @@ def first_place(text: str) -> Optional[str]:
 
 
 def is_eyewitness(text: str) -> bool:
-    return bool(EYEWITNESS.search(text))
+    return bool(EYEWITNESS.search(text) or (EYEWITNESS_SOFT.search(text) and _SOUND.search(text)))
 
 
 def _parties(text: str) -> List[str]:
